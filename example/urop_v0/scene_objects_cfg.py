@@ -18,11 +18,15 @@ ball_cfg = RigidObjectCfg(
     spawn=sim_utils.SphereCfg(
         radius=0.1,
         visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
-        rigid_props=sim_utils.RigidBodyPropertiesCfg(),
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(
+            kinematic_enabled=True,  # True로 하면 중력을 무시하고 그 자리에 고정됨 (또는 코드로 위치 제어 가능)
+            disable_gravity=True,    # 이중 안전장치
+        ),
         mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
+        collision_props=sim_utils.CollisionPropertiesCfg(),
     ),
     init_state=RigidObjectCfg.InitialStateCfg(
-        pos=(0.6, 0.0, 0.5), # 로봇 앞 60cm 지점에 배치
+        pos=(1.5, 0.0, 1.0), # 로봇 앞 60cm 지점에 배치
     ),
 )
 # 1. 내 로봇 (Go2 + Arm) 정의
@@ -31,6 +35,7 @@ dj_robot_cfg = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
         # ★여기에 합체한 USD 파일 경로를 넣으세요!
         usd_path="/home/roro_common/mdj/IsaacLab/example/urop_v0/usd/dj_robotarm_on_go2.usd", 
+        activate_contact_sensors=True,
     ),
     init_state=ArticulationCfg.InitialStateCfg(
         pos=(0.0, 0.0, 0.2), # 로봇이 땅에 파묻히지 않게 살짝 띄움
@@ -54,15 +59,15 @@ dj_robot_cfg = ArticulationCfg(
             joint_names_expr=["shoulder_joint", "arm_joint1", "arm_joint2"],
             effort_limit_sim=50.0,
             stiffness=50.0, # 아까 설정한 높은 P게인
-            damping=10.0,     # D게인
+            damping=5.0,     # D게인
         ),
         # (2) Go2 다리 관절 (모든 나머지 관절)
         # Go2 관절 이름을 정확히 모르면 일단 나머지를 다 잡는 정규표현식 사용
         "go2_legs": ImplicitActuatorCfg(
             joint_names_expr=["FL_.*", "FR_.*", "RL_.*", "RR_.*"], # 혹은 ".*_hip_.*" 등 Go2 관절명 규칙
             effort_limit_sim=25.0,
-            stiffness=100.0, # 다리는 좀 부드럽게
-            damping=5.0,
+            stiffness=30.0, # 다리는 좀 부드럽게
+            damping=2.0,
         ),
     },
 )
