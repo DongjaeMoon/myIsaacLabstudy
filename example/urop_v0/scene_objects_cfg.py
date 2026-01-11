@@ -72,14 +72,14 @@ dj_robot_cfg = ArticulationCfg(
     },
 )
 arm_tip_contact_sensor_cfg = ContactSensorCfg(
-    # 너가 준 prim path를 IsaacLab env prefix로 감싼 경로
     prim_path="{ENV_REGEX_NS}/Robot/dj_robotarm/dj_robotarm/arm_link2",
     update_period=0.0,
     debug_vis=False,
-    # 공(Ball)만 필터링해서 잡도록
     filter_prim_paths_expr=["{ENV_REGEX_NS}/Ball"],
     track_air_time=False,
+    history_length=1,
 )
+
 
 '''
 box_cfg = RigidObjectCfg(

@@ -47,7 +47,13 @@ def distance_to_target(env: ManagerBasedRLEnv, asset_name: str) -> torch.Tensor:
 # 2. 로봇 팔 끝(End-effector)이 공에 닿기 (안전한 버전)
 def ee_distance_to_target(env: ManagerBasedRLEnv, asset_name: str, ee_body_name: str) -> torch.Tensor:
     # 1. 로봇의 팔 끝(End-effector) 링크 찾기
-    ee_indices = env.scene["robot"].find_bodies(ee_body_name)[0]
+    #ee_indices = env.scene["robot"].find_bodies(ee_body_name)[0]
+    body_ids, _ = env.scene["robot"].find_bodies(ee_body_name)
+    if len(body_ids) == 0:
+    # 못 찾으면 큰 거리로 페널티 주고 조용히 넘어가게
+        return torch.ones(env.num_envs, device=env.device) * 1e3
+    ee_indices = body_ids
+
     
     # 2. 위치 가져오기: 결과 모양은 (num_envs, 찾은_개수, 3) 임. 예: (64, 1, 3)
     ee_pos_all = env.scene["robot"].data.body_pos_w[:, ee_indices, :]
@@ -106,39 +112,118 @@ def ball_touched(env: ManagerBasedRLEnv, sensor_name: str, min_force: float = 0.
 
 def reset_ball_random_drop(
     env,
-    asset_name: str,
-    x_range: tuple[float, float] = (1.2, 1.8),
-    y_abs_range: tuple[float, float] = (0.2, 0.6),
-    z_range: tuple[float, float] = (1.0, 2.0),
+    env_ids,
+    x_range=(0.4, 0.8),        # 로봇 기준 "앞"으로 떨어지는 거리 (m)
+    y_abs_range=(0.0, 0.25),   # 로봇 기준 "좌/우" 거리의 절댓값 (m)
+    z_range=(0.7, 1.1),        # 로봇 기준 "위" 높이 오프셋 (m)
+    asset_name="target_ball",
 ) -> None:
-    """Reset event: place the ball at random left/right (±y) with random height (z).
-    This is Step A: one ball per episode.
-    """
     ball = env.scene[asset_name]
     device = env.device
-    n = env.num_envs
 
-    # sample x,z
+    # env_ids 안전 처리
+    env_ids = env_ids.to(device=device)
+    n = env_ids.numel()
+
+    # --- 1) 로봇의 월드 위치/자세 가져오기 (env_ids에 해당하는 것만) ---
+    robot_pos_w  = env.scene["robot"].data.root_pos_w[env_ids]   # (n,3)
+    robot_quat_w = env.scene["robot"].data.root_quat_w[env_ids]  # (n,4) (w,x,y,z)
+
+    # --- 2) 로봇 "로컬 프레임" 기준 오프셋 샘플링 ---
     x = torch.empty(n, device=device).uniform_(x_range[0], x_range[1])
     z = torch.empty(n, device=device).uniform_(z_range[0], z_range[1])
 
-    # sample |y| then random sign
     y_abs = torch.empty(n, device=device).uniform_(y_abs_range[0], y_abs_range[1])
     sign = torch.where(torch.rand(n, device=device) < 0.5, -1.0, 1.0)
     y = sign * y_abs
 
-    # set pose (world)
-    pos_w = torch.stack([x, y, z], dim=-1)
+    offset_body = torch.stack([x, y, z], dim=-1)  # (n,3)  로봇 기준 [앞,좌,위]
 
-    # identity quat (w,x,y,z) or (x,y,z,w) depending on IsaacLab convention.
-    # In IsaacLab, root_quat_w is typically (w, x, y, z).
+    # --- 3) 로봇 자세로 오프셋을 월드로 회전시켜서 더하기 ---
+    R_wb = matrix_from_quat(robot_quat_w)                 # (n,3,3)
+    offset_w = torch.bmm(R_wb, offset_body.unsqueeze(-1)).squeeze(-1)  # (n,3)
+
+    pos_w = robot_pos_w + offset_w                        # (n,3)
+
+    # --- 4) 공 자세/속도 설정 ---
     quat_w = torch.zeros(n, 4, device=device)
-    quat_w[:, 0] = 1.0
+    quat_w[:, 0] = 1.0  # (w,x,y,z) identity
 
-    # zero velocities
     lin_vel = torch.zeros(n, 3, device=device)
     ang_vel = torch.zeros(n, 3, device=device)
 
-    # write to simulation
-    ball.write_root_pose_to_sim(torch.cat([pos_w, quat_w], dim=-1))
-    ball.write_root_velocity_to_sim(torch.cat([lin_vel, ang_vel], dim=-1))
+    pose = torch.cat([pos_w, quat_w], dim=-1)  # (n,7)
+    vel  = torch.cat([lin_vel, ang_vel], dim=-1)  # (n,6)
+
+    ball.write_root_pose_to_sim(pose, env_ids=env_ids)
+    ball.write_root_velocity_to_sim(vel, env_ids=env_ids)
+
+
+import torch
+from isaaclab.utils.math import quat_apply
+
+def _yaw_only_quat(q_wxyz: torch.Tensor) -> torch.Tensor:
+    """(w,x,y,z) quat에서 yaw만 남긴 quat 반환"""
+    w, x, y, z = q_wxyz.unbind(-1)
+    yaw = torch.atan2(2.0*(w*z + x*y), 1.0 - 2.0*(y*y + z*z))
+    half = 0.5 * yaw
+    qw = torch.cos(half)
+    qz = torch.sin(half)
+    out = torch.zeros_like(q_wxyz)
+    out[:, 0] = qw
+    out[:, 3] = qz
+    return out
+
+def spawn_ball_near_arm_relative(
+    env,
+    env_ids,
+    asset_name: str = "target_ball",
+    center_body_name: str = "shoulder_link",   # <- 팔 베이스 링크명(USD에서 확인)
+    x_range = (-0.35, -0.35),                  # <- "뒤쪽"으로 떨어뜨리려면 음수
+    y_abs_range = (0.15, 0.40),                # <- 좌/우
+    z_range = (1.0, 1.6),                      # <- center 기준 위에서 떨어짐
+    yaw_only: bool = True,
+) -> None:
+    """팔(또는 로봇) 기준으로 뒤/좌우 랜덤 위치에서 공을 스폰하고 속도를 0으로 초기화"""
+    device = env.device
+    env_ids = env_ids.to(device=device)
+
+    ball = env.scene[asset_name]
+    robot = env.scene["robot"]
+
+    # center: 팔 베이스 링크(추천). 못 찾으면 root로 fallback.
+    body_ids, _ = robot.find_bodies(center_body_name)
+    if len(body_ids) > 0:
+        center_pos = robot.data.body_pos_w[env_ids][:, body_ids, :].mean(dim=1)  # (n,3)
+    else:
+        center_pos = robot.data.root_pos_w[env_ids]  # (n,3)
+
+    # 로봇 yaw (롤/피치 무시)
+    root_quat = robot.data.root_quat_w[env_ids]  # (n,4) wxyz
+    q = _yaw_only_quat(root_quat) if yaw_only else root_quat
+
+    n = env_ids.numel()
+
+    # 로봇 기준 오프셋 샘플링 (body frame)
+    x = torch.empty(n, device=device).uniform_(x_range[0], x_range[1])
+    y_abs = torch.empty(n, device=device).uniform_(y_abs_range[0], y_abs_range[1])
+    sign = torch.where(torch.rand(n, device=device) < 0.5, -1.0, 1.0)
+    y = sign * y_abs
+    z = torch.empty(n, device=device).uniform_(z_range[0], z_range[1])
+
+    offset_body = torch.stack([x, y, z], dim=-1)          # (n,3)
+    offset_w = quat_apply(q, offset_body)                 # (n,3) 로봇 yaw로 회전
+
+    pos_w = center_pos + offset_w                          # (n,3)
+
+    quat_w = torch.zeros(n, 4, device=device)
+    quat_w[:, 0] = 1.0                                     # (w,x,y,z)
+
+    lin_vel = torch.zeros(n, 3, device=device)
+    ang_vel = torch.zeros(n, 3, device=device)
+
+    pose = torch.cat([pos_w, quat_w], dim=-1)              # (n,7)
+    vel  = torch.cat([lin_vel, ang_vel], dim=-1)           # (n,6)
+
+    ball.write_root_pose_to_sim(pose, env_ids=env_ids)
+    ball.write_root_velocity_to_sim(vel, env_ids=env_ids)

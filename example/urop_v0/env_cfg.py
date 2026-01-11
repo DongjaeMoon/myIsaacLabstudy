@@ -105,7 +105,7 @@ class CommandsCfg:
     command=mdp.NullCommandCfg()
 
 
-@configclass
+'''@configclass
 class ActionsCfg:
     """Action specifications for the MDP."""
 
@@ -114,6 +114,21 @@ class ActionsCfg:
         #joint_names=[".*"],
         joint_names=["shoulder_joint", "arm_joint1", "arm_joint2"],
         scale=0.1, # arm only -> 0.1
+    )'''
+@configclass
+class ActionsCfg:
+    # 1) Go2 다리: 기본자세 HOLD (policy가 출력하긴 해도 scale=0이라 영향 없음)
+    go2_hold = mdp.JointPositionActionCfg(
+        asset_name="robot",
+        joint_names=[".*_hip_joint", ".*_thigh_joint", ".*_calf_joint"],
+        scale=0.0,
+    )
+
+    # 2) 팔: policy가 제어
+    arm_action = mdp.JointPositionActionCfg(
+        asset_name="robot",
+        joint_names=["shoulder_joint", "arm_joint1", "arm_joint2"],
+        scale=0.1,
     )
 
 @configclass
@@ -174,14 +189,18 @@ class EventCfg:
 
     reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
 
-    reset_ball = EventTerm(
-        func=mdp.reset_ball_random_drop,   # 방금 만든 함수
-        mode="reset",
+    # 공은 reset 때는 주차(=scene_objects_cfg에서 멀리 둠)
+    # 그리고 interval로 계속 떨어뜨림
+    drop_ball = EventTerm(
+        func=mdp.spawn_ball_near_arm_relative,
+        mode="interval",
+        interval_range_s=(1.0, 1.5),   # <- "로봇 착지 후 좀 있다가" 첫 드롭 + 이후도 이 간격으로 계속 드롭
         params={
             "asset_name": "target_ball",
-            "x_range": (1.2, 1.8),
-            "y_abs_range": (0.2, 0.6),
-            "z_range": (1.0, 2.0),
+            "center_body_name": "shoulder_link",  # <- 네 링크명으로!
+            "x_range": (-0.45, -0.15),
+            "y_abs_range": (0.15, 0.40),
+            "z_range": (1.0, 1.6),
         },
     )
 
@@ -282,6 +301,11 @@ class TerminationsCfg:
     ball_missed = DoneTerm(
         func=mdp.ball_below_height,
         params={"asset_name": "target_ball", "min_height": 0.0},  # 필요하면 0.05 등으로
+    )
+
+    bad_height = DoneTerm(
+    func=mdp.root_height_below,
+    params={"minimum_height": 0.22},
     )
 
 
