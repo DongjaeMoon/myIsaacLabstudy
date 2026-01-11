@@ -125,10 +125,17 @@ class ActionsCfg:
     )
 
     # 2) 팔: policy가 제어
-    arm_action = mdp.JointPositionActionCfg(
+    # shoulder는 크게(회전 많이), 팔 관절 2개는 중간 정도
+    shoulder = mdp.JointPositionActionCfg(
         asset_name="robot",
-        joint_names=["shoulder_joint", "arm_joint1", "arm_joint2"],
-        scale=0.1,
+        joint_names=["shoulder_joint"],
+        scale=3.14,   # <-- 최소 이 정도는 줘야 180도 근처가 가능해짐
+    )
+
+    arm = mdp.JointPositionActionCfg(
+        asset_name="robot",
+        joint_names=["arm_joint1", "arm_joint2"],
+        scale=1.0,
     )
 
 @configclass
@@ -300,7 +307,7 @@ class TerminationsCfg:
     # 공이 바닥에 떨어지면 실패 종료
     ball_missed = DoneTerm(
         func=mdp.ball_below_height,
-        params={"asset_name": "target_ball", "min_height": 0.0},  # 필요하면 0.05 등으로
+        params={"asset_name": "target_ball", "min_height": 0.12},  # 필요하면 0.05 등으로
     )
 
     bad_height = DoneTerm(

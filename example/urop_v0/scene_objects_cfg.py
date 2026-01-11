@@ -26,7 +26,7 @@ ball_cfg = RigidObjectCfg(
         collision_props=sim_utils.CollisionPropertiesCfg(),
     ),
     init_state=RigidObjectCfg.InitialStateCfg(
-        pos=(0.0, 0.4, 1.5), # 로봇 앞 60cm 지점에 배치
+        pos=(0.0, 0.4, 5), # 로봇 앞 60cm 지점에 배치
     ),
 )
 # 1. 내 로봇 (Go2 + Arm) 정의
