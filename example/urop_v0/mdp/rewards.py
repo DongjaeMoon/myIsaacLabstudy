@@ -64,3 +64,14 @@ def ee_distance_to_target(env: ManagerBasedRLEnv, asset_name: str, ee_body_name:
     dist = torch.norm(target_pos - ee_pos, dim=-1)
     
     return dist
+
+
+# --- [urop_v0/mdp/rewards.py] 맨 아래에 추가 ---
+
+def root_height_below(env: ManagerBasedRLEnv, minimum_height: float) -> torch.Tensor:
+    """로봇의 높이가 기준치보다 낮아지면 True(종료)를 반환"""
+    # 1. 로봇의 Root 위치 가져오기 (num_envs, 3)
+    root_pos = env.scene["robot"].data.root_pos_w
+    
+    # 2. Z축(높이)이 minimum_height보다 작은지 검사
+    return root_pos[:, 2] < minimum_height

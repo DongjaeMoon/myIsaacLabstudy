@@ -44,7 +44,7 @@ class dj_urop_SceneCfg(InteractiveSceneCfg):
         prim_path="/World/ground",
         spawn=sim_utils.GroundPlaneCfg(size=(150.0, 150.0)),
         init_state=ArticulationCfg.InitialStateCfg(
-            pos = (0.0, 0.0, -0.76),
+            pos = (0.0, 0.0, 0.0),
             rot = (1.0, 0.0, 0.0, 0.0),
         ),
     )
@@ -109,7 +109,7 @@ class ActionsCfg:
     joint_action = mdp.JointPositionActionCfg(
         asset_name="robot",
         joint_names=[".*"],
-        scale=1.0,
+        scale=0.2,
     )
 
 @configclass
@@ -197,10 +197,10 @@ class RewardsCfg:
     # ----------------------------------------------------
     
     # (1) 로봇이 마구 회전하지 않도록 (Z축 회전 속도 규제)
-    ang_vel_xy_penalty = RewTerm(
-        func=mdp.ang_vel_xy_l2,
-        weight=-0.05,
-    )
+    #ang_vel_xy_penalty = RewTerm(
+    #    func=mdp.ang_vel_xy_l2,
+    #    weight=-0.05,
+    #)
     
     # (2) 로봇이 너무 휘청거리지 않도록 (몸통 방향 규제)
     flat_orientation_penalty = RewTerm(
@@ -209,10 +209,10 @@ class RewardsCfg:
     )
     
     # (3) 발을 너무 세게 구르거나 액션이 튀지 않도록
-    action_rate_penalty = RewTerm(
-        func=mdp.action_rate_l2,
-        weight=-0.01,
-    )
+    #action_rate_penalty = RewTerm(
+    #    func=mdp.action_rate_l2,
+    #    weight=-0.01,
+    #)
     
     # (4) 불필요한 관절 토크 줄이기 (에너지 효율 + 부드러운 움직임)
     torques_penalty = RewTerm(
@@ -242,8 +242,8 @@ class TerminationsCfg:
     # 3. [추가] 높이 기반 넘어짐 감지 (대안)
     # 로봇의 몸통(Root) 높이가 0.25m 밑으로 내려가면 "넘어졌다"고 판단하고 리셋
     bad_height = DoneTerm(
-        func=isaac_mdp.root_height_below,
-        params={"minimum_height": 0.25}, 
+        func=mdp.root_height_below,
+        params={"minimum_height": 0.1}, 
     )
 
 

@@ -38,7 +38,7 @@ dj_robot_cfg = ArticulationCfg(
         activate_contact_sensors=True,
     ),
     init_state=ArticulationCfg.InitialStateCfg(
-        pos=(0.0, 0.0, 0.2), # 로봇이 땅에 파묻히지 않게 살짝 띄움
+        pos=(0.0, 0.0, 0.5), # 로봇이 땅에 파묻히지 않게 살짝 띄움
         # 관절 초기 각도 (필요하면 추가)
         joint_pos={
             # (1) dj_robotarm zero position
