@@ -75,3 +75,70 @@ def root_height_below(env: ManagerBasedRLEnv, minimum_height: float) -> torch.Te
     
     # 2. Z축(높이)이 minimum_height보다 작은지 검사
     return root_pos[:, 2] < minimum_height
+
+
+def ball_below_height(env: ManagerBasedRLEnv, asset_name: str, min_height: float) -> torch.Tensor:
+    z = env.scene[asset_name].data.root_pos_w[:, 2]
+    return z < min_height
+
+
+def ball_touched(env: ManagerBasedRLEnv, sensor_name: str, min_force: float = 0.0) -> torch.Tensor:
+    sensor = env.scene[sensor_name]
+    data = sensor.data
+
+    # IsaacLab 버전/센서 설정에 따라 텐서 shape가 다를 수 있어서 최대한 방어적으로 처리
+    if hasattr(data, "net_forces_w"):
+        forces = data.net_forces_w
+    elif hasattr(data, "forces_w"):
+        forces = data.forces_w
+    else:
+        raise AttributeError(f"Contact sensor data has no forces field. Available: {dir(data)}")
+
+    # 가능한 shape:
+    # (num_envs, num_bodies, 3) 또는 (num_envs, num_bodies, history, 3)
+    if forces.ndim == 4:
+        forces = forces[:, :, -1, :]  # 마지막 스텝만 사용
+
+    mag = torch.norm(forces, dim=-1)          # (num_envs, num_bodies)
+    touched = (mag > min_force).any(dim=1)    # (num_envs,)
+    return touched
+
+
+def reset_ball_random_drop(
+    env,
+    asset_name: str,
+    x_range: tuple[float, float] = (1.2, 1.8),
+    y_abs_range: tuple[float, float] = (0.2, 0.6),
+    z_range: tuple[float, float] = (1.0, 2.0),
+) -> None:
+    """Reset event: place the ball at random left/right (±y) with random height (z).
+    This is Step A: one ball per episode.
+    """
+    ball = env.scene[asset_name]
+    device = env.device
+    n = env.num_envs
+
+    # sample x,z
+    x = torch.empty(n, device=device).uniform_(x_range[0], x_range[1])
+    z = torch.empty(n, device=device).uniform_(z_range[0], z_range[1])
+
+    # sample |y| then random sign
+    y_abs = torch.empty(n, device=device).uniform_(y_abs_range[0], y_abs_range[1])
+    sign = torch.where(torch.rand(n, device=device) < 0.5, -1.0, 1.0)
+    y = sign * y_abs
+
+    # set pose (world)
+    pos_w = torch.stack([x, y, z], dim=-1)
+
+    # identity quat (w,x,y,z) or (x,y,z,w) depending on IsaacLab convention.
+    # In IsaacLab, root_quat_w is typically (w, x, y, z).
+    quat_w = torch.zeros(n, 4, device=device)
+    quat_w[:, 0] = 1.0
+
+    # zero velocities
+    lin_vel = torch.zeros(n, 3, device=device)
+    ang_vel = torch.zeros(n, 3, device=device)
+
+    # write to simulation
+    ball.write_root_pose_to_sim(torch.cat([pos_w, quat_w], dim=-1))
+    ball.write_root_velocity_to_sim(torch.cat([lin_vel, ang_vel], dim=-1))

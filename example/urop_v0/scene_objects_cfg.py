@@ -19,14 +19,14 @@ ball_cfg = RigidObjectCfg(
         radius=0.1,
         visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
-            kinematic_enabled=True,  # True로 하면 중력을 무시하고 그 자리에 고정됨 (또는 코드로 위치 제어 가능)
-            disable_gravity=True,    # 이중 안전장치
+            kinematic_enabled=False,  # True로 하면 중력을 무시하고 그 자리에 고정됨 (또는 코드로 위치 제어 가능)
+            disable_gravity=False,    # 이중 안전장치
         ),
         mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
         collision_props=sim_utils.CollisionPropertiesCfg(),
     ),
     init_state=RigidObjectCfg.InitialStateCfg(
-        pos=(1.5, 0.0, 1.0), # 로봇 앞 60cm 지점에 배치
+        pos=(0.0, 0.4, 1.5), # 로봇 앞 60cm 지점에 배치
     ),
 )
 # 1. 내 로봇 (Go2 + Arm) 정의
@@ -71,6 +71,16 @@ dj_robot_cfg = ArticulationCfg(
         ),
     },
 )
+arm_tip_contact_sensor_cfg = ContactSensorCfg(
+    # 너가 준 prim path를 IsaacLab env prefix로 감싼 경로
+    prim_path="{ENV_REGEX_NS}/Robot/dj_robotarm/dj_robotarm/arm_link2",
+    update_period=0.0,
+    debug_vis=False,
+    # 공(Ball)만 필터링해서 잡도록
+    filter_prim_paths_expr=["{ENV_REGEX_NS}/Ball"],
+    track_air_time=False,
+)
+
 '''
 box_cfg = RigidObjectCfg(
     prim_path="{ENV_REGEX_NS}/asdf",

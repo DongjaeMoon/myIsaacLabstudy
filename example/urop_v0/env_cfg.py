@@ -84,6 +84,9 @@ class dj_urop_SceneCfg(InteractiveSceneCfg):
     target_ball: RigidObjectCfg = scene_objects_cfg.ball_cfg
 
     # sensors
+    arm_tip_contact: ContactSensorCfg = scene_objects_cfg.arm_tip_contact_sensor_cfg
+
+    # sensors
     #ft_sensor_example: FrameTransformerCfg = scene_objects_cfg.ft_sensor_example_cfg
     #contact_sensor_example: ContactSensorCfg = scene_objects_cfg.contact_sensor_example_cfg
 
@@ -108,8 +111,9 @@ class ActionsCfg:
 
     joint_action = mdp.JointPositionActionCfg(
         asset_name="robot",
-        joint_names=[".*"],
-        scale=0.2,
+        #joint_names=[".*"],
+        joint_names=["shoulder_joint", "arm_joint1", "arm_joint2"],
+        scale=0.1, # arm only -> 0.1
     )
 
 @configclass
@@ -127,7 +131,8 @@ class ObservationsCfg:
             params={
                 "asset_cfg": SceneEntityCfg(
                     name="robot",
-                    joint_names=[".*"],
+                    #joint_names=[".*"],
+                    joint_names=["shoulder_joint", "arm_joint1", "arm_joint2"]
                 )
             },
             scale=1.0,
@@ -137,7 +142,8 @@ class ObservationsCfg:
             params={
                 "asset_cfg": SceneEntityCfg(
                     name="robot",
-                    joint_names=[".*"],
+                    #joint_names=[".*"],
+                    joint_names=["shoulder_joint", "arm_joint1", "arm_joint2"]
                 )
             },
             scale=1.0,
@@ -168,12 +174,23 @@ class EventCfg:
 
     reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
 
+    reset_ball = EventTerm(
+        func=mdp.reset_ball_random_drop,   # 방금 만든 함수
+        mode="reset",
+        params={
+            "asset_name": "target_ball",
+            "x_range": (1.2, 1.8),
+            "y_abs_range": (0.2, 0.6),
+            "z_range": (1.0, 2.0),
+        },
+    )
+
 
 
 @configclass
 class RewardsCfg:
     """Reward terms for the MDP."""
-    alive_reward = RewTerm(
+    '''alive_reward = RewTerm(
         func=mdp.is_alive,
         weight=1.0
     )
@@ -182,17 +199,27 @@ class RewardsCfg:
         func=mdp.distance_to_target,
         params={"asset_name": "target_ball"},
         weight=-1.0, # 거리가 줄어들수록(0에 가까울수록) 페널티가 줄어듦 -> 즉 보상
-    )
+    )'''
     
     # 3. [추가] 팔 뻗어서 터치하기 (End Effector)
     # *주의: "hand_link" 부분은 실제 로봇 arm의 끝부분 링크 이름으로 바꿔주세요! (USD 파일 확인 필요)
     reach_ball = RewTerm(
         func=mdp.ee_distance_to_target,
         params={"asset_name": "target_ball", "ee_body_name": "arm_link2"}, 
-        weight=-2.0, # 접근보다 더 큰 가중치
+        weight=-1.0, # 접근보다 더 큰 가중치
     )
 
-    # ----------------------------------------------------
+    # 터치 성공 보상 (contact sensor)
+    touch_ball = RewTerm(
+        func=mdp.ball_touched,
+        params={"sensor_name": "arm_tip_contact", "min_force": 0.1},
+        weight=5.0,
+    )
+
+    # 액션 부드럽게
+    action_rate_penalty = RewTerm(func=mdp.action_rate_l2, weight=-0.001)
+
+    '''# ----------------------------------------------------
     # [핵심] 걷기 안정화 (Penalty) - 걷는 게 문제라면 이 부분 가중치를 높이세요
     # ----------------------------------------------------
     
@@ -223,7 +250,7 @@ class RewardsCfg:
     #    func=mdp.reward_example,
     #    params={"ft_name": "ft_sensor_example"},
     #    weight=1.0
-    #)
+    #)'''
 
 
 @configclass
@@ -241,9 +268,20 @@ class TerminationsCfg:
     
     # 3. [추가] 높이 기반 넘어짐 감지 (대안)
     # 로봇의 몸통(Root) 높이가 0.25m 밑으로 내려가면 "넘어졌다"고 판단하고 리셋
-    bad_height = DoneTerm(
-        func=mdp.root_height_below,
-        params={"minimum_height": 0.1}, 
+    #bad_height = DoneTerm(
+    #    func=mdp.root_height_below,
+    #    params={"minimum_height": 0.1}, 
+    #)
+    # 공 터치하면 성공 종료
+    success = DoneTerm(
+        func=mdp.ball_touched,
+        params={"sensor_name": "arm_tip_contact", "min_force": 0.1},
+    )
+
+    # 공이 바닥에 떨어지면 실패 종료
+    ball_missed = DoneTerm(
+        func=mdp.ball_below_height,
+        params={"asset_name": "target_ball", "min_height": 0.0},  # 필요하면 0.05 등으로
     )
 
 
