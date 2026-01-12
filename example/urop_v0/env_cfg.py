@@ -198,7 +198,7 @@ class EventCfg:
 
     # 공은 reset 때는 주차(=scene_objects_cfg에서 멀리 둠)
     # 그리고 interval로 계속 떨어뜨림
-    drop_ball = EventTerm(
+    '''drop_ball = EventTerm(
         func=mdp.spawn_ball_near_arm_relative,
         mode="interval",
         interval_range_s=(1.0, 1.5),   # <- "로봇 착지 후 좀 있다가" 첫 드롭 + 이후도 이 간격으로 계속 드롭
@@ -208,6 +208,21 @@ class EventCfg:
             "x_range": (-0.45, -0.15),
             "y_abs_range": (0.15, 0.40),
             "z_range": (1.0, 1.6),
+        },
+    )'''
+    # [수정] 기존 drop_ball 삭제하고, "터치 시 순간이동" 이벤트 추가
+    # mode="pre_step"으로 하면 매 스텝(simulation step)마다 체크합니다.
+    respawn_mole = EventTerm(
+        func=mdp.teleport_ball_if_touched, # 방금 만든 함수
+        mode="pre_step", 
+        params={
+            "sensor_name": "arm_tip_contact",
+            "asset_name": "target_ball",
+            # 공이 생성될 범위 (로봇 Base 기준 상대 좌표, 미터 단위)
+            "x_range": (0.3, 0.6),   # 로봇 앞 30~60cm
+            "y_range": (-0.4, 0.4),  # 좌우 40cm
+            "z_range": (0.2, 0.6),   # 로봇 등 위 20~60cm (너무 높으면 못 닿음)
+            "min_force": 0.1,
         },
     )
 
@@ -232,14 +247,14 @@ class RewardsCfg:
     reach_ball = RewTerm(
         func=mdp.ee_distance_to_target,
         params={"asset_name": "target_ball", "ee_body_name": "arm_link2"}, 
-        weight=-1.0, # 접근보다 더 큰 가중치
+        weight=1.0, # 접근보다 더 큰 가중치
     )
 
     # 터치 성공 보상 (contact sensor)
     touch_ball = RewTerm(
         func=mdp.ball_touched,
         params={"sensor_name": "arm_tip_contact", "min_force": 0.1},
-        weight=5.0,
+        weight=50.0,
     )
 
     # 액션 부드럽게
@@ -299,7 +314,7 @@ class TerminationsCfg:
     #    params={"minimum_height": 0.1}, 
     #)
     # 공 터치하면 성공 종료
-    success = DoneTerm(
+    '''success = DoneTerm(
         func=mdp.ball_touched,
         params={"sensor_name": "arm_tip_contact", "min_force": 0.1},
     )
@@ -308,7 +323,7 @@ class TerminationsCfg:
     ball_missed = DoneTerm(
         func=mdp.ball_below_height,
         params={"asset_name": "target_ball", "min_height": 0.12},  # 필요하면 0.05 등으로
-    )
+    )'''
 
     bad_height = DoneTerm(
     func=mdp.root_height_below,

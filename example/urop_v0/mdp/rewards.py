@@ -227,3 +227,60 @@ def spawn_ball_near_arm_relative(
 
     ball.write_root_pose_to_sim(pose, env_ids=env_ids)
     ball.write_root_velocity_to_sim(vel, env_ids=env_ids)
+
+
+# [example/urop_v0/mdp/rewards.py] 맨 아래에 추가
+
+# ... (기존 코드들) ...
+
+def teleport_ball_if_touched(
+    env: ManagerBasedRLEnv,
+    env_ids: torch.Tensor,
+    sensor_name: str,
+    asset_name: str,
+    x_range: tuple[float, float],
+    y_range: tuple[float, float],
+    z_range: tuple[float, float],
+    min_force: float = 0.1
+):
+    """
+    센서에 충돌이 감지되면(터치 성공), 해당 환경의 공(asset)을 랜덤 위치로 순간이동시킵니다.
+    """
+    # 1. 터치 여부 확인
+    is_touched = ball_touched(env, sensor_name, min_force) # (num_envs,) bool tensor
+    
+    # 2. 터치된 환경(env)의 인덱스만 골라냄
+    # env_ids는 현재 step을 수행하는 환경들, is_touched는 전체 환경에 대한 상태일 수 있으므로 인덱싱 주의
+    # 보통 pre_step에서는 전체 env_ids가 들어옵니다.
+    touched_env_ids = env_ids[is_touched[env_ids]]
+    
+    # 3. 터치된 환경이 하나라도 있으면 공 위치 재설정
+    if len(touched_env_ids) > 0:
+        n = len(touched_env_ids)
+        device = env.device
+        
+        # 로봇(Base) 위치 가져오기 (상대 좌표로 생성하기 위해)
+        robot_pos = env.scene["robot"].data.root_pos_w[touched_env_ids]
+        
+        # 랜덤 오프셋 생성
+        offset_x = torch.rand(n, device=device) * (x_range[1] - x_range[0]) + x_range[0]
+        offset_y = torch.rand(n, device=device) * (y_range[1] - y_range[0]) + y_range[0]
+        offset_z = torch.rand(n, device=device) * (z_range[1] - z_range[0]) + z_range[0]
+        
+        # 새 위치 = 로봇 위치 + 오프셋
+        new_pos = robot_pos.clone()
+        new_pos[:, 0] += offset_x
+        new_pos[:, 1] += offset_y
+        new_pos[:, 2] += offset_z # 높이
+        
+        # 공의 자세(Rotation)는 그대로 (Identity)
+        new_quat = torch.zeros(n, 4, device=device)
+        new_quat[:, 0] = 1.0 
+        
+        # 속도 0으로 리셋
+        zeros_vel = torch.zeros(n, 6, device=device)
+        
+        # 물리 상태 적용 (Teleport)
+        ball = env.scene[asset_name]
+        ball.write_root_pose_to_sim(torch.cat([new_pos, new_quat], dim=-1), env_ids=touched_env_ids)
+        ball.write_root_velocity_to_sim(zeros_vel, env_ids=touched_env_ids)

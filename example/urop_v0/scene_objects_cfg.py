@@ -19,14 +19,14 @@ ball_cfg = RigidObjectCfg(
         radius=0.1,
         visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
-            kinematic_enabled=False,  # True로 하면 중력을 무시하고 그 자리에 고정됨 (또는 코드로 위치 제어 가능)
-            disable_gravity=False,    # 이중 안전장치
+            kinematic_enabled=True,  # True로 하면 중력을 무시하고 그 자리에 고정됨 (또는 코드로 위치 제어 가능)
+            disable_gravity=True,    # 이중 안전장치
         ),
         mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
         collision_props=sim_utils.CollisionPropertiesCfg(),
     ),
     init_state=RigidObjectCfg.InitialStateCfg(
-        pos=(0.0, 0.4, 5), # 로봇 앞 60cm 지점에 배치
+        pos=(-0.2, 0.25, 0.5), # 로봇 앞 60cm 지점에 배치
     ),
 )
 # 1. 내 로봇 (Go2 + Arm) 정의
@@ -38,7 +38,7 @@ dj_robot_cfg = ArticulationCfg(
         activate_contact_sensors=True,
     ),
     init_state=ArticulationCfg.InitialStateCfg(
-        pos=(0.0, 0.0, 0.5), # 로봇이 땅에 파묻히지 않게 살짝 띄움
+        pos=(0.0, 0.0, 0.3), # 로봇이 땅에 파묻히지 않게 살짝 띄움
         # 관절 초기 각도 (필요하면 추가)
         joint_pos={
             # (1) dj_robotarm zero position
