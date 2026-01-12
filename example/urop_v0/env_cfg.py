@@ -134,7 +134,7 @@ class ActionsCfg:
 
     arm = mdp.JointPositionActionCfg(
         asset_name="robot",
-        joint_names=["arm_joint1", "arm_joint2"],
+        joint_names=["arm_joint1"],
         scale=1.0,
     )
 
