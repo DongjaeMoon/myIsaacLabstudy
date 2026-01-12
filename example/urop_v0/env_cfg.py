@@ -146,7 +146,7 @@ class ObservationsCfg:
     class PolicyCfg(ObsGroup):
         """Observations for policy group."""
 
-        # observation terms (order preserved)
+        # observation terms (order preserved)   
         # robot
         joint_pos = ObsTerm(
             func=mdp.joint_pos_rel,

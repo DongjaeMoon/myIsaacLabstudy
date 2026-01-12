@@ -16,7 +16,7 @@ import math
 ball_cfg = RigidObjectCfg(
     prim_path="{ENV_REGEX_NS}/Ball",
     spawn=sim_utils.SphereCfg(
-        radius=0.1,
+        radius=0.05,
         visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             kinematic_enabled=True,  # True로 하면 중력을 무시하고 그 자리에 고정됨 (또는 코드로 위치 제어 가능)
@@ -26,7 +26,7 @@ ball_cfg = RigidObjectCfg(
         collision_props=sim_utils.CollisionPropertiesCfg(),
     ),
     init_state=RigidObjectCfg.InitialStateCfg(
-        pos=(-0.2, 0.25, 0.5), # 로봇 앞 60cm 지점에 배치
+        pos=(-0.2, 0.2, 0.35), # 로봇 앞 60cm 지점에 배치
     ),
 )
 # 1. 내 로봇 (Go2 + Arm) 정의
@@ -58,8 +58,8 @@ dj_robot_cfg = ArticulationCfg(
         "my_arm": ImplicitActuatorCfg(
             joint_names_expr=["shoulder_joint", "arm_joint1", "arm_joint2"],
             effort_limit_sim=50.0,
-            stiffness=50.0, # 아까 설정한 높은 P게인
-            damping=5.0,     # D게인
+            stiffness=40.0, # 아까 설정한 높은 P게인
+            damping=10.0,     # D게인
         ),
         # (2) Go2 다리 관절 (모든 나머지 관절)
         # Go2 관절 이름을 정확히 모르면 일단 나머지를 다 잡는 정규표현식 사용
