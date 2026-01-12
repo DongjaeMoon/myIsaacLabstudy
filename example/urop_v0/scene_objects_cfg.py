@@ -17,18 +17,42 @@ ball_cfg = RigidObjectCfg(
     prim_path="{ENV_REGEX_NS}/Ball",
     spawn=sim_utils.SphereCfg(
         radius=0.05,
-        visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.0, 0.0)),
+        visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(1.0, 0.2, 0.2)),
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
-            kinematic_enabled=True,  # True로 하면 중력을 무시하고 그 자리에 고정됨 (또는 코드로 위치 제어 가능)
+            kinematic_enabled=False,  # True로 하면 중력을 무시하고 그 자리에 고정됨 (또는 코드로 위치 제어 가능)
             disable_gravity=True,    # 이중 안전장치
         ),
-        mass_props=sim_utils.MassPropertiesCfg(mass=1.0),
+        mass_props=sim_utils.MassPropertiesCfg(mass=0.2),
+        collision_props=sim_utils.CollisionPropertiesCfg(),
+        physics_material=sim_utils.RigidBodyMaterialCfg(
+            restitution=0.8,        # 통통 튀는 정도 (0.0 ~ 1.0)
+            static_friction=0.5,    # (선택) 정지 마찰력
+            dynamic_friction=0.5,   # (선택) 운동 마찰력
+        ),
+    ),
+    init_state=RigidObjectCfg.InitialStateCfg(
+        pos=(2.0, 0.2, 0.75), # 로봇 앞 60cm 지점에 배치
+    ),
+)
+
+# 2. 골대 (비주얼 + 물리 충돌)
+# 단순한 기둥 3개를 조합해서 골대 모양을 만듭니다.
+goal_post_cfg = RigidObjectCfg(
+    prim_path="{ENV_REGEX_NS}/GoalPost",
+    spawn=sim_utils.CuboidCfg(
+        size=(0.05, 1.5, 1.0), # 두께 10cm, 폭 1.2m, 높이 0.8m (간이 골대)
+        visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.8, 0.1, 0.8), metallic=0.8),
+        rigid_props=sim_utils.RigidBodyPropertiesCfg(
+            kinematic_enabled=True, # 고정된 물체
+        ),
         collision_props=sim_utils.CollisionPropertiesCfg(),
     ),
     init_state=RigidObjectCfg.InitialStateCfg(
-        pos=(-0.2, 0.2, 0.35), # 로봇 앞 60cm 지점에 배치
+        pos=(-0.75, 0.0, 0.4), # 로봇 등 뒤 0.5m 지점
     ),
 )
+
+
 # 1. 내 로봇 (Go2 + Arm) 정의
 dj_robot_cfg = ArticulationCfg(
     prim_path="{ENV_REGEX_NS}/Robot",
@@ -43,8 +67,8 @@ dj_robot_cfg = ArticulationCfg(
         joint_pos={
             # (1) dj_robotarm zero position
             "shoulder_joint": 0.0,
-            "arm_joint1": 0.0, 
-            "arm_joint2": 0.0,
+            "arm_joint1": -0.5, 
+            "arm_joint2": 1.0,
             
             # (2) Go2 다리 초기 각도 (스크린샷 이름 기반)
             # Unitree 로봇이 서 있을 때의 대략적인 각도입니다.
@@ -58,7 +82,7 @@ dj_robot_cfg = ArticulationCfg(
         "my_arm": ImplicitActuatorCfg(
             joint_names_expr=["shoulder_joint", "arm_joint1", "arm_joint2"],
             effort_limit_sim=50.0,
-            stiffness=40.0, # 아까 설정한 높은 P게인
+            stiffness=100.0, # 아까 설정한 높은 P게인
             damping=10.0,     # D게인
         ),
         # (2) Go2 다리 관절 (모든 나머지 관절)
@@ -66,7 +90,7 @@ dj_robot_cfg = ArticulationCfg(
         "go2_legs": ImplicitActuatorCfg(
             joint_names_expr=["FL_.*", "FR_.*", "RL_.*", "RR_.*"], # 혹은 ".*_hip_.*" 등 Go2 관절명 규칙
             effort_limit_sim=25.0,
-            stiffness=30.0, # 다리는 좀 부드럽게
+            stiffness=50.0, # 다리는 좀 부드럽게
             damping=2.0,
         ),
     },

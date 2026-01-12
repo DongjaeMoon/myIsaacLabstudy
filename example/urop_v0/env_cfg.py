@@ -82,6 +82,7 @@ class dj_urop_SceneCfg(InteractiveSceneCfg):
     # articulation
     robot: ArticulationCfg = scene_objects_cfg.dj_robot_cfg
     target_ball: RigidObjectCfg = scene_objects_cfg.ball_cfg
+    goal_post: RigidObjectCfg = scene_objects_cfg.goal_post_cfg
 
     # sensors
     arm_tip_contact: ContactSensorCfg = scene_objects_cfg.arm_tip_contact_sensor_cfg
@@ -129,13 +130,13 @@ class ActionsCfg:
     shoulder = mdp.JointPositionActionCfg(
         asset_name="robot",
         joint_names=["shoulder_joint"],
-        scale=3.14,   # <-- 최소 이 정도는 줘야 180도 근처가 가능해짐
+        scale=1.5,   # <-- 최소 이 정도는 줘야 180도 근처가 가능해짐
     )
 
     arm = mdp.JointPositionActionCfg(
         asset_name="robot",
-        joint_names=["arm_joint1"],
-        scale=1.0,
+        joint_names=["arm_joint1", "arm_joint2"],
+        scale=0.8,
     )
 
 @configclass
@@ -212,7 +213,7 @@ class EventCfg:
     )'''
     # [수정] 기존 drop_ball 삭제하고, "터치 시 순간이동" 이벤트 추가
     # mode="pre_step"으로 하면 매 스텝(simulation step)마다 체크합니다.
-    respawn_mole = EventTerm(
+    '''respawn_mole = EventTerm(
         func=mdp.teleport_ball_if_touched, # 방금 만든 함수
         mode="pre_step", 
         params={
@@ -223,6 +224,16 @@ class EventCfg:
             "y_range": (-0.4, 0.4),  # 좌우 40cm
             "z_range": (0.2, 0.6),   # 로봇 등 위 20~60cm (너무 높으면 못 닿음)
             "min_force": 0.1,
+        },
+    )'''
+    # [신규] 리셋할 때마다 공을 로봇에게 발사!
+    shoot_ball = EventTerm(
+        func=mdp.shoot_ball_towards_robot,
+        mode="reset",
+        params={
+            "asset_name": "target_ball",
+            "x_offset": 3.0, # 3미터 앞에서 슛
+            "speed_range": (5.0, 7.0), # 꽤 빠른 속도
         },
     )
 
@@ -242,7 +253,7 @@ class RewardsCfg:
         weight=-1.0, # 거리가 줄어들수록(0에 가까울수록) 페널티가 줄어듦 -> 즉 보상
     )'''
     
-    # 3. [추가] 팔 뻗어서 터치하기 (End Effector)
+    '''# 3. [추가] 팔 뻗어서 터치하기 (End Effector)
     # *주의: "hand_link" 부분은 실제 로봇 arm의 끝부분 링크 이름으로 바꿔주세요! (USD 파일 확인 필요)
     reach_ball = RewTerm(
         func=mdp.ee_distance_to_target,
@@ -255,10 +266,26 @@ class RewardsCfg:
         func=mdp.ball_touched,
         params={"sensor_name": "arm_tip_contact", "min_force": 0.1},
         weight=50.0,
+    )'''
+    # 1. 생존 보상 (자세를 잡고 서있는 것만으로도 점수)
+    alive = RewTerm(func=mdp.is_alive, weight=1.0)
+    
+    # 2. 선방 보상 (공 터치 시 대박 점수)
+    save_ball = RewTerm(
+        func=mdp.ball_touched, # 또는 custom_mdp.ball_touched
+        params={"sensor_name": "arm_tip_contact"},
+        weight=500.0, # 막으면 초대박
+    )
+    
+    # 3. 거리 보상 (팔 끝이 공이랑 가까울수록 좋음 -> 유도 기능)
+    track_ball = RewTerm(
+        func=mdp.ee_distance_to_target,
+        params={"asset_name": "target_ball", "ee_body_name": "arm_link2"},
+        weight=-2.0, # 거리 멀면 감점
     )
 
     # 액션 부드럽게
-    action_rate_penalty = RewTerm(func=mdp.action_rate_l2, weight=-0.001)
+    action_rate_penalty = RewTerm(func=mdp.action_rate_l2, weight=-0.01)
 
     '''# ----------------------------------------------------
     # [핵심] 걷기 안정화 (Penalty) - 걷는 게 문제라면 이 부분 가중치를 높이세요
@@ -325,9 +352,22 @@ class TerminationsCfg:
         params={"asset_name": "target_ball", "min_height": 0.12},  # 필요하면 0.05 등으로
     )'''
 
+    # 1. 공 막음 (성공!) -> 리셋하고 다음 공 막기
+    save_success = DoneTerm(
+        func=mdp.ball_touched,
+        params={"sensor_name": "arm_tip_contact"},
+    )
+    
+    # 2. 골 먹힘 (실패!) -> 공이 로봇 뒤로 지나가면 리셋
+    goal_conceded = DoneTerm(
+        func=mdp.ball_past_robot,
+        params={"asset_name": "target_ball", "robot_name": "robot"},
+    )
+    
+    # 3. 넘어짐 감지
     bad_height = DoneTerm(
-    func=mdp.root_height_below,
-    params={"minimum_height": 0.22},
+        func=mdp.root_height_below,
+        params={"minimum_height": 0.25},
     )
 
 
@@ -365,7 +405,7 @@ class dj_urop_EnvCfg(ManagerBasedRLEnvCfg):
         """Post initialization."""
         # general settings
         self.decimation = 2 #몇 번의 dt마다 강화학습 step이 진행될지 ex) decimation=2 dt=1/120이면, physics는 120fps로 진행되지만 reward 계산 등 학습의 step은 60fps
-        self.episode_length_s = 15
+        self.episode_length_s = 5
         # viewer settings
         self.viewer.eye = (5.0, 5.0, 5.0)
         self.viewer.lookat = (0.0, 0.0, 0.0)

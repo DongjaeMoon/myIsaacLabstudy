@@ -284,3 +284,63 @@ def teleport_ball_if_touched(
         ball = env.scene[asset_name]
         ball.write_root_pose_to_sim(torch.cat([new_pos, new_quat], dim=-1), env_ids=touched_env_ids)
         ball.write_root_velocity_to_sim(zeros_vel, env_ids=touched_env_ids)
+
+# [example/urop_v0/mdp/rewards.py] 맨 아래에 추가
+
+# 1. 공 발사 함수 (Reset 시 사용)
+def shoot_ball_towards_robot(
+    env: ManagerBasedRLEnv,
+    env_ids: torch.Tensor,
+    asset_name: str = "target_ball",
+    robot_name: str = "robot",
+    x_offset: float = 2.5,    # 로봇 앞 2.5m 에서 발사
+    y_range: tuple = (-0.5, 0.5), # 좌우 랜덤 범위
+    z_range: tuple = (0.3, 0.8),  # 높이 랜덤 범위
+    speed_range: tuple = (4.0, 6.0), # 공 속도 (m/s)
+) -> None:
+    device = env.device
+    n = len(env_ids)
+    
+    # 1. 로봇 위치 가져오기
+    robot_pos = env.scene[robot_name].data.root_pos_w[env_ids]
+    
+    # 2. 공 시작 위치 계산 (로봇 앞 x_offset 지점)
+    ball_pos = robot_pos.clone()
+    ball_pos[:, 0] += x_offset 
+    ball_pos[:, 1] += torch.rand(n, device=device) * (y_range[1] - y_range[0]) + y_range[0]
+    ball_pos[:, 2] = torch.rand(n, device=device) * (z_range[1] - z_range[0]) + z_range[0]
+    
+    # 3. 속도 벡터 계산 (목표점: 로봇 몸통 쪽)
+    # 목표점 = 로봇 위치 + 약간의 랜덤 노이즈 (골대 구석구석 찌르도록)
+    target_pos = robot_pos.clone()
+    target_pos[:, 1] += torch.rand(n, device=device) * 0.4 - 0.2 # 좌우 20cm 오차
+    target_pos[:, 2] += torch.rand(n, device=device) * 0.4 + 0.2 # 높이 조절
+    
+    direction = target_pos - ball_pos
+    direction = direction / torch.norm(direction, dim=-1, keepdim=True) # 단위 벡터
+    
+    speed = torch.rand(n, device=device) * (speed_range[1] - speed_range[0]) + speed_range[0]
+    lin_vel = direction * speed.unsqueeze(-1)
+    
+    # 4. 물리 적용
+    ball = env.scene[asset_name]
+    # 위치 설정
+    new_pose = torch.zeros(n, 7, device=device)
+    new_pose[:, :3] = ball_pos
+    new_pose[:, 6] = 1.0 # quat w
+    
+    # 속도 설정
+    new_vel = torch.zeros(n, 6, device=device)
+    new_vel[:, :3] = lin_vel
+    
+    ball.write_root_pose_to_sim(new_pose, env_ids=env_ids)
+    ball.write_root_velocity_to_sim(new_vel, env_ids=env_ids)
+
+# 2. 골 먹힘 판정 (공이 로봇 뒤로 넘어갔는가?)
+def ball_past_robot(env: ManagerBasedRLEnv, asset_name: str, robot_name: str) -> torch.Tensor:
+    ball_x = env.scene[asset_name].data.root_pos_w[:, 0]
+    robot_x = env.scene[robot_name].data.root_pos_w[:, 0]
+    
+    # 공의 x좌표가 로봇보다 작아지면 (뒤로 넘어가면) 골 먹힘
+    # (로봇이 0.0, 공이 2.5에서 시작해서 -방향으로 오므로)
+    return ball_x < (robot_x - 0.2)
