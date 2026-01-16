@@ -344,3 +344,27 @@ def ball_past_robot(env: ManagerBasedRLEnv, asset_name: str, robot_name: str) ->
     # 공의 x좌표가 로봇보다 작아지면 (뒤로 넘어가면) 골 먹힘
     # (로봇이 0.0, 공이 2.5에서 시작해서 -방향으로 오므로)
     return ball_x < (robot_x - 0.2)
+
+
+# [rewards.py 수정]
+
+def track_ball_kernel(env: ManagerBasedRLEnv, asset_name: str, ee_body_name: str, sigma: float = 0.5) -> torch.Tensor:
+    """
+    로봇 팔 끝(EE)이 공에 가까울수록 1에 가까운 보상을 줍니다. (멀면 0)
+    RBF Kernel: exp(-dist^2 / sigma)
+    """
+    # 1. EE 위치 찾기
+    body_ids, _ = env.scene["robot"].find_bodies(ee_body_name)
+    if len(body_ids) == 0:
+        return torch.zeros(env.num_envs, device=env.device)
+    
+    # (num_envs, 3)
+    ee_pos = env.scene["robot"].data.body_pos_w[:, body_ids, :].mean(dim=1)
+    target_pos = env.scene[asset_name].data.root_pos_w
+
+    # 2. 거리 제곱 계산
+    dist_sq = torch.sum((target_pos - ee_pos) ** 2, dim=-1)
+    
+    # 3. 0~1 사이 값으로 변환 (아주 가까우면 1, 멀면 0)
+    # sigma 값이 작을수록 '정확히' 맞춰야 점수를 줌. 초기엔 좀 넉넉하게(0.5) 설정
+    return torch.exp(-dist_sq / sigma)

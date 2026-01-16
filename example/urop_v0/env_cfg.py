@@ -179,6 +179,22 @@ class ObservationsCfg:
             scale=1.0,
         )
 
+        ball_pos_base = ObsTerm(
+            func=mdp.object_pos_rel,
+            params={"asset_name": "target_ball"},
+            scale=1.0,
+        )
+
+        # [★추가] 손 끝 기준 공 위치 (이게 있어야 팔을 뻗는 법을 빨리 배움!)
+        ball_pos_ee = ObsTerm(
+            func=mdp.ee_pos_rel, # observations.py에 만든 그 함수!
+            params={
+                "asset_name": "target_ball",
+                "ee_body_name": "arm_link2" # ★주의: URDF의 팔 끝 링크 이름과 정확히 일치해야 함
+            },
+            scale=1.0,
+        )
+
         # last actions
         actions = ObsTerm(func=mdp.last_action)
 
@@ -226,7 +242,7 @@ class EventCfg:
             "min_force": 0.1,
         },
     )'''
-    # [신규] 리셋할 때마다 공을 로봇에게 발사!
+    '''# [신규] 리셋할 때마다 공을 로봇에게 발사!
     shoot_ball = EventTerm(
         func=mdp.shoot_ball_towards_robot,
         mode="reset",
@@ -234,6 +250,16 @@ class EventCfg:
             "asset_name": "target_ball",
             "x_offset": 3.0, # 3미터 앞에서 슛
             "speed_range": (5.0, 7.0), # 꽤 빠른 속도
+        },
+    )'''
+    reset_ball = EventTerm(
+        func=mdp.reset_ball_random_drop, # rewards.py에 있는 함수 사용
+        mode="reset",
+        params={
+            "asset_name": "target_ball",
+            "x_range": (-0.5, 0.0),      # 로봇 앞 40~60cm (팔 닿기 쉬운 곳)
+            "y_abs_range": (0.0, 0.3),  # 좌우 30cm 이내
+            "z_range": (0.3, 0.5),      # 높이도 적당하게
         },
     )
 
@@ -274,18 +300,23 @@ class RewardsCfg:
     save_ball = RewTerm(
         func=mdp.ball_touched, # 또는 custom_mdp.ball_touched
         params={"sensor_name": "arm_tip_contact"},
-        weight=500.0, # 막으면 초대박
+        weight=100.0, # 막으면 초대박
     )
     
     # 3. 거리 보상 (팔 끝이 공이랑 가까울수록 좋음 -> 유도 기능)
     track_ball = RewTerm(
-        func=mdp.ee_distance_to_target,
-        params={"asset_name": "target_ball", "ee_body_name": "arm_link2"},
-        weight=-2.0, # 거리 멀면 감점
+        func=mdp.track_ball_kernel, # 방금 만든 함수
+        params={
+            "asset_name": "target_ball", 
+            "ee_body_name": "arm_link2",
+            "sigma": 0.2, # 이 값으로 난이도 조절 (작을수록 정교해야 함)
+        },
+        weight=2.0, # 이제 양수입니다! (가까울수록 +2점)
     )
 
     # 액션 부드럽게
-    action_rate_penalty = RewTerm(func=mdp.action_rate_l2, weight=-0.01)
+    action_rate_penalty = RewTerm(func=mdp.action_rate_l2, weight=-0.05)
+    dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)
 
     '''# ----------------------------------------------------
     # [핵심] 걷기 안정화 (Penalty) - 걷는 게 문제라면 이 부분 가중치를 높이세요
