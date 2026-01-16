@@ -242,16 +242,17 @@ class EventCfg:
             "min_force": 0.1,
         },
     )'''
-    '''# [신규] 리셋할 때마다 공을 로봇에게 발사!
+    # [신규] 리셋할 때마다 공을 로봇에게 발사!
     shoot_ball = EventTerm(
         func=mdp.shoot_ball_towards_robot,
         mode="reset",
         params={
             "asset_name": "target_ball",
-            "x_offset": 3.0, # 3미터 앞에서 슛
-            "speed_range": (5.0, 7.0), # 꽤 빠른 속도
+            "x_offset": 2.0, # 3미터 앞에서 슛
+            "speed_range": (1.0, 3.0), # 꽤 빠른 속도
         },
-    )'''
+    )
+    '''
     reset_ball = EventTerm(
         func=mdp.reset_ball_random_drop, # rewards.py에 있는 함수 사용
         mode="reset",
@@ -261,7 +262,7 @@ class EventCfg:
             "y_abs_range": (0.0, 0.3),  # 좌우 30cm 이내
             "z_range": (0.3, 0.5),      # 높이도 적당하게
         },
-    )
+    )'''
 
 
 
@@ -420,7 +421,7 @@ class dj_urop_EnvCfg(ManagerBasedRLEnvCfg):
     """Configuration for the locomotion velocity-tracking environment."""
 
     # Scene settings
-    scene: dj_urop_SceneCfg = dj_urop_SceneCfg(num_envs=64, env_spacing=6.0)
+    scene: dj_urop_SceneCfg = dj_urop_SceneCfg(num_envs=64, env_spacing=4.0)
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
