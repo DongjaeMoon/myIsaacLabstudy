@@ -268,7 +268,7 @@ class RewardsCfg:
         weight=50.0,
     )'''
     # 1. 생존 보상 (자세를 잡고 서있는 것만으로도 점수)
-    alive = RewTerm(func=mdp.is_alive, weight=1.0)
+    #alive = RewTerm(func=mdp.is_alive, weight=1.0)
     
     # 2. 선방 보상 (공 터치 시 대박 점수)
     save_ball = RewTerm(
