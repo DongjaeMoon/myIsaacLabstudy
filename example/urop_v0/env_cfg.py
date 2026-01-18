@@ -187,10 +187,13 @@ class ObservationsCfg:
 
         # [★추가] 손 끝 기준 공 위치 (이게 있어야 팔을 뻗는 법을 빨리 배움!)
         ball_pos_ee = ObsTerm(
-            func=mdp.ee_pos_rel, # observations.py에 만든 그 함수!
+            func=mdp.ee_tip_pos_rel, 
             params={
                 "asset_name": "target_ball",
-                "ee_body_name": "arm_link2" # ★주의: URDF의 팔 끝 링크 이름과 정확히 일치해야 함
+                "ee_body_name": "arm_link2",
+                # ★[중요] 막대 길이와 방향 설정 (단위: 미터)
+                # 예: arm_link2가 Z축(파란색)으로 30cm 뻗어 있다면 (0.0, 0.0, 0.3)
+                "tip_offset": (-0.16, 0.0, 0.0), 
             },
             scale=1.0,
         )
@@ -249,7 +252,7 @@ class EventCfg:
         params={
             "asset_name": "target_ball",
             "x_offset": 2.0, # 3미터 앞에서 슛
-            "speed_range": (1.0, 3.0), # 꽤 빠른 속도
+            "speed_range": (1.0, 1.5), # 꽤 빠른 속도
         },
     )
     '''
@@ -306,13 +309,15 @@ class RewardsCfg:
     
     # 3. 거리 보상 (팔 끝이 공이랑 가까울수록 좋음 -> 유도 기능)
     track_ball = RewTerm(
-        func=mdp.track_ball_kernel, # 방금 만든 함수
+        func=mdp.track_ball_tip_kernel, 
         params={
             "asset_name": "target_ball", 
             "ee_body_name": "arm_link2",
-            "sigma": 0.2, # 이 값으로 난이도 조절 (작을수록 정교해야 함)
+            # ★[중요] 위와 똑같은 offset 값을 넣어야 합니다!
+            "tip_offset": (-0.16, 0.0, 0.0),
+            "sigma": 0.2,
         },
-        weight=2.0, # 이제 양수입니다! (가까울수록 +2점)
+        weight=2.0, # 점수 가중치 (양수)
     )
 
     # 액션 부드럽게

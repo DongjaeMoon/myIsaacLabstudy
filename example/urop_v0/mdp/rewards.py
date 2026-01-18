@@ -368,3 +368,30 @@ def track_ball_kernel(env: ManagerBasedRLEnv, asset_name: str, ee_body_name: str
     # 3. 0~1 사이 값으로 변환 (아주 가까우면 1, 멀면 0)
     # sigma 값이 작을수록 '정확히' 맞춰야 점수를 줌. 초기엔 좀 넉넉하게(0.5) 설정
     return torch.exp(-dist_sq / sigma)
+
+
+def track_ball_tip_kernel(
+    env: ManagerBasedRLEnv, 
+    asset_name: str, 
+    ee_body_name: str, 
+    tip_offset: tuple[float, float, float] = (0.0, 0.0, 0.3), 
+    sigma: float = 0.2
+) -> torch.Tensor:
+    """
+    로봇 팔 '끝점(Tip)'이 공에 가까울수록 보상 (RBF Kernel)
+    """
+    # 1. Body 정보 가져오기
+    body_ids, _ = env.scene["robot"].find_bodies(ee_body_name)
+    body_pos_w = env.scene["robot"].data.body_pos_w[:, body_ids, :].mean(dim=1)
+    body_quat_w = env.scene["robot"].data.body_quat_w[:, body_ids, :].mean(dim=1)
+
+    # 2. Tip 위치 계산 (Offset + Rotation)
+    offset_tensor = torch.tensor(tip_offset, device=env.device).repeat(env.num_envs, 1)
+    tip_pos_w = body_pos_w + quat_apply(body_quat_w, offset_tensor)
+    
+    # 3. 타겟 위치
+    target_pos_w = env.scene[asset_name].data.root_pos_w
+
+    # 4. 거리 제곱 및 보상 계산 (가까우면 1점, 멀면 0점)
+    dist_sq = torch.sum((target_pos_w - tip_pos_w) ** 2, dim=-1)
+    return torch.exp(-dist_sq / sigma)

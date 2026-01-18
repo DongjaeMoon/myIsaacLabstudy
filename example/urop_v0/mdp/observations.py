@@ -64,3 +64,37 @@ def ee_pos_rel(env: ManagerBasedRLEnv, asset_name: str, ee_body_name: str) -> to
     # 3. 상대 위치 (공 위치 - 손 위치)
     # 이 벡터가 (0,0,0)이 되는 것이 목표!
     return target_pos_w - ee_pos_w
+
+from isaaclab.utils.math import quat_apply
+
+def ee_tip_pos_rel(
+    env: ManagerBasedRLEnv, 
+    asset_name: str, 
+    ee_body_name: str, 
+    tip_offset: tuple[float, float, float] = (0.0, 0.0, 0.3) 
+) -> torch.Tensor:
+    """
+    로봇 팔의 '끝점(Tip)' 기준 타겟(공)의 상대 위치 벡터를 반환합니다.
+    계산식: Tip_Pos = Body_Pos + Rotation * Offset
+    """
+    # 1. Body(arm_link2)의 위치와 회전(Quaternion) 가져오기
+    body_ids, _ = env.scene["robot"].find_bodies(ee_body_name)
+    
+    # (num_envs, 3) & (num_envs, 4)
+    body_pos_w = env.scene["robot"].data.body_pos_w[:, body_ids, :].mean(dim=1)
+    body_quat_w = env.scene["robot"].data.body_quat_w[:, body_ids, :].mean(dim=1)
+    
+    # 2. 오프셋 적용 (로컬 좌표 -> 월드 좌표 변환)
+    # tip_offset만큼 떨어진 곳을 실제 월드 회전에 맞춰 돌립니다.
+    offset_tensor = torch.tensor(tip_offset, device=env.device).repeat(env.num_envs, 1)
+    offset_w = quat_apply(body_quat_w, offset_tensor)
+    
+    # 최종 팁 위치 = 몸통 위치 + 회전된 오프셋
+    tip_pos_w = body_pos_w + offset_w
+    
+    # 3. 타겟(공) 위치
+    target_pos_w = env.scene[asset_name].data.root_pos_w
+
+    # 4. 상대 위치 (공 - 팁)
+    # 목표: 이 벡터가 (0,0,0)이 되도록 학습
+    return target_pos_w - tip_pos_w
