@@ -31,7 +31,7 @@ def rel_quat(env: ManagerBasedRLEnv, ft: str) -> torch.Tensor:
 # 파일 맨 아래에 추가
 
 # [observations.py 수정]
-from isaaclab.utils.math import quat_rotate_inverse, subtract_frame_transforms
+from isaaclab.utils.math import quat_apply_inverse, subtract_frame_transforms
 
 def object_pos_rel(env: ManagerBasedRLEnv, asset_name: str) -> torch.Tensor:
     """로봇 Base Frame 기준 타겟 물체의 상대 위치 (Rotation 고려)"""
@@ -45,7 +45,7 @@ def object_pos_rel(env: ManagerBasedRLEnv, asset_name: str) -> torch.Tensor:
     
     # 3. 로봇의 회전(Orientation)을 고려하여 Body Frame으로 변환
     # (로봇이 고개를 돌려도 공의 위치를 '내 기준'으로 알 수 있음)
-    diff_b = quat_rotate_inverse(robot_quat, diff_w)
+    diff_b = quat_apply_inverse(robot_quat, diff_w)
     
     return diff_b
 

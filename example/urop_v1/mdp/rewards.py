@@ -38,7 +38,7 @@ def ball_past_robot(env: "ManagerBasedRLEnv", asset_name: str, robot_name: str, 
     robot_x = env.scene[robot_name].data.root_pos_w[:, 0]
     return ball_x < (robot_x + float(goal_x_offset))
 
-def ball_out_of_bounds(env: "ManagerBasedRLEnv", asset_name: str, x_bounds=(-2.0, 4.0), y_abs_max=3.0, z_bounds=(0.0, 3.0)) -> torch.Tensor:
+def ball_out_of_bounds(env: "ManagerBasedRLEnv", asset_name: str, x_bounds=(-5.0, 5.0), y_abs_max=3.0, z_bounds=(0.0, 5.0)) -> torch.Tensor:
     p = env.scene[asset_name].data.root_pos_w
     x_ok = (p[:, 0] >= x_bounds[0]) & (p[:, 0] <= x_bounds[1])
     y_ok = (torch.abs(p[:, 1]) <= float(y_abs_max))
