@@ -14,7 +14,7 @@ from isaaclab.managers import TerminationTermCfg as DoneTerm
 from isaaclab.scene import InteractiveSceneCfg
 from isaaclab.sim import SimulationCfg
 
-from .scene_objects_cfg import GO2_CFG, ball_cfg, arm_tip_contact_sensor_cfg, goal_post_cfg
+from .scene_objects_cfg import DJ_ROBOT_CFG, ball_cfg, arm_tip_contact_sensor_cfg, goal_post_cfg
 import isaaclab.envs.mdp as isaac_mdp
 from . import mdp as mdp
 
@@ -57,7 +57,7 @@ class dj_urop_SceneCfg(InteractiveSceneCfg):
     )
 
     # 4. Robot & Objects
-    robot: ArticulationCfg = GO2_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
+    robot: ArticulationCfg = DJ_ROBOT_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
     goal_post: RigidObjectCfg = goal_post_cfg
     target_ball: RigidObjectCfg = ball_cfg
     arm_tip_contact = arm_tip_contact_sensor_cfg
@@ -120,7 +120,7 @@ class EventCfg:
             x_offset=2.5,
             y_range=(-0.4, 0.4),
             z_range=(0.6, 1.2),
-            speed_range=(3.0, 5.0),
+            speed_range=(1.0, 1.5),
             aim_noise_y=0.2,
             aim_noise_z=0.2,
         ),
