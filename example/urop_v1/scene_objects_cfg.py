@@ -49,36 +49,24 @@ goal_post_cfg = RigidObjectCfg(
 DJ_ROBOT_CFG = ArticulationCfg(
     prim_path="{ENV_REGEX_NS}/Robot",
     spawn=sim_utils.UsdFileCfg(
-        # [확인] v1 경로가 맞는지 체크
-        usd_path="/home/roro_common/mdj/IsaacLab/example/urop_v1/usd/dj_robotarm_on_go2.usd", 
-        rigid_props=sim_utils.RigidBodyPropertiesCfg(
-            disable_gravity=False,
-            retain_accelerations=False,
-            linear_damping=0.0,
-            angular_damping=0.0,
-            max_linear_velocity=1000.0,
-            max_angular_velocity=1000.0,
-            max_depenetration_velocity=1.0,
-        ),
-        articulation_props=sim_utils.ArticulationRootPropertiesCfg(
-            enabled_self_collisions=False,
-            solver_position_iteration_count=4,
-            solver_velocity_iteration_count=0,
-        ),
-        # [★필수] 이 줄이 있어야 센서가 켜집니다.
-        activate_contact_sensors=True, 
+        # ★여기에 합체한 USD 파일 경로를 넣으세요!
+        usd_path="/home/roro_common/mdj/IsaacLab/example/urop_v0/usd/dj_robotarm_on_go2.usd", 
+        activate_contact_sensors=True,
     ),
     init_state=ArticulationCfg.InitialStateCfg(
-        pos=(0.0, 0.0, 0.3),
+        pos=(0.0, 0.0, 0.35), # 로봇이 땅에 파묻히지 않게 살짝 띄움
+        # 관절 초기 각도 (필요하면 추가)
         joint_pos={
-            ".*L_hip_joint": 0.0,
-            ".*R_hip_joint": 0.0,
-            "F[L,R]_thigh_joint": 0.8,
-            "R[L,R]_thigh_joint": 1.0,
-            ".*_calf_joint": -1.5,
+            # (1) dj_robotarm zero position
             "shoulder_joint": 0.0,
-            "arm_joint1": 0.0,
+            "arm_joint1": -0.5, 
             "arm_joint2": 1.0,
+            
+            # (2) Go2 다리 초기 각도 (스크린샷 이름 기반)
+            # Unitree 로봇이 서 있을 때의 대략적인 각도입니다.
+            ".*_hip_joint": 0.1,    # 엉덩이 살짝 벌리기
+            ".*_thigh_joint": 0.8,  # 허벅지 
+            ".*_calf_joint": -1.5,  # 종아리
         },
     ),
     actuators={
@@ -87,13 +75,13 @@ DJ_ROBOT_CFG = ArticulationCfg(
             effort_limit=100.0,
             velocity_limit=100.0,
             stiffness=50.0,
-            damping=5.0,
+            damping=2.0,
         ),
         "arm": ImplicitActuatorCfg(
             joint_names_expr=["shoulder_joint", "arm_joint1", "arm_joint2"],
             effort_limit=100.0,
             velocity_limit=100.0,
-            stiffness=200.0,
+            stiffness=100.0,
             damping=10.0, 
         ),
     },
@@ -103,8 +91,7 @@ DJ_ROBOT_CFG = ArticulationCfg(
 # Contact sensor
 # =========================================================
 arm_tip_contact_sensor_cfg = ContactSensorCfg(
-    # 팔이나 어깨 어디든 닿으면 감지 (필터 없음)
-    prim_path="{ENV_REGEX_NS}/Robot/dj_robotarm/dj_robotarm/.*_link.*",
+    prim_path="{ENV_REGEX_NS}/Robot/dj_robotarm/dj_robotarm/(shoulder_link|arm_link1|arm_link2)",
     filter_prim_paths_expr=["{ENV_REGEX_NS}/Ball"],
     update_period=0.0,
     history_length=1,
