@@ -104,8 +104,10 @@ def track_ball_tip_kernel(env: "ManagerBasedRLEnv", asset_name: str, ee_body_nam
     dist_sq = torch.sum((ball_pos - tip_pos) ** 2, dim=-1)
     return torch.exp(-dist_sq / float(sigma))
 
-def save_ball_reward(env: "ManagerBasedRLEnv", sensor_name: str, min_force: float = 0.1, **kwargs) -> torch.Tensor:
+# [수정] **kwargs 삭제 (에러 원인 제거)
+def save_ball_reward(env: "ManagerBasedRLEnv", sensor_name: str, min_force: float = 0.1) -> torch.Tensor:
     return _contact_touched(env, sensor_name, min_force).to(dtype=torch.float32)
 
-def ball_saved_simple(env: "ManagerBasedRLEnv", sensor_name: str, min_force: float = 0.1, **kwargs) -> torch.Tensor:
+# [수정] **kwargs 삭제 (에러 원인 제거)
+def ball_saved_simple(env: "ManagerBasedRLEnv", sensor_name: str, min_force: float = 0.1) -> torch.Tensor:
     return _contact_touched(env, sensor_name, min_force)

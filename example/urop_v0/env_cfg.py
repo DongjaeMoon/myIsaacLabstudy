@@ -119,11 +119,11 @@ class ActionsCfg:
 @configclass
 class ActionsCfg:
     # 1) Go2 다리: 기본자세 HOLD (policy가 출력하긴 해도 scale=0이라 영향 없음)
-    #go2_hold = mdp.JointPositionActionCfg(
-    #    asset_name="robot",
-    #    joint_names=[".*_hip_joint", ".*_thigh_joint", ".*_calf_joint"],
-    #    scale=0.0,
-    #)
+    go2_hold = mdp.JointPositionActionCfg(
+        asset_name="robot",
+        joint_names=[".*_hip_joint", ".*_thigh_joint", ".*_calf_joint"],
+        scale=0.0,
+    )
 
     # 2) 팔: policy가 제어
     # shoulder는 크게(회전 많이), 팔 관절 2개는 중간 정도
