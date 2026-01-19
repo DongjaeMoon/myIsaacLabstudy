@@ -122,7 +122,7 @@ class ActionsCfg:
     go2_hold = mdp.JointPositionActionCfg(
         asset_name="robot",
         joint_names=[".*_hip_joint", ".*_thigh_joint", ".*_calf_joint"],
-        scale=0.0,
+        scale=0.01,
     )
 
     # 2) 팔: policy가 제어
@@ -390,10 +390,10 @@ class TerminationsCfg:
     )'''
 
     # 1. 공 막음 (성공!) -> 리셋하고 다음 공 막기
-    #save_success = DoneTerm(
-    #    func=mdp.ball_touched,
-    #    params={"sensor_name": "arm_tip_contact"},
-    #)
+    save_success = DoneTerm(
+        func=mdp.ball_touched,
+        params={"sensor_name": "arm_tip_contact"},
+    )
     
     # 2. 골 먹힘 (실패!) -> 공이 로봇 뒤로 지나가면 리셋
     goal_conceded = DoneTerm(

@@ -1,5 +1,3 @@
-
-
 import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation
 from isaaclab.assets import ArticulationCfg
@@ -96,7 +94,8 @@ dj_robot_cfg = ArticulationCfg(
     },
 )
 arm_tip_contact_sensor_cfg = ContactSensorCfg(
-    prim_path="{ENV_REGEX_NS}/Robot/dj_robotarm/dj_robotarm/arm_link2",
+    #prim_path="{ENV_REGEX_NS}/Robot/dj_robotarm/dj_robotarm/arm_link2",
+    prim_path="{ENV_REGEX_NS}/Robot/dj_robotarm/dj_robotarm/(shoulder_link|arm_link1|arm_link2)",
     update_period=0.0,
     debug_vis=False,
     filter_prim_paths_expr=["{ENV_REGEX_NS}/Ball"],

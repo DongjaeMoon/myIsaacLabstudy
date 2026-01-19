@@ -69,8 +69,13 @@ class ActionsCfg:
     arm = mdp.JointPositionActionCfg(
         asset_name="robot",
         joint_names=["shoulder_joint", "arm_joint1", "arm_joint2"],
-        scale=2.5, 
+        scale=1.5, 
         use_default_offset=True,
+    )
+    go2_hold = mdp.JointPositionActionCfg(
+        asset_name="robot",
+        joint_names=[".*_hip_joint", ".*_thigh_joint", ".*_calf_joint"],
+        scale=0.1,
     )
 
 
@@ -200,7 +205,8 @@ class dj_urop_EnvCfg(ManagerBasedRLEnvCfg):
         self.decimation = 2
         self.episode_length_s = 4.0
         
-        self.viewer.eye = (-2.5, 2.5, 2.5)
-        self.viewer.lookat = (0.0, 0.0, 0.5)
+        self.viewer.eye = (5.0, 5.0, 5.0)
+        self.viewer.lookat = (0.0, 0.0, 0.0)
+        self.viewer.resolution = (1920, 1080)
         
         self.sim = SimulationCfg(dt=1 / 120, render_interval=self.decimation)
