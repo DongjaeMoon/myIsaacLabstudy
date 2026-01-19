@@ -1,6 +1,5 @@
 import isaaclab.sim as sim_utils
-from isaaclab.assets import ArticulationCfg
-from isaaclab.assets import RigidObjectCfg
+from isaaclab.assets import ArticulationCfg, RigidObjectCfg
 from isaaclab.actuators import ImplicitActuatorCfg
 from isaaclab.sensors import ContactSensorCfg
 
@@ -26,7 +25,6 @@ ball_cfg = RigidObjectCfg(
     ),
     init_state=RigidObjectCfg.InitialStateCfg(
         pos=(2.0, 0.0, 0.8),
-        rot=(1.0, 0.0, 0.0, 0.0),
     ),
 )
 
@@ -40,7 +38,6 @@ goal_post_cfg = RigidObjectCfg(
     ),
     init_state=RigidObjectCfg.InitialStateCfg(
         pos=(-0.75, 0.0, 0.75),
-        rot=(1.0, 0.0, 0.0, 0.0),
     ),
 )
 
@@ -49,7 +46,7 @@ goal_post_cfg = RigidObjectCfg(
 # =========================================================
 GO2_CFG = ArticulationCfg(
     spawn=sim_utils.UsdFileCfg(
-        #usd_path="/home/roro_common/mjd/assets/unitree_go2_3/usd/go2.usd",
+        # [확인] v1 경로가 맞는지 체크
         usd_path="/home/roro_common/mdj/IsaacLab/example/urop_v1/usd/dj_robotarm_on_go2.usd", 
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             disable_gravity=False,
@@ -65,6 +62,8 @@ GO2_CFG = ArticulationCfg(
             solver_position_iteration_count=4,
             solver_velocity_iteration_count=0,
         ),
+        # [★필수] 이 줄이 있어야 센서가 켜집니다.
+        activate_contact_sensors=True, 
     ),
     init_state=ArticulationCfg.InitialStateCfg(
         pos=(0.0, 0.0, 0.3),
@@ -87,13 +86,12 @@ GO2_CFG = ArticulationCfg(
             stiffness=50.0,
             damping=5.0,
         ),
-        # 팔을 더 “빠릿하게” 움직이게 약간 올림 (너무 튀면 stiffness/damping 낮춰도 됨)
         "arm": ImplicitActuatorCfg(
             joint_names_expr=["shoulder_joint", "arm_joint1", "arm_joint2"],
             effort_limit=100.0,
             velocity_limit=100.0,
             stiffness=200.0,
-            damping=20.0,
+            damping=10.0, 
         ),
     },
 )
@@ -102,10 +100,9 @@ GO2_CFG = ArticulationCfg(
 # Contact sensor
 # =========================================================
 arm_tip_contact_sensor_cfg = ContactSensorCfg(
-    # NOTE: 네 USD 경로가 Robot/dj_robotarm/dj_robotarm/arm_link2 처럼 중간이 껴도 잡히도록 regex로 완화
-    prim_path="{ENV_REGEX_NS}/Robot/.*/arm_link2",
-    update_period=0.005,
-    history_length=3,
-    debug_vis=False,
-    filter_prim_paths_expr=["{ENV_REGEX_NS}/Ball"],
+    # 팔이나 어깨 어디든 닿으면 감지 (필터 없음)
+    prim_path="{ENV_REGEX_NS}/Robot/.*/(arm_link.*|shoulder_link)", 
+    update_period=0.0,
+    history_length=1,
+    debug_vis=True,
 )
