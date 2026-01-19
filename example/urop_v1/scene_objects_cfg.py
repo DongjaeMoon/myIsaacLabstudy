@@ -101,7 +101,7 @@ GO2_CFG = ArticulationCfg(
 # =========================================================
 arm_tip_contact_sensor_cfg = ContactSensorCfg(
     # 팔이나 어깨 어디든 닿으면 감지 (필터 없음)
-    prim_path="{ENV_REGEX_NS}/Robot/.*/(arm_link.*|shoulder_link)", 
+    prim_path="{ENV_REGEX_NS}/Robot/dj_robotarm/dj_robotarm/.*_link.*",
     update_period=0.0,
     history_length=1,
     debug_vis=True,
