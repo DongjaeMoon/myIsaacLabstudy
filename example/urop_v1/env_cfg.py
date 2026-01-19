@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from isaaclab.utils import configclass
+import isaaclab.sim as sim_utils
 
 from isaaclab.assets import ArticulationCfg, AssetBaseCfg, RigidObjectCfg
 from isaaclab.envs import ManagerBasedRLEnvCfg
@@ -35,7 +36,11 @@ MIN_CONTACT_FORCE = 0.1
 @configclass
 class dj_urop_SceneCfg(InteractiveSceneCfg):
     # ground plane
-    ground = AssetBaseCfg(prim_path="/World/defaultGroundPlane", spawn=None)
+    ground = AssetBaseCfg(
+    prim_path="/World/defaultGroundPlane",
+    spawn=sim_utils.GroundPlaneCfg(),
+    )
+
 
     # robot
     robot: ArticulationCfg = GO2_CFG.replace(prim_path="{ENV_REGEX_NS}/Robot")
@@ -66,8 +71,14 @@ class ObservationsCfg:
     @configclass
     class PolicyCfg(ObsGroup):
         # arm state
-        joint_pos = ObsTerm(func=mdp.joint_pos_rel, params={"asset_cfg": SceneEntityCfg("robot")})
-        joint_vel = ObsTerm(func=mdp.joint_vel_rel, params={"asset_cfg": SceneEntityCfg("robot")})
+        joint_pos = ObsTerm(
+            func=mdp.joint_pos_rel,
+            params={"asset_cfg": SceneEntityCfg(name="robot", joint_names=["shoulder_joint", "arm_joint1", "arm_joint2"])},
+        )
+        joint_vel = ObsTerm(
+            func=mdp.joint_vel_rel,
+            params={"asset_cfg": SceneEntityCfg(name="robot", joint_names=["shoulder_joint", "arm_joint1", "arm_joint2"])},
+        )
 
         # ball state in robot yaw-frame (MARKOV-ize)
         ball_pos = ObsTerm(func=mdp.object_pos_rel, params={"asset_name": "target_ball", "yaw_only": True})
