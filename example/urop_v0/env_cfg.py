@@ -319,7 +319,7 @@ class RewardsCfg:
         },
         weight=2.0, # 점수 가중치 (양수)
     )
-
+    # Need fix
     # 액션 부드럽게
     action_rate_penalty = RewTerm(func=mdp.action_rate_l2, weight=-0.05)
     dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)
