@@ -282,15 +282,17 @@ def teleport_ball_if_touched(
 '''
 
 # 1. 공 발사 함수 (Reset 시 사용)
+# [urop_v0/mdp/rewards.py]
+
 def shoot_ball_towards_robot(
     env: ManagerBasedRLEnv,
     env_ids: torch.Tensor,
     asset_name: str = "target_ball",
     robot_name: str = "robot",
-    x_offset: float = 2.5,    # 로봇 앞 2.5m 에서 발사
-    y_range: tuple = (-0.5, 0.5), # 좌우 랜덤 범위
-    z_range: tuple = (0.3, 0.8),  # 높이 랜덤 범위
-    speed_range: tuple = (4.0, 6.0), # 공 속도 (m/s)
+    x_offset: float = 1.5,    # 로봇 앞 1.5m (속도 2.5m/s 기준 0.6초 거리)
+    y_range: tuple = (-0.5, 0.5), # 공 생성 위치의 좌우 범위
+    z_range: tuple = (0.5, 1.0),  # 공 생성 위치의 높이 범위
+    speed_range: tuple = (2.4, 2.5), # 공 속도
 ) -> None:
     device = env.device
     n = len(env_ids)
@@ -299,29 +301,32 @@ def shoot_ball_towards_robot(
     robot_pos = env.scene[robot_name].data.root_pos_w[env_ids]
     
     # 2. 공 시작 위치 계산 (로봇 앞 x_offset 지점)
+    # 시작 위치는 랜덤하게 하되...
     ball_pos = robot_pos.clone()
     ball_pos[:, 0] += x_offset 
     ball_pos[:, 1] += torch.rand(n, device=device) * (y_range[1] - y_range[0]) + y_range[0]
     ball_pos[:, 2] = torch.rand(n, device=device) * (z_range[1] - z_range[0]) + z_range[0]
     
-    # 3. 속도 벡터 계산 (목표점: 로봇 몸통 쪽)
-    # 목표점 = 로봇 위치 + 약간의 랜덤 노이즈 (골대 구석구석 찌르도록)
-    target_pos = robot_pos.clone()
-    target_pos[:, 1] += torch.rand(n, device=device) * 0.4 - 0.2 # 좌우 20cm 오차
-    target_pos[:, 2] += torch.rand(n, device=device) * 0.4 + 0.2 # 높이 조절
+    # 3. [핵심 수정] 속도 벡터 계산 (X축 일직선)
+    # 목표점 계산(target_pos) 로직을 제거하고,
+    # 무조건 로봇을 향해 '수평'으로 날아오게 방향을 고정합니다.
     
-    direction = target_pos - ball_pos
-    direction = direction / torch.norm(direction, dim=-1, keepdim=True) # 단위 벡터
-    
+    direction = torch.zeros(n, 3, device=device)
+    direction[:, 0] = -1.0 # X축 반대 방향 (로봇 쪽)
+    # direction[:, 1] = 0.0 # Y축 속도 없음
+    # direction[:, 2] = 0.0 # Z축 속도 없음 (일직선)
+
+    # 속도 크기 적용
     speed = torch.rand(n, device=device) * (speed_range[1] - speed_range[0]) + speed_range[0]
     lin_vel = direction * speed.unsqueeze(-1)
     
     # 4. 물리 적용
     ball = env.scene[asset_name]
+    
     # 위치 설정
     new_pose = torch.zeros(n, 7, device=device)
     new_pose[:, :3] = ball_pos
-    new_pose[:, 3] = 1.0 # quat w
+    new_pose[:, 3] = 1.0 # quat w (회전 없음)
     
     # 속도 설정
     new_vel = torch.zeros(n, 6, device=device)

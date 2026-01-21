@@ -243,8 +243,10 @@ class EventCfg:
         mode="reset",
         params={
             "asset_name": "target_ball",
-            "x_offset": 2.0, 
-            "speed_range": (1.0, 1.5), 
+            "x_offset": 1.5, 
+            "y_range": (-0.4, 0.4),   
+            "z_range": (0.5, 0.7),    
+            "speed_range": (2.0, 2.1), 
         },
     )
 
@@ -278,18 +280,18 @@ class RewardsCfg:
     # 2. 선방 보상 
     save_shoulder = RewTerm(
         func=mdp.ball_touched,
-        weight=100.0,
-        params={"sensor_name": "contact_shoulder", "min_force": 0.1},
+        weight=10.0,
+        params={"sensor_name": "contact_shoulder", "min_force": 0.001},
     )
     save_arm1 = RewTerm(
         func=mdp.ball_touched,
         weight=100.0,
-        params={"sensor_name": "contact_arm1", "min_force": 0.1},
+        params={"sensor_name": "contact_arm1", "min_force": 0.001},
     )
     save_arm2 = RewTerm(
         func=mdp.ball_touched,
         weight=100.0,
-        params={"sensor_name": "contact_arm2", "min_force": 0.1},
+        params={"sensor_name": "contact_arm2", "min_force": 0.001},
     )
     
     # 3. 거리 보상 (팔 끝이 공이랑 가까울수록 좋음 -> 유도 기능)
@@ -307,8 +309,8 @@ class RewardsCfg:
     )
     # Need fix
     # 액션 부드럽게
-    action_rate_penalty = RewTerm(func=mdp.action_rate_l2, weight=-0.05)
-    dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)
+    #action_rate_penalty = RewTerm(func=mdp.action_rate_l2, weight=-0.05)
+    #dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)
 
     '''# ----------------------------------------------------
     # [핵심] 걷기 안정화 (Penalty) - 걷는 게 문제라면 이 부분 가중치를 높이세요
@@ -378,15 +380,15 @@ class TerminationsCfg:
     # 1. 공 막음 (성공!) -> 리셋하고 다음 공 막기
     success_shoulder = DoneTerm(
         func=mdp.ball_touched,
-        params={"sensor_name": "contact_shoulder", "min_force": 0.1},
+        params={"sensor_name": "contact_shoulder", "min_force": 0.001},
     )
     success_arm1 = DoneTerm(
         func=mdp.ball_touched,
-        params={"sensor_name": "contact_arm1", "min_force": 0.1},
+        params={"sensor_name": "contact_arm1", "min_force": 0.001},
     )
     success_arm2 = DoneTerm(
         func=mdp.ball_touched,
-        params={"sensor_name": "contact_arm2", "min_force": 0.1},
+        params={"sensor_name": "contact_arm2", "min_force": 0.001},
     )
     
     # 2. 골 먹힘 (실패!) -> 공이 로봇 뒤로 지나가면 리셋
