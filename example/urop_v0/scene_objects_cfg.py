@@ -93,14 +93,32 @@ dj_robot_cfg = ArticulationCfg(
         ),
     },
 )
-arm_tip_contact_sensor_cfg = ContactSensorCfg(
-    prim_path="{ENV_REGEX_NS}/Robot/dj_robotarm/dj_robotarm/arm_link2",
-    #prim_path="{ENV_REGEX_NS}/Robot/dj_robotarm/dj_robotarm/(shoulder_link|arm_link1|arm_link2)",
+# [추가] 링크별로 센서를 따로 정의합니다.
+# 1. 어깨 (Shoulder) 센서
+contact_shoulder_cfg = ContactSensorCfg(
+    prim_path="{ENV_REGEX_NS}/Robot/dj_robotarm/dj_robotarm/shoulder_link",
+    filter_prim_paths_expr=["{ENV_REGEX_NS}/Ball"], # 1:1 매칭이라 에러 안 남!
     update_period=0.0,
-    debug_vis=True,
-    filter_prim_paths_expr=["{ENV_REGEX_NS}/Ball"],
-    track_air_time=False,
     history_length=1,
+    debug_vis=True,
+)
+
+# 2. 팔뚝 (Arm Link 1) 센서
+contact_arm1_cfg = ContactSensorCfg(
+    prim_path="{ENV_REGEX_NS}/Robot/dj_robotarm/dj_robotarm/arm_link1",
+    filter_prim_paths_expr=["{ENV_REGEX_NS}/Ball"],
+    update_period=0.0,
+    history_length=1,
+    debug_vis=True,
+)
+
+# 3. 손끝 (Arm Link 2) 센서
+contact_arm2_cfg = ContactSensorCfg(
+    prim_path="{ENV_REGEX_NS}/Robot/dj_robotarm/dj_robotarm/arm_link2",
+    filter_prim_paths_expr=["{ENV_REGEX_NS}/Ball"],
+    update_period=0.0,
+    history_length=1,
+    debug_vis=True,
 )
 
 

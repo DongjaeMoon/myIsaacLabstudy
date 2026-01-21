@@ -73,7 +73,7 @@ def ee_distance_to_target(env: ManagerBasedRLEnv, asset_name: str, ee_body_name:
 
 
 # --- [urop_v0/mdp/rewards.py] 맨 아래에 추가 ---
-
+'''
 def root_height_below(env: ManagerBasedRLEnv, minimum_height: float) -> torch.Tensor:
     """로봇의 높이가 기준치보다 낮아지면 True(종료)를 반환"""
     # 1. 로봇의 Root 위치 가져오기 (num_envs, 3)
@@ -86,9 +86,8 @@ def root_height_below(env: ManagerBasedRLEnv, minimum_height: float) -> torch.Te
 def ball_below_height(env: ManagerBasedRLEnv, asset_name: str, min_height: float) -> torch.Tensor:
     z = env.scene[asset_name].data.root_pos_w[:, 2]
     return z < min_height
-
-
-def ball_touched(env: ManagerBasedRLEnv, sensor_name: str, min_force: float = 0.0) -> torch.Tensor:
+'''
+def ball_touched(env: ManagerBasedRLEnv, sensor_name: str, min_force: float = 0.1) -> torch.Tensor:
     sensor = env.scene[sensor_name]
     data = sensor.data
 
@@ -109,7 +108,7 @@ def ball_touched(env: ManagerBasedRLEnv, sensor_name: str, min_force: float = 0.
     touched = (mag > min_force).any(dim=1)    # (num_envs,)
     return touched
 
-
+'''
 def reset_ball_random_drop(
     env,
     env_ids,
@@ -158,7 +157,7 @@ def reset_ball_random_drop(
     ball.write_root_pose_to_sim(pose, env_ids=env_ids)
     ball.write_root_velocity_to_sim(vel, env_ids=env_ids)
 
-
+'''
 import torch
 from isaaclab.utils.math import quat_apply
 
@@ -173,7 +172,7 @@ def _yaw_only_quat(q_wxyz: torch.Tensor) -> torch.Tensor:
     out[:, 0] = qw
     out[:, 3] = qz
     return out
-
+'''
 def spawn_ball_near_arm_relative(
     env,
     env_ids,
@@ -229,10 +228,6 @@ def spawn_ball_near_arm_relative(
     ball.write_root_velocity_to_sim(vel, env_ids=env_ids)
 
 
-# [example/urop_v0/mdp/rewards.py] 맨 아래에 추가
-
-# ... (기존 코드들) ...
-
 def teleport_ball_if_touched(
     env: ManagerBasedRLEnv,
     env_ids: torch.Tensor,
@@ -284,8 +279,7 @@ def teleport_ball_if_touched(
         ball = env.scene[asset_name]
         ball.write_root_pose_to_sim(torch.cat([new_pos, new_quat], dim=-1), env_ids=touched_env_ids)
         ball.write_root_velocity_to_sim(zeros_vel, env_ids=touched_env_ids)
-
-# [example/urop_v0/mdp/rewards.py] 맨 아래에 추가
+'''
 
 # 1. 공 발사 함수 (Reset 시 사용)
 def shoot_ball_towards_robot(
@@ -343,7 +337,7 @@ def ball_past_robot(env: ManagerBasedRLEnv, asset_name: str, robot_name: str) ->
     
     # 공의 x좌표가 로봇보다 작아지면 (뒤로 넘어가면) 골 먹힘
     # (로봇이 0.0, 공이 2.5에서 시작해서 -방향으로 오므로)
-    return ball_x < (robot_x - 0.2)
+    return ball_x < (robot_x - 0.5)
 
 
 # [rewards.py 수정]
