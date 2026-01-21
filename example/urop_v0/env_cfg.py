@@ -106,23 +106,13 @@ class CommandsCfg:
     command=mdp.NullCommandCfg()
 
 
-'''@configclass
-class ActionsCfg:
-    """Action specifications for the MDP."""
-
-    joint_action = mdp.JointPositionActionCfg(
-        asset_name="robot",
-        #joint_names=[".*"],
-        joint_names=["shoulder_joint", "arm_joint1", "arm_joint2"],
-        scale=0.1, # arm only -> 0.1
-    )'''
 @configclass
 class ActionsCfg:
     # 1) Go2 다리: 기본자세 HOLD (policy가 출력하긴 해도 scale=0이라 영향 없음)
     go2_hold = mdp.JointPositionActionCfg(
         asset_name="robot",
         joint_names=[".*_hip_joint", ".*_thigh_joint", ".*_calf_joint"],
-        scale=0.01,
+        scale=0.0,
     )
 
     # 2) 팔: policy가 제어
@@ -251,8 +241,8 @@ class EventCfg:
         mode="reset",
         params={
             "asset_name": "target_ball",
-            "x_offset": 2.0, # 3미터 앞에서 슛
-            "speed_range": (1.0, 1.5), # 꽤 빠른 속도
+            "x_offset": 2.0, 
+            "speed_range": (1.0, 1.5), 
         },
     )
     '''
@@ -402,10 +392,10 @@ class TerminationsCfg:
     )
     
     # 3. 넘어짐 감지
-    bad_height = DoneTerm(
-        func=mdp.root_height_below,
-        params={"minimum_height": 0.25},
-    )
+    #bad_height = DoneTerm(
+    #    func=mdp.root_height_below,
+    #    params={"minimum_height": 0.25},
+    #)
 
 
 
