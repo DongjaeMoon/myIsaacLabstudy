@@ -105,6 +105,7 @@ torch.backends.cudnn.benchmark = False
 
 import urop_v0
 import urop_v1
+import urop_v2
 
 @hydra_task_config(args_cli.task, args_cli.agent)
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: RslRlBaseRunnerCfg):
