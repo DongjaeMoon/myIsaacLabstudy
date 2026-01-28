@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<robot name="dj_robotarm_on_go2">
+  <link name="World">
+    <visual>
+      <origin xyz="0. 0. -0.6440033" rpy="0. 0. 0."/>
+      <geometry>
+        <mesh filename="file:///home/roro_common/mdj/IsaacLab/example/urop_v0/usd/meshes/CollisionMesh.obj" scale="1. 1. 1."/>
+      </geometry>
+    </visual>
+  </link>
+</robot>
