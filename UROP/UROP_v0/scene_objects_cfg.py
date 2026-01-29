@@ -51,7 +51,7 @@ bulky_object_cfg = RigidObjectCfg(
         mass_props=sim_utils.MassPropertiesCfg(mass=5.0), # 초기 질량 5kg
         visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 0.8, 0.0)),
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
-            solve_contact=True,
+            #solve_contact=True,
             max_depenetration_velocity=100.0,
         ),
     ),

@@ -65,6 +65,18 @@ class dj_urop_SceneCfg(InteractiveSceneCfg):
         spawn=sim_utils.DistantLightCfg(color=(0.9, 0.9, 0.9), intensity=2500.0),
         init_state=AssetBaseCfg.InitialStateCfg(rot=(0.738, 0.477, 0.477, 0.0)),
     )
+
+    robot = scene_objects_cfg.dj_robot_cfg
+    object = scene_objects_cfg.bulky_object_cfg
+
+    contact_sensor = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/.*",
+        update_period=0.0,
+        history_length=1,
+        debug_vis=False,
+        # object만 필터 (가능하면 켜두는 걸 추천)
+        filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],
+    )
     
 
 ##
@@ -77,47 +89,84 @@ class CommandsCfg:
     """Command terms for the MDP."""
     command=mdp.NullCommandCfg()
 
-
 @configclass
 class ActionsCfg:
-    pass
+    # 1) 다리 HOLD (Go2 때처럼 scale=0.0로 “정지” 느낌)
+    #    ⚠️ 단점: action 차원은 그대로 커짐(학습이 약간 느려질 수 있음)
+    legs_hold = mdp.JointPositionActionCfg(
+        asset_name="robot",
+        joint_names=[
+            "left_hip_pitch_joint", "left_hip_roll_joint", "left_hip_yaw_joint",
+            "left_knee_joint", "left_ankle_pitch_joint", "left_ankle_roll_joint",
+            "right_hip_pitch_joint", "right_hip_roll_joint", "right_hip_yaw_joint",
+            "right_knee_joint", "right_ankle_pitch_joint", "right_ankle_roll_joint",
+        ],
+        scale=0.0,
+    )
+
+    # 2) 허리: 조금만
+    waist = mdp.JointPositionActionCfg(
+        asset_name="robot",
+        joint_names=["waist_yaw_joint"],
+        scale=0.4,
+    )
+
+    # 3) 팔: policy가 제어 (shoulder 크게, elbow 중간, wrist는 roll만 있음)
+    left_arm = mdp.JointPositionActionCfg(
+        asset_name="robot",
+        joint_names=[
+            "left_shoulder_pitch_joint", "left_shoulder_roll_joint", "left_shoulder_yaw_joint",
+            "left_elbow_joint", "left_wrist_roll_joint",
+        ],
+        scale=1.5,
+    )
+
+    right_arm = mdp.JointPositionActionCfg(
+        asset_name="robot",
+        joint_names=[
+            "right_shoulder_pitch_joint", "right_shoulder_roll_joint", "right_shoulder_yaw_joint",
+            "right_elbow_joint", "right_wrist_roll_joint",
+        ],
+        scale=1.5,
+    )
+
+
+
 
 @configclass
 class ObservationsCfg:
-    """Observation specifications for the MDP."""
-
     @configclass
     class PolicyCfg(ObsGroup):
-        """Observations for policy group."""
+        proprio = ObsTerm(func=mdp.robot_proprio)
+        contact = ObsTerm(func=mdp.contact_forces)
+        obj_rel = ObsTerm(func=mdp.object_rel_state)   # 초기엔 넣고, 나중에 student에선 빼도 됨
 
-        
+        def __post_init__(self):
+            self.concatenate_terms = True
+            self.enable_corruption = True
 
-    # observation groups
     policy: PolicyCfg = PolicyCfg()
 
 
 @configclass
-class EventCfg:
-    """Configuration for events."""
-
-    reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
-
-    
-
-
-
-@configclass
 class RewardsCfg:
-    """Reward terms for the MDP."""
-    pass
-    
+    hold = RewTerm(func=mdp.hold_object_close, weight=2.0, params={"sigma": 0.7})
+    not_drop = RewTerm(func=mdp.object_not_dropped_bonus, weight=0.5, params={"min_z": 0.25})
+    impact = RewTerm(func=mdp.impact_peak_penalty, weight=-1.0, params={"force_thr": 250.0})
+    action_rate = RewTerm(func=mdp.action_rate_penalty, weight=-0.01)
 
 
 @configclass
 class TerminationsCfg:
-    """Termination terms for the MDP."""
-    # 1. 시간 초과 (기존)
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
+    fall = DoneTerm(func=mdp.robot_fallen, params={"min_root_z": 0.55})
+    drop = DoneTerm(func=mdp.object_dropped, params={"min_z": 0.2})
+
+
+@configclass
+class EventCfg:
+    reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
+    toss = EventTerm(func=mdp.reset_and_toss_object, mode="reset")
     
     
 
