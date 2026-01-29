@@ -69,14 +69,32 @@ class dj_urop_SceneCfg(InteractiveSceneCfg):
     robot = scene_objects_cfg.dj_robot_cfg
     object = scene_objects_cfg.bulky_object_cfg
 
-    contact_sensor = ContactSensorCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/.*",
+    # UROP/UROP_v0/env_cfg.py (dj_urop_SceneCfg 안)
+
+    contact_torso = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/torso_link",
+        filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],
         update_period=0.0,
         history_length=1,
         debug_vis=False,
-        # object만 필터 (가능하면 켜두는 걸 추천)
-        filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],
     )
+
+    contact_lhand = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/left_wrist_roll_rubber_hand",
+        filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],
+        update_period=0.0,
+        history_length=1,
+        debug_vis=False,
+    )
+
+    contact_rhand = ContactSensorCfg(
+        prim_path="{ENV_REGEX_NS}/Robot/right_wrist_roll_rubber_hand",
+        filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],
+        update_period=0.0,
+        history_length=1,
+        debug_vis=False,
+    )
+
     
 
 ##
@@ -138,7 +156,10 @@ class ObservationsCfg:
     @configclass
     class PolicyCfg(ObsGroup):
         proprio = ObsTerm(func=mdp.robot_proprio)
-        contact = ObsTerm(func=mdp.contact_forces)
+        contact = ObsTerm(
+        func=mdp.contact_forces,
+        params={"sensor_names": ["contact_torso", "contact_lhand", "contact_rhand"]},
+        )
         obj_rel = ObsTerm(func=mdp.object_rel_state)   # 초기엔 넣고, 나중에 student에선 빼도 됨
 
         def __post_init__(self):
@@ -152,7 +173,11 @@ class ObservationsCfg:
 class RewardsCfg:
     hold = RewTerm(func=mdp.hold_object_close, weight=2.0, params={"sigma": 0.7})
     not_drop = RewTerm(func=mdp.object_not_dropped_bonus, weight=0.5, params={"min_z": 0.25})
-    impact = RewTerm(func=mdp.impact_peak_penalty, weight=-1.0, params={"force_thr": 250.0})
+    impact = RewTerm(
+    func=mdp.impact_peak_penalty,
+    weight=-1.0,
+    params={"sensor_names": ["contact_torso", "contact_lhand", "contact_rhand"], "force_thr": 250.0},
+    )
     action_rate = RewTerm(func=mdp.action_rate_penalty, weight=-0.01)
 
 
@@ -166,8 +191,20 @@ class TerminationsCfg:
 @configclass
 class EventCfg:
     reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
-    toss = EventTerm(func=mdp.reset_and_toss_object, mode="reset")
-    
+
+    toss = EventTerm(
+        func=mdp.reset_and_toss_object,
+        mode="reset",
+        params={
+            "asset_name": "object",
+            "pos_x": (0.7, 0.9),
+            "pos_y": (-0.15, 0.15),
+            "pos_z": (0.9, 1.2),
+            "vel_x": (-2.0, -0.8),
+            "vel_y": (-0.3, 0.3),
+            "vel_z": (-0.2, 0.2),
+        },
+    )
     
 
 

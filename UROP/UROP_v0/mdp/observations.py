@@ -32,11 +32,10 @@ def object_rel_state(env: "ManagerBasedRLEnv") -> torch.Tensor:
     return torch.cat([rel_pos, rel_vel], dim=-1)
 
 
-def contact_forces(env: "ManagerBasedRLEnv") -> torch.Tensor:
-    """
-    (N, B*3) net contact forces on selected bodies.
-    contact sensor is defined in scene cfg as 'contact_sensor'.
-    """
-    sensor = env.scene["contact_sensor"]
-    f = sensor.data.net_forces_w  # (N, B, 3)
-    return f.reshape(f.shape[0], -1)
+def contact_forces(env: "ManagerBasedRLEnv", sensor_names: list[str]) -> torch.Tensor:
+    outs = []
+    for name in sensor_names:
+        sensor = env.scene[name]
+        f = sensor.data.net_forces_w  # (N, 1, 3)일 가능성 높음 (링크 1개라서)
+        outs.append(f.reshape(f.shape[0], -1))
+    return torch.cat(outs, dim=-1)

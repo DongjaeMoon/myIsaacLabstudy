@@ -27,13 +27,16 @@ def object_not_dropped_bonus(env: "ManagerBasedRLEnv", min_z: float = 0.25) -> t
     return (obj.data.root_pos_w[:, 2] > min_z).float()
 
 
-def impact_peak_penalty(env: "ManagerBasedRLEnv", force_thr: float = 250.0) -> torch.Tensor:
-    """Penalize peak contact force above threshold."""
-    sensor = env.scene["contact_sensor"]
-    f = sensor.data.net_forces_w  # (N, B, 3)
-    mag = torch.linalg.norm(f, dim=-1)      # (N, B)
-    peak = mag.max(dim=-1).values           # (N,)
-    over = torch.relu(peak - force_thr)
+def impact_peak_penalty(env: "ManagerBasedRLEnv", sensor_names: list[str], force_thr: float = 250.0) -> torch.Tensor:
+    peaks = []
+    for name in sensor_names:
+        sensor = env.scene[name]
+        f = sensor.data.net_forces_w  # (N, 1, 3)
+        mag = torch.linalg.norm(f, dim=-1)        # (N, 1)
+        peak = mag.max(dim=-1).values             # (N,)
+        peaks.append(peak)
+    peak_all = torch.stack(peaks, dim=-1).max(dim=-1).values  # 센서들 중 최대
+    over = torch.relu(peak_all - force_thr)
     return over * over
 
 
