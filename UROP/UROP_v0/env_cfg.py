@@ -197,7 +197,7 @@ class EventCfg:
         mode="reset",
         params={
             "asset_name": "object",
-            "pos_x": (0.7, 0.9),
+            "pos_x": (0.3, 0.5),
             "pos_y": (-0.15, 0.15),
             "pos_z": (0.9, 1.2),
             "vel_x": (-2.0, -0.8),
@@ -226,7 +226,7 @@ class dj_urop_EnvCfg(ManagerBasedRLEnvCfg):
     """Configuration for the locomotion velocity-tracking environment."""
 
     # Scene settings
-    scene: dj_urop_SceneCfg = dj_urop_SceneCfg(num_envs=64, env_spacing=4.0)
+    scene: dj_urop_SceneCfg = dj_urop_SceneCfg(num_envs=64, env_spacing=2.5)
     # Basic settings
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()

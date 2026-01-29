@@ -51,11 +51,12 @@ bulky_object_cfg = RigidObjectCfg(
         mass_props=sim_utils.MassPropertiesCfg(mass=5.0), # 초기 질량 5kg
         visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 0.8, 0.0)),
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
-            #solve_contact=True,
-            max_depenetration_velocity=100.0,
+            kinematic_enabled=False,  # True로 하면 중력을 무시하고 그 자리에 고정됨 (또는 코드로 위치 제어 가능)
+            disable_gravity=False,    # 이중 안전장치
         ),
+        collision_props=sim_utils.CollisionPropertiesCfg(),
     ),
-    init_state=RigidObjectCfg.InitialStateCfg(pos=(1.0, 0.0, 1.0)), # 로봇 앞 1m
+    init_state=RigidObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 1.0)), # 로봇 앞 1m
 )
 
 
