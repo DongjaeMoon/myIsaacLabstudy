@@ -22,7 +22,6 @@ def robot_proprio(env: "ManagerBasedRLEnv") -> torch.Tensor:
     base_quat = robot.data.root_quat_w
     return torch.cat([jp, jv, base_lin, base_ang, base_quat], dim=-1)
 
-
 def object_rel_state(env: "ManagerBasedRLEnv") -> torch.Tensor:
     """(N, 6) object relative pos/vel wrt robot root."""
     robot = env.scene["robot"]

@@ -38,7 +38,6 @@ def reset_and_toss_object(
     )
     
     # ★ 2. [핵심 수정] 각 환경(방)의 원점 좌표를 더해줌 (Global로 변환)
-    # 이걸 안 해서 아까 중앙에 다 겹쳤던 겁니다!
     global_pos = local_pos + env.scene.env_origins[env_ids]
 
     quat = torch.tensor([1.0, 0.0, 0.0, 0.0], device=device).repeat(n, 1)
