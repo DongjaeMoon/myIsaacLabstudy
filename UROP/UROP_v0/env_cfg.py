@@ -299,6 +299,9 @@ class dj_urop_EnvCfg(ManagerBasedRLEnvCfg):
             self.rewards.not_drop.weight = 0.0
             self.rewards.impact.weight = 0.0
             self.rewards.action_rate.weight = -0.05
+            # Stage0에서는 object가 떨어져도 학습(밸런스/리커버리) 끊기지 않게 drop 종료 비활성화
+            self.terminations.drop.params["min_z"] = -10.0
+
 
         elif stage == 1:
             # ---- gentle toss catch ----
@@ -311,6 +314,10 @@ class dj_urop_EnvCfg(ManagerBasedRLEnvCfg):
                 "pos_x": (0.35, 0.55), "pos_y": (-0.15, 0.15), "pos_z": (0.9, 1.1),
                 "vel_x": (-0.8, -0.3), "vel_y": (-0.2, 0.2), "vel_z": (-0.1, 0.1),
             })
+            self.events.reset_base_vel.params.update({
+                "lin_x": (-0.3, 0.3), "lin_y": (-0.2, 0.2), "yaw_rate": (-0.8, 0.8),
+            })
+
 
             self.rewards.alive.weight = 0.05
             self.rewards.height.weight = 0.2
@@ -331,6 +338,10 @@ class dj_urop_EnvCfg(ManagerBasedRLEnvCfg):
             self.events.toss.params.update({
                 "pos_x": (0.3, 0.5), "pos_y": (-0.15, 0.15), "pos_z": (0.9, 1.2),
                 "vel_x": (-2.0, -0.8), "vel_y": (-0.3, 0.3), "vel_z": (-0.2, 0.2),
+            })
+
+            self.events.reset_base_vel.params.update({
+                "lin_x": (-0.15, 0.15), "lin_y": (-0.1, 0.1), "yaw_rate": (-0.4, 0.4),
             })
 
             self.rewards.alive.weight = 0.02
