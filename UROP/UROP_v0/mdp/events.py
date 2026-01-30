@@ -6,6 +6,29 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
+def reset_robot_base_velocity(
+    env: "ManagerBasedRLEnv",
+    env_ids: torch.Tensor,
+    lin_x=(-0.6, 0.6),
+    lin_y=(-0.4, 0.4),
+    yaw_rate=(-1.5, 1.5),
+):
+    robot = env.scene["robot"]
+    device = env.device
+    if env_ids is None:
+        env_ids = torch.arange(env.num_envs, device=device)
+    n = env_ids.shape[0]
+
+    lin = torch.zeros((n, 3), device=device)
+    ang = torch.zeros((n, 3), device=device)
+
+    lin[:, 0] = torch.empty(n, device=device).uniform_(*lin_x)
+    lin[:, 1] = torch.empty(n, device=device).uniform_(*lin_y)
+    ang[:, 2] = torch.empty(n, device=device).uniform_(*yaw_rate)
+
+    robot.write_root_velocity_to_sim(torch.cat([lin, ang], dim=-1), env_ids=env_ids)
+
+
 
 def reset_and_toss_object(
     env: "ManagerBasedRLEnv",

@@ -14,20 +14,22 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
 
-def hold_object_close(env: "ManagerBasedRLEnv", sigma: float = 0.6) -> torch.Tensor:
+def hold_object_close(env: "ManagerBasedRLEnv", sigma: float = 0.7) -> torch.Tensor:
     """Object stays near robot root."""
     robot = env.scene["robot"]
     obj = env.scene["object"]
     d = torch.linalg.norm(obj.data.root_pos_w - robot.data.root_pos_w, dim=-1)
     return torch.exp(-(d / sigma) ** 2)
 
-
 def object_not_dropped_bonus(env: "ManagerBasedRLEnv", min_z: float = 0.25) -> torch.Tensor:
     obj = env.scene["object"]
     return (obj.data.root_pos_w[:, 2] > min_z).float()
 
 
-def impact_peak_penalty(env: "ManagerBasedRLEnv", sensor_names: list[str], force_thr: float = 250.0) -> torch.Tensor:
+def impact_peak_penalty(env: "ManagerBasedRLEnv", sensor_names: list[str], force_thr: float = 300.0) -> torch.Tensor:
+    """
+    폭발 방지 버전:    over = relu(peak/force_thr - 1)    penalty = over^2
+    """
     peaks = []
     for name in sensor_names:
         sensor = env.scene[name]
@@ -35,9 +37,11 @@ def impact_peak_penalty(env: "ManagerBasedRLEnv", sensor_names: list[str], force
         mag = torch.linalg.norm(f, dim=-1)        # (N, 1)
         peak = mag.max(dim=-1).values             # (N,)
         peaks.append(peak)
-    peak_all = torch.stack(peaks, dim=-1).max(dim=-1).values  # 센서들 중 최대
-    over = torch.relu(peak_all - force_thr)
+
+    peak_all = torch.stack(peaks, dim=-1).max(dim=-1).values
+    over = torch.relu(peak_all / force_thr - 1.0)
     return over * over
+
 
 
 def action_rate_penalty(env: "ManagerBasedRLEnv") -> torch.Tensor:
@@ -45,3 +49,18 @@ def action_rate_penalty(env: "ManagerBasedRLEnv") -> torch.Tensor:
     a = env.action_manager.action
     a_prev = env.action_manager.prev_action
     return torch.sum((a - a_prev) ** 2, dim=-1)
+
+
+def alive_bonus(env: "ManagerBasedRLEnv") -> torch.Tensor:
+    return torch.ones(env.num_envs, device=env.device)
+
+def root_height_reward(env: "ManagerBasedRLEnv", target_z: float = 0.78, sigma: float = 0.08) -> torch.Tensor:
+    robot = env.scene["robot"]
+    z = robot.data.root_pos_w[:, 2]
+    return torch.exp(-((z - target_z) / sigma) ** 2)
+
+def base_velocity_penalty(env: "ManagerBasedRLEnv", w_lin: float = 1.0, w_ang: float = 0.2) -> torch.Tensor:
+    robot = env.scene["robot"]
+    lin = robot.data.root_lin_vel_w
+    ang = robot.data.root_ang_vel_w
+    return w_lin * torch.sum(lin * lin, dim=-1) + w_ang * torch.sum(ang * ang, dim=-1)

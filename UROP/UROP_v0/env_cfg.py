@@ -20,7 +20,7 @@ from isaaclab.controllers import DifferentialIKControllerCfg
 
 import torch
 import math
-
+import os
 from . import scene_objects_cfg
 from . import mdp as mdp
 import isaaclab.envs.mdp as isaac_mdp
@@ -158,10 +158,12 @@ class ObservationsCfg:
         proprio = ObsTerm(func=mdp.robot_proprio)
         contact = ObsTerm(
         func=mdp.contact_forces,
-        params={"sensor_names": ["contact_torso", "contact_lhand", "contact_rhand"]},
+        params={"sensor_names": ["contact_torso", "contact_lhand", "contact_rhand"], "scale": 1.0/300.0},
         )
-        obj_rel = ObsTerm(func=mdp.object_rel_state)   # 초기엔 넣고, 나중에 student에선 빼도 됨
-
+        obj_rel = ObsTerm(
+        func=mdp.object_rel_state,
+        params={"drop_prob": 0.0, "noise_std": 0.0, "pos_scale": 1.0, "vel_scale": 1.0},
+        )
         def __post_init__(self):
             self.concatenate_terms = True
             self.enable_corruption = True
@@ -171,14 +173,23 @@ class ObservationsCfg:
 
 @configclass
 class RewardsCfg:
+    # Stage0(기본 0으로 두고 stage에서 켬)
+    alive = RewTerm(func=mdp.alive_bonus, weight=0.0)
+    height = RewTerm(func=mdp.root_height_reward, weight=0.0, params={"target_z": 0.78, "sigma": 0.08})
+    base_vel = RewTerm(func=mdp.base_velocity_penalty, weight=0.0, params={"w_lin": 1.0, "w_ang": 0.2})
+
+    # Catch task
     hold = RewTerm(func=mdp.hold_object_close, weight=2.0, params={"sigma": 0.7})
     not_drop = RewTerm(func=mdp.object_not_dropped_bonus, weight=0.5, params={"min_z": 0.25})
+
     impact = RewTerm(
-    func=mdp.impact_peak_penalty,
-    weight=-1.0,
-    params={"sensor_names": ["contact_torso", "contact_lhand", "contact_rhand"], "force_thr": 250.0},
+        func=mdp.impact_peak_penalty,
+        weight=-0.05,
+        params={"sensor_names": ["contact_torso", "contact_lhand", "contact_rhand"], "force_thr": 400.0},
     )
-    action_rate = RewTerm(func=mdp.action_rate_penalty, weight=-0.01)
+
+    action_rate = RewTerm(func=mdp.action_rate_penalty, weight=-0.02)
+
 
 
 @configclass
@@ -191,6 +202,12 @@ class TerminationsCfg:
 @configclass
 class EventCfg:
     reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
+
+    reset_base_vel = EventTerm(
+    func=mdp.reset_robot_base_velocity,
+    mode="reset",
+    params={"lin_x": (-0.6, 0.6), "lin_y": (-0.4, 0.4), "yaw_rate": (-1.5, 1.5)},
+    )
 
     toss = EventTerm(
         func=mdp.reset_and_toss_object,
@@ -250,6 +267,81 @@ class dj_urop_EnvCfg(ManagerBasedRLEnvCfg):
         # simulation settings
         self.sim.dt = 1 / 120 #physics가 계산되는 dt
         self.sim.render_interval = self.decimation
+
+        stage = int(os.environ.get("UROP_STAGE", "1"))       # 0/1/2
+        mode = os.environ.get("UROP_MODE", "teacher").lower()  # teacher/student
+
+        # teacher/student: GT(obj_rel) 가림 (차원 유지)
+        if mode == "teacher":
+            self.observations.policy.obj_rel.params["drop_prob"] = 0.0
+        else:
+            self.observations.policy.obj_rel.params["drop_prob"] = 1.0
+
+        # Stage 스케줄
+        if stage == 0:
+            # ---- balance/recovery ----
+            self.actions.legs_hold.scale = 0.25
+            self.actions.waist.scale = 0.15
+            self.actions.left_arm.scale = 0.0
+            self.actions.right_arm.scale = 0.0
+
+            # toss: 사실상 끔(멀리, 속도 0) — 하지만 object는 존재(obs 차원 유지)
+            self.events.toss.params.update({
+                "pos_x": (2.0, 2.4), "pos_y": (-0.2, 0.2), "pos_z": (0.25, 0.35),
+                "vel_x": (0.0, 0.0), "vel_y": (0.0, 0.0), "vel_z": (0.0, 0.0),
+            })
+
+            # Stage0 reward ON, catch reward OFF
+            self.rewards.alive.weight = 0.2
+            self.rewards.height.weight = 1.0
+            self.rewards.base_vel.weight = -0.2
+            self.rewards.hold.weight = 0.0
+            self.rewards.not_drop.weight = 0.0
+            self.rewards.impact.weight = 0.0
+            self.rewards.action_rate.weight = -0.05
+
+        elif stage == 1:
+            # ---- gentle toss catch ----
+            self.actions.legs_hold.scale = 0.20
+            self.actions.waist.scale = 0.30
+            self.actions.left_arm.scale = 1.0
+            self.actions.right_arm.scale = 1.0
+
+            self.events.toss.params.update({
+                "pos_x": (0.35, 0.55), "pos_y": (-0.15, 0.15), "pos_z": (0.9, 1.1),
+                "vel_x": (-0.8, -0.3), "vel_y": (-0.2, 0.2), "vel_z": (-0.1, 0.1),
+            })
+
+            self.rewards.alive.weight = 0.05
+            self.rewards.height.weight = 0.2
+            self.rewards.base_vel.weight = -0.05
+            self.rewards.hold.weight = 2.0
+            self.rewards.not_drop.weight = 0.5
+            self.rewards.impact.weight = -0.05
+            self.rewards.impact.params["force_thr"] = 400.0
+            self.rewards.action_rate.weight = -0.02
+
+        else:
+            # ---- full toss + shock mitigation ----
+            self.actions.legs_hold.scale = 0.40
+            self.actions.waist.scale = 0.40
+            self.actions.left_arm.scale = 1.5
+            self.actions.right_arm.scale = 1.5
+
+            self.events.toss.params.update({
+                "pos_x": (0.3, 0.5), "pos_y": (-0.15, 0.15), "pos_z": (0.9, 1.2),
+                "vel_x": (-2.0, -0.8), "vel_y": (-0.3, 0.3), "vel_z": (-0.2, 0.2),
+            })
+
+            self.rewards.alive.weight = 0.02
+            self.rewards.height.weight = 0.1
+            self.rewards.base_vel.weight = -0.03
+            self.rewards.hold.weight = 2.0
+            self.rewards.not_drop.weight = 0.5
+            self.rewards.impact.weight = -0.10
+            self.rewards.impact.params["force_thr"] = 300.0
+            self.rewards.action_rate.weight = -0.01
+
 
 
 
