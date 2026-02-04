@@ -119,7 +119,7 @@ class ActionsCfg:
             "right_hip_pitch_joint", "right_hip_roll_joint", "right_hip_yaw_joint",
             "right_knee_joint", "right_ankle_pitch_joint", "right_ankle_roll_joint",
         ],
-        scale=0.0,
+        scale=0.5,
     )
 
     # 2) 허리: 조금만

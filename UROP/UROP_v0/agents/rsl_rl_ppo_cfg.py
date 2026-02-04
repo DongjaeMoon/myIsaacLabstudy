@@ -12,7 +12,7 @@ from isaaclab.utils import configclass
 class SteelPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 96
     max_iterations = 10000
-    save_interval = 50
+    save_interval = 500
     experiment_name = "UROP_v0"
     empirical_normalization = True
     policy = RslRlPpoActorCriticCfg(
