@@ -276,7 +276,7 @@ class dj_urop_EnvCfg(ManagerBasedRLEnvCfg):
             self.observations.policy.obj_rel.params["drop_prob"] = 0.0
         else:
             self.observations.policy.obj_rel.params["drop_prob"] = 1.0
-
+   
         # Stage 스케줄
         if stage == 0:
             # ---- balance/recovery ----
