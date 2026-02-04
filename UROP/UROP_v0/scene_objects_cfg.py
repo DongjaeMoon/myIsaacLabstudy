@@ -9,13 +9,15 @@ from isaaclab.sensors.frame_transformer import OffsetCfg
 import math
 from isaaclab.assets import AssetBaseCfg
 from isaaclab.sim import RigidBodyMaterialCfg
+import os
 
 # [1] 로봇 (G1) 정의
 dj_robot_cfg = ArticulationCfg(
     prim_path="{ENV_REGEX_NS}/Robot",
     spawn=sim_utils.UsdFileCfg(
         # ★ 동재님이 만드신 최종 파일 경로
-        usd_path="/home/roro_common/mdj/IsaacLab/UROP/UROP_v0/usd/G1_23DOF_UROP.usd",
+        #usd_path="/home/roro_common/mdj/IsaacLab/UROP/UROP_v0/usd/G1_23DOF_UROP.usd",
+        usd_path="/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_v0/usd/G1_23DOF_UROP.usd",
         activate_contact_sensors=True, # 충격 감지를 위해 필수
     ),
     init_state=ArticulationCfg.InitialStateCfg(
