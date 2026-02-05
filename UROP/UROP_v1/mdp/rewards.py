@@ -103,7 +103,7 @@ def hold_object_close_curriculum(
 
 def object_not_dropped_bonus_curriculum(
     env: "ManagerBasedRLEnv",
-    min_z: float = 0.25,
+    min_z: float = 0.35,
     w0: float = 0.0,
     w1: float = 0.5,
     w2: float = 0.5,
