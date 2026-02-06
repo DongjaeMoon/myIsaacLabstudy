@@ -56,7 +56,7 @@ bulky_object_cfg = RigidObjectCfg(
         physics_material=RigidBodyMaterialCfg(
             static_friction=1.0,  # 정지 마찰계수 (높게)
             dynamic_friction=1.0, # 운동 마찰계수 (높게)
-            restitution=0.0,      # 반발계수 (튕겨나가지 않게 0으로)
+            restitution=0.1,      # 반발계수 (튕겨나가지 않게 0.1으로)
         ),
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             kinematic_enabled=False,  # True로 하면 중력을 무시하고 그 자리에 고정됨 (또는 코드로 위치 제어 가능)
