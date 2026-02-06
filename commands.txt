@@ -1,0 +1,65 @@
+# 'isaaclab'이라는 이름이 들어간 것만 죽이기
+pkill -9 -f isaaclab
+
+
+
+[tensorboard]
+tensorboard --logdir=logs/rsl_rl/UROP_v0/2026-01-31_03-00-17_S0_teacher
+tensorboard --logdir=logs/rsl_rl/UROP_v0/2026-01-31_04-18-29_S1_teacher
+tensorboard --logdir=logs/rsl_rl/UROP_v0/2026-01-31_08-16-09_S2_teacher
+
+tensorboard --logdir=logs/rsl_rl/UROP_v1/2026-02-05_23-14-31
+
+./isaaclab.sh -p UROP/train_rsl_rl.py --task Isaac-Urop-v0 --num_envs 64
+UROP_EVAL_STAGE=2 \
+./isaaclab.sh -p UROP/play_rsl_rl.py --task Isaac-Urop-v1 --num_envs 4
+
+UROP_MODE=teacher \
+UROP_STAGE0_ITERS=3000 \
+UROP_STAGE1_ITERS=5000 \
+UROP_NUM_STEPS_PER_ENV=96 \
+./isaaclab.sh -p UROP/train_rsl_rl.py --task Isaac-Urop-v1 --num_envs 64 --max_iterations 20000 --headless
+
+UROP_MODE=teacher \
+UROP_STAGE0_ITERS=5000 \
+UROP_STAGE1_ITERS=3000 \
+./isaaclab.sh -p UROP/train_rsl_rl.py --task Isaac-Urop-v1 --num_envs 512 --max_iterations 20000 --headless
+
+UROP_EVAL_STAGE=1 \
+./isaaclab.sh -p UROP/play_rsl_rl.py \
+    --task Isaac-Urop-v1 \
+    --num_envs 16 \
+    --checkpoint "logs/rsl_rl/UROP_v1/2026-02-05_23-14-31/model_8000.pt"
+
+
+UROP_MODE=teacher \
+UROP_STAGE0_ITERS=20 \
+UROP_STAGE1_ITERS=20 \
+./isaaclab.sh -p UROP/train_rsl_rl.py --task Isaac-Urop-v1 --num_envs 16 --max_iterations 100
+
+./run_urop_curriculum.sh --num_envs 256 --iters0 3000 --iters1 6000 --iters2 12000
+./run_urop_curriculum.sh --num_envs 256 --iters0 20 --iters1 20 --iters2 20
+UROP_STAGE=0 ./isaaclab.sh -p UROP/play_rsl_rl.py --task Isaac-Urop-v0 --num_envs 4 --load_run "2026-01-31_03-00-17_S0_teacher"
+UROP_STAGE=1 ./isaaclab.sh -p UROP/play_rsl_rl.py --task Isaac-Urop-v0 --num_envs 4 --load_run "2026-01-31_04-18-29_S1_teacher"
+UROP_STAGE=2 ./isaaclab.sh -p UROP/play_rsl_rl.py --task Isaac-Urop-v0 --num_envs 4 --load_run "2026-01-31_08-16-09_S2_teacher"
+
+-------------------------
+./isaaclab.sh -p UROP/train_rsl_rl.py \
+    --task Isaac-Urop-v0 \
+    --num_envs 4 \
+    --resume True \
+    --load_run "2026-01-31_03-00-17_S0_teacher" \
+    --max_iterations 3000
+
+# 2. --checkpoint: 특정 파일 콕 집어서 불러오기
+./isaaclab.sh -p example/train_rsl_rl.py \
+    --task Isaac-Urop-v0 \
+    --num_envs 4096 \
+    --headless \
+    --resume True \
+    --checkpoint "logs/rsl_rl/urop_v0/2026-01-22_12-30-00/model_1000.pt"
+
+# ==========================================
+./isaaclab.sh -p scripts/reinforcement_learning/rsl_rl/train.py --task=Isaac-Velocity-Flat-Anymal-C-v0
+./isaaclab.sh -p example/train_rsl_rl.py --task Isaac-Urop-v0 --num_envs 64 
+./isaaclab.sh -p example/train_rsl_rl.py --task Isaac-Urop-v1 --num_envs 64 
