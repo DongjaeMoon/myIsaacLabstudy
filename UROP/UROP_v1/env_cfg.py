@@ -120,14 +120,14 @@ class ActionsCfg:
             "right_hip_pitch_joint", "right_hip_roll_joint", "right_hip_yaw_joint",
             "right_knee_joint", "right_ankle_pitch_joint", "right_ankle_roll_joint",
         ],
-        scale=1.0,
+        scale=0.6,
     )
 
     # 2) 허리: 조금만
     waist = mdp.JointPositionActionCfg(
         asset_name="robot",
         joint_names=["waist_yaw_joint"],
-        scale=1.0,
+        scale=0.3,
     )
 
     # 3) 팔: policy가 제어 (shoulder 크게, elbow 중간, wrist는 roll만 있음)
@@ -137,7 +137,7 @@ class ActionsCfg:
             "left_shoulder_pitch_joint", "left_shoulder_roll_joint", "left_shoulder_yaw_joint",
             "left_elbow_joint", "left_wrist_roll_joint",
         ],
-        scale=1.5,
+        scale=1.0,
     )
 
     right_arm = mdp.JointPositionActionCfg(
@@ -146,7 +146,7 @@ class ActionsCfg:
             "right_shoulder_pitch_joint", "right_shoulder_roll_joint", "right_shoulder_yaw_joint",
             "right_elbow_joint", "right_wrist_roll_joint",
         ],
-        scale=1.5,
+        scale=1.0,
     )
 
 
@@ -183,7 +183,7 @@ class RewardsCfg:
     )
     base_vel = RewTerm(
         func=mdp.base_velocity_penalty_curriculum,
-        weight=-1.0,
+        weight=-0.1,
         params={"w_lin": 1.0, "w_ang": 0.2, "w0": 0.2, "w1": 0.05, "w2": 0.03},
     )
 
@@ -200,7 +200,7 @@ class RewardsCfg:
 
     impact = RewTerm(
         func=mdp.impact_peak_penalty_curriculum,
-        weight=-0.05,
+        weight=-0.00,
         params={
             "sensor_names": ["contact_torso", "contact_lhand", "contact_rhand"],
             "force_thr_stage1": 400.0,
@@ -213,7 +213,7 @@ class RewardsCfg:
 
     action_rate = RewTerm(
         func=mdp.action_rate_penalty_curriculum,
-        weight=-1.0,
+        weight=-0.05,
         params={"w0": 0.05, "w1": 0.02, "w2": 0.01},
     )
 
@@ -222,7 +222,7 @@ class RewardsCfg:
 class TerminationsCfg:
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     fall = DoneTerm(func=mdp.robot_fallen, params={"min_root_z": 0.55})
-    drop = DoneTerm(func=mdp.object_dropped_curriculum, params={"min_z": 0.35})
+    drop = DoneTerm(func=mdp.object_dropped_curriculum, params={"min_z": 0.55})
 
 
 @configclass
@@ -234,9 +234,9 @@ class EventCfg:
         mode="reset",
         params={
             "asset_name": "robot",
-            "stage0": {"lin_x": (-0.6, 0.6), "lin_y": (-0.4, 0.4), "yaw_rate": (-1.5, 1.5)},
-            "stage1": {"lin_x": (-0.3, 0.3), "lin_y": (-0.2, 0.2), "yaw_rate": (-0.8, 0.8)},
-            "stage2": {"lin_x": (-0.15, 0.15), "lin_y": (-0.1, 0.1), "yaw_rate": (-0.4, 0.4)},
+            "stage0": {"lin_x": (-0.2, 0.2), "lin_y": (-0.2, 0.2), "yaw_rate": (-0.2, 0.2)},
+            "stage1": {"lin_x": (-0.1, 0.1), "lin_y": (-0.1, 0.1), "yaw_rate": (-0.0, 0.0)},
+            "stage2": {"lin_x": (-0.0, 0.0), "lin_y": (-0.0, 0.0), "yaw_rate": (-0.0, 0.0)},
         },
     )
 

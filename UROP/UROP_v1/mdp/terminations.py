@@ -38,7 +38,7 @@ def robot_fallen(env: "ManagerBasedRLEnv", min_root_z: float = 0.55) -> torch.Te
     return robot.data.root_pos_w[:, 2] < min_root_z
 
 
-def object_dropped_curriculum(env: "ManagerBasedRLEnv", min_z: float = 0.35) -> torch.Tensor:
+def object_dropped_curriculum(env: "ManagerBasedRLEnv", min_z: float = 0.55) -> torch.Tensor:
     """stage0: OFF, stage1/2: ON."""
     s = _get_stage(env)
     obj = env.scene["object"]
