@@ -81,6 +81,7 @@ from isaaclab_tasks.utils.hydra import hydra_task_config
 
 import UROP_v0
 import UROP_v1
+import UROP_v2
 
 @hydra_task_config(args_cli.task, args_cli.agent)
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: RslRlBaseRunnerCfg):
@@ -186,6 +187,8 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         with torch.inference_mode():
             # agent stepping
             actions = policy(obs)
+            #play noise 
+            #actions += torch.randn_like(actions) * 0.3
             # env stepping
             obs, _, _, _ = env.step(actions)
         if args_cli.video:

@@ -16,8 +16,8 @@ dj_robot_cfg = ArticulationCfg(
     prim_path="{ENV_REGEX_NS}/Robot",
     spawn=sim_utils.UsdFileCfg(
         # ★ 동재님이 만드신 최종 파일 경로
-        #usd_path="/home/roro_common/mdj/IsaacLab/UROP/UROP_v0/usd/G1_23DOF_UROP.usd",
-        usd_path="/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_v1/usd/G1_23DOF_UROP.usd",
+        usd_path="/home/roro_common/mdj/IsaacLab/UROP/UROP_v0/usd/G1_23DOF_UROP.usd",
+        #usd_path="/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_v1/usd/G1_23DOF_UROP.usd",
         activate_contact_sensors=True, # 충격 감지를 위해 필수
     ),
     init_state=ArticulationCfg.InitialStateCfg(
@@ -54,9 +54,9 @@ bulky_object_cfg = RigidObjectCfg(
         visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 0.8, 0.0)),
         # [추가됨] 마찰력 설정: 고무나 거친 종이 박스처럼 마찰을 높임
         physics_material=RigidBodyMaterialCfg(
-            static_friction=1.0,  # 정지 마찰계수 (높게)
-            dynamic_friction=1.0, # 운동 마찰계수 (높게)
-            restitution=0.1,      # 반발계수 (튕겨나가지 않게 0.1으로)
+            static_friction=2.0,  # 정지 마찰계수 (높게)
+            dynamic_friction=2.0, # 운동 마찰계수 (높게)
+            restitution=0.01,      # 반발계수 (튕겨나가지 않게 0.1으로)
         ),
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             kinematic_enabled=False,  # True로 하면 중력을 무시하고 그 자리에 고정됨 (또는 코드로 위치 제어 가능)
