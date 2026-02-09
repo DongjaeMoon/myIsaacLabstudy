@@ -1,0 +1,31 @@
+--- git status ---
+On branch main
+Your branch is ahead of 'origin/main' by 41 commits.
+  (use "git push" to publish your local commits)
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   UROP/UROP_v0/agents/rsl_rl_ppo_cfg.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	env_list.txt
+
+no changes added to commit (use "git add" and/or "git commit -a") 
+
+
+--- git diff ---
+diff --git a/UROP/UROP_v0/agents/rsl_rl_ppo_cfg.py b/UROP/UROP_v0/agents/rsl_rl_ppo_cfg.py
+index fe050d923b..c884b5515e 100644
+--- a/UROP/UROP_v0/agents/rsl_rl_ppo_cfg.py
++++ b/UROP/UROP_v0/agents/rsl_rl_ppo_cfg.py
+@@ -12,7 +12,7 @@ from isaaclab.utils import configclass
+ class SteelPPORunnerCfg(RslRlOnPolicyRunnerCfg):
+     num_steps_per_env = 96
+     max_iterations = 10000
+-    save_interval = 50
++    save_interval = 500
+     experiment_name = "UROP_v0"
+     empirical_normalization = True
+     policy = RslRlPpoActorCriticCfg(

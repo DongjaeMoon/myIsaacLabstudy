@@ -1,0 +1,243 @@
+--- git status ---
+On branch main
+Your branch is ahead of 'origin/main' by 34 commits.
+  (use "git push" to publish your local commits)
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   UROP/UROP_v0/env_cfg.py
+	modified:   UROP/UROP_v0/mdp/events.py
+	modified:   UROP/UROP_v0/mdp/observations.py
+	modified:   UROP/UROP_v0/mdp/rewards.py
+	modified:   UROP/train_rsl_rl.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	env_list.txt
+
+no changes added to commit (use "git add" and/or "git commit -a") 
+
+
+--- git diff ---
+diff --git a/UROP/UROP_v0/env_cfg.py b/UROP/UROP_v0/env_cfg.py
+index 0d54e4d5f4..3a2656b95a 100644
+--- a/UROP/UROP_v0/env_cfg.py
++++ b/UROP/UROP_v0/env_cfg.py
+@@ -69,14 +69,32 @@ class dj_urop_SceneCfg(InteractiveSceneCfg):
+     robot = scene_objects_cfg.dj_robot_cfg
+     object = scene_objects_cfg.bulky_object_cfg
+ 
+-    contact_sensor = ContactSensorCfg(
+-        prim_path="{ENV_REGEX_NS}/Robot/.*",
++    # UROP/UROP_v0/env_cfg.py (dj_urop_SceneCfg 안)
++
++    contact_torso = ContactSensorCfg(
++        prim_path="{ENV_REGEX_NS}/Robot/torso_link",
++        filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],
+         update_period=0.0,
+         history_length=1,
+         debug_vis=False,
+-        # object만 필터 (가능하면 켜두는 걸 추천)
++    )
++
++    contact_lhand = ContactSensorCfg(
++        prim_path="{ENV_REGEX_NS}/Robot/left_wrist_roll_rubber_hand",
++        filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],
++        update_period=0.0,
++        history_length=1,
++        debug_vis=False,
++    )
++
++    contact_rhand = ContactSensorCfg(
++        prim_path="{ENV_REGEX_NS}/Robot/right_wrist_roll_rubber_hand",
+         filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],
++        update_period=0.0,
++        history_length=1,
++        debug_vis=False,
+     )
++
+     
+ 
+ ##
+@@ -138,7 +156,10 @@ class ObservationsCfg:
+     @configclass
+     class PolicyCfg(ObsGroup):
+         proprio = ObsTerm(func=mdp.robot_proprio)
+-        contact = ObsTerm(func=mdp.contact_forces)
++        contact = ObsTerm(
++        func=mdp.contact_forces,
++        params={"sensor_names": ["contact_torso", "contact_lhand", "contact_rhand"]},
++        )
+         obj_rel = ObsTerm(func=mdp.object_rel_state)   # 초기엔 넣고, 나중에 student에선 빼도 됨
+ 
+         def __post_init__(self):
+@@ -152,7 +173,11 @@ class ObservationsCfg:
+ class RewardsCfg:
+     hold = RewTerm(func=mdp.hold_object_close, weight=2.0, params={"sigma": 0.7})
+     not_drop = RewTerm(func=mdp.object_not_dropped_bonus, weight=0.5, params={"min_z": 0.25})
+-    impact = RewTerm(func=mdp.impact_peak_penalty, weight=-1.0, params={"force_thr": 250.0})
++    impact = RewTerm(
++    func=mdp.impact_peak_penalty,
++    weight=-1.0,
++    params={"sensor_names": ["contact_torso", "contact_lhand", "contact_rhand"], "force_thr": 250.0},
++    )
+     action_rate = RewTerm(func=mdp.action_rate_penalty, weight=-0.01)
+ 
+ 
+@@ -166,8 +191,20 @@ class TerminationsCfg:
+ @configclass
+ class EventCfg:
+     reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset")
+-    toss = EventTerm(func=mdp.reset_and_toss_object, mode="reset")
+-    
++
++    toss = EventTerm(
++        func=mdp.reset_and_toss_object,
++        mode="reset",
++        params={
++            "asset_name": "object",
++            "pos_x": (0.7, 0.9),
++            "pos_y": (-0.15, 0.15),
++            "pos_z": (0.9, 1.2),
++            "vel_x": (-2.0, -0.8),
++            "vel_y": (-0.3, 0.3),
++            "vel_z": (-0.2, 0.2),
++        },
++    )
+     
+ 
+ 
+diff --git a/UROP/UROP_v0/mdp/events.py b/UROP/UROP_v0/mdp/events.py
+index 0cb8d1925f..eacce5a1f2 100644
+--- a/UROP/UROP_v0/mdp/events.py
++++ b/UROP/UROP_v0/mdp/events.py
+@@ -6,38 +6,47 @@ from typing import TYPE_CHECKING
+ if TYPE_CHECKING:
+     from isaaclab.envs import ManagerBasedRLEnv
+ 
++
+ def reset_and_toss_object(
+     env: "ManagerBasedRLEnv",
++    env_ids: torch.Tensor,          # ✅ 이벤트 매니저가 넘겨줌
++    asset_name: str,                # ✅ env_cfg.py의 params에서 받음
+     pos_x=(0.7, 0.9),
+     pos_y=(-0.15, 0.15),
+     pos_z=(0.9, 1.2),
+-    vel_x=(-2.0, -0.8),   # 로봇을 향해 날아오게(부호는 네 월드축 기준으로 조정 가능)
++    vel_x=(-2.0, -0.8),
+     vel_y=(-0.3, 0.3),
+     vel_z=(-0.2, 0.2),
+ ):
+-    obj = env.scene["object"]
+-    N = env.num_envs
++    obj = env.scene[asset_name]
+     device = env.device
+ 
++    # ✅ reset 되는 env만 샘플링
++    if env_ids is None:
++        env_ids = torch.arange(env.num_envs, device=device)
++
++    n = env_ids.shape[0]
++
+     pos = torch.stack(
+         [
+-            torch.empty(N, device=device).uniform_(*pos_x),
+-            torch.empty(N, device=device).uniform_(*pos_y),
+-            torch.empty(N, device=device).uniform_(*pos_z),
++            torch.empty(n, device=device).uniform_(*pos_x),
++            torch.empty(n, device=device).uniform_(*pos_y),
++            torch.empty(n, device=device).uniform_(*pos_z),
+         ],
+         dim=-1,
+     )
+-    quat = torch.tensor([1.0, 0.0, 0.0, 0.0], device=device).repeat(N, 1)
++    quat = torch.tensor([1.0, 0.0, 0.0, 0.0], device=device).repeat(n, 1)
+ 
+     lin_vel = torch.stack(
+         [
+-            torch.empty(N, device=device).uniform_(*vel_x),
+-            torch.empty(N, device=device).uniform_(*vel_y),
+-            torch.empty(N, device=device).uniform_(*vel_z),
++            torch.empty(n, device=device).uniform_(*vel_x),
++            torch.empty(n, device=device).uniform_(*vel_y),
++            torch.empty(n, device=device).uniform_(*vel_z),
+         ],
+         dim=-1,
+     )
+-    ang_vel = torch.zeros((N, 3), device=device)
++    ang_vel = torch.zeros((n, 3), device=device)
+ 
+-    obj.write_root_pose_to_sim(torch.cat([pos, quat], dim=-1))
+-    obj.write_root_velocity_to_sim(torch.cat([lin_vel, ang_vel], dim=-1))
++    # ✅ reset env_ids에만 적용
++    obj.write_root_pose_to_sim(torch.cat([pos, quat], dim=-1), env_ids=env_ids)
++    obj.write_root_velocity_to_sim(torch.cat([lin_vel, ang_vel], dim=-1), env_ids=env_ids)
+diff --git a/UROP/UROP_v0/mdp/observations.py b/UROP/UROP_v0/mdp/observations.py
+index 038b5db94e..4f39a37853 100644
+--- a/UROP/UROP_v0/mdp/observations.py
++++ b/UROP/UROP_v0/mdp/observations.py
+@@ -32,11 +32,10 @@ def object_rel_state(env: "ManagerBasedRLEnv") -> torch.Tensor:
+     return torch.cat([rel_pos, rel_vel], dim=-1)
+ 
+ 
+-def contact_forces(env: "ManagerBasedRLEnv") -> torch.Tensor:
+-    """
+-    (N, B*3) net contact forces on selected bodies.
+-    contact sensor is defined in scene cfg as 'contact_sensor'.
+-    """
+-    sensor = env.scene["contact_sensor"]
+-    f = sensor.data.net_forces_w  # (N, B, 3)
+-    return f.reshape(f.shape[0], -1)
++def contact_forces(env: "ManagerBasedRLEnv", sensor_names: list[str]) -> torch.Tensor:
++    outs = []
++    for name in sensor_names:
++        sensor = env.scene[name]
++        f = sensor.data.net_forces_w  # (N, 1, 3)일 가능성 높음 (링크 1개라서)
++        outs.append(f.reshape(f.shape[0], -1))
++    return torch.cat(outs, dim=-1)
+diff --git a/UROP/UROP_v0/mdp/rewards.py b/UROP/UROP_v0/mdp/rewards.py
+index b961554886..90b157ac81 100644
+--- a/UROP/UROP_v0/mdp/rewards.py
++++ b/UROP/UROP_v0/mdp/rewards.py
+@@ -27,13 +27,16 @@ def object_not_dropped_bonus(env: "ManagerBasedRLEnv", min_z: float = 0.25) -> t
+     return (obj.data.root_pos_w[:, 2] > min_z).float()
+ 
+ 
+-def impact_peak_penalty(env: "ManagerBasedRLEnv", force_thr: float = 250.0) -> torch.Tensor:
+-    """Penalize peak contact force above threshold."""
+-    sensor = env.scene["contact_sensor"]
+-    f = sensor.data.net_forces_w  # (N, B, 3)
+-    mag = torch.linalg.norm(f, dim=-1)      # (N, B)
+-    peak = mag.max(dim=-1).values           # (N,)
+-    over = torch.relu(peak - force_thr)
++def impact_peak_penalty(env: "ManagerBasedRLEnv", sensor_names: list[str], force_thr: float = 250.0) -> torch.Tensor:
++    peaks = []
++    for name in sensor_names:
++        sensor = env.scene[name]
++        f = sensor.data.net_forces_w  # (N, 1, 3)
++        mag = torch.linalg.norm(f, dim=-1)        # (N, 1)
++        peak = mag.max(dim=-1).values             # (N,)
++        peaks.append(peak)
++    peak_all = torch.stack(peaks, dim=-1).max(dim=-1).values  # 센서들 중 최대
++    over = torch.relu(peak_all - force_thr)
+     return over * over
+ 
+ 
+diff --git a/UROP/train_rsl_rl.py b/UROP/train_rsl_rl.py
+index 574925237f..77a75b9073 100644
+--- a/UROP/train_rsl_rl.py
++++ b/UROP/train_rsl_rl.py
+@@ -155,9 +155,9 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
+ 
+     # create isaac environment
+     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
+-    robot = env.unwrapped.scene["robot"]
+-    print("JOINT NAMES:", robot.data.joint_names)
+-    raise SystemExit
++    #robot = env.unwrapped.scene["robot"]
++    #print("JOINT NAMES:", robot.data.joint_names)
++    #raise SystemExit
+ 
+     # convert to single-agent instance if required by the RL algorithm
+     if isinstance(env.unwrapped, DirectMARLEnv):

@@ -1,0 +1,113 @@
+--- git status ---
+On branch transfer_files
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   UROP/UROP_v1/env_cfg.py
+	modified:   UROP/UROP_v1/scene_objects_cfg.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	env_list.txt
+
+no changes added to commit (use "git add" and/or "git commit -a") 
+
+
+--- git diff ---
+diff --git a/UROP/UROP_v1/env_cfg.py b/UROP/UROP_v1/env_cfg.py
+index 9d2ff49261..381d8915fa 100644
+--- a/UROP/UROP_v1/env_cfg.py
++++ b/UROP/UROP_v1/env_cfg.py
+@@ -120,14 +120,14 @@ class ActionsCfg:
+             "right_hip_pitch_joint", "right_hip_roll_joint", "right_hip_yaw_joint",
+             "right_knee_joint", "right_ankle_pitch_joint", "right_ankle_roll_joint",
+         ],
+-        scale=1.0,
++        scale=0.85,
+     )
+ 
+     # 2) 허리: 조금만
+     waist = mdp.JointPositionActionCfg(
+         asset_name="robot",
+         joint_names=["waist_yaw_joint"],
+-        scale=1.0,
++        scale=0.4,
+     )
+ 
+     # 3) 팔: policy가 제어 (shoulder 크게, elbow 중간, wrist는 roll만 있음)
+@@ -137,7 +137,7 @@ class ActionsCfg:
+             "left_shoulder_pitch_joint", "left_shoulder_roll_joint", "left_shoulder_yaw_joint",
+             "left_elbow_joint", "left_wrist_roll_joint",
+         ],
+-        scale=1.5,
++        scale=1.25,
+     )
+ 
+     right_arm = mdp.JointPositionActionCfg(
+@@ -146,7 +146,7 @@ class ActionsCfg:
+             "right_shoulder_pitch_joint", "right_shoulder_roll_joint", "right_shoulder_yaw_joint",
+             "right_elbow_joint", "right_wrist_roll_joint",
+         ],
+-        scale=1.5,
++        scale=1.25,
+     )
+ 
+ 
+@@ -183,7 +183,7 @@ class RewardsCfg:
+     )
+     base_vel = RewTerm(
+         func=mdp.base_velocity_penalty_curriculum,
+-        weight=-1.0,
++        weight=-0.5,
+         params={"w_lin": 1.0, "w_ang": 0.2, "w0": 0.2, "w1": 0.05, "w2": 0.03},
+     )
+ 
+@@ -200,20 +200,20 @@ class RewardsCfg:
+ 
+     impact = RewTerm(
+         func=mdp.impact_peak_penalty_curriculum,
+-        weight=-0.05,
++        weight=-0.01,
+         params={
+             "sensor_names": ["contact_torso", "contact_lhand", "contact_rhand"],
+             "force_thr_stage1": 400.0,
+             "force_thr_stage2": 300.0,
+             "w0": 0.0,
+-            "w1": 0.05,
+-            "w2": 0.10,
++            "w1": 0.03,
++            "w2": 0.05,
+         },
+     )
+ 
+     action_rate = RewTerm(
+         func=mdp.action_rate_penalty_curriculum,
+-        weight=-1.0,
++        weight=-0.1,
+         params={"w0": 0.05, "w1": 0.02, "w2": 0.01},
+     )
+ 
+@@ -222,7 +222,7 @@ class RewardsCfg:
+ class TerminationsCfg:
+     time_out = DoneTerm(func=mdp.time_out, time_out=True)
+     fall = DoneTerm(func=mdp.robot_fallen, params={"min_root_z": 0.55})
+-    drop = DoneTerm(func=mdp.object_dropped_curriculum, params={"min_z": 0.35})
++    drop = DoneTerm(func=mdp.object_dropped_curriculum, params={"min_z": 0.55})
+ 
+ 
+ @configclass
+diff --git a/UROP/UROP_v1/scene_objects_cfg.py b/UROP/UROP_v1/scene_objects_cfg.py
+index c05ebb541e..38a7c0aba0 100644
+--- a/UROP/UROP_v1/scene_objects_cfg.py
++++ b/UROP/UROP_v1/scene_objects_cfg.py
+@@ -16,8 +16,8 @@ dj_robot_cfg = ArticulationCfg(
+     prim_path="{ENV_REGEX_NS}/Robot",
+     spawn=sim_utils.UsdFileCfg(
+         # ★ 동재님이 만드신 최종 파일 경로
+-        #usd_path="/home/roro_common/mdj/IsaacLab/UROP/UROP_v0/usd/G1_23DOF_UROP.usd",
+-        usd_path="/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_v1/usd/G1_23DOF_UROP.usd",
++        usd_path="/home/roro_common/mdj/IsaacLab/UROP/UROP_v0/usd/G1_23DOF_UROP.usd",
++        #usd_path="/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_v1/usd/G1_23DOF_UROP.usd",
+         activate_contact_sensors=True, # 충격 감지를 위해 필수
+     ),
+     init_state=ArticulationCfg.InitialStateCfg(

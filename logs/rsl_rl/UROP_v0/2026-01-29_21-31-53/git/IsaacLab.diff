@@ -1,0 +1,76 @@
+--- git status ---
+On branch main
+Your branch is ahead of 'origin/main' by 35 commits.
+  (use "git push" to publish your local commits)
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   UROP/UROP_v0/mdp/events.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	env_list.txt
+
+no changes added to commit (use "git add" and/or "git commit -a") 
+
+
+--- git diff ---
+diff --git a/UROP/UROP_v0/mdp/events.py b/UROP/UROP_v0/mdp/events.py
+index eacce5a1f2..477e62fbdd 100644
+--- a/UROP/UROP_v0/mdp/events.py
++++ b/UROP/UROP_v0/mdp/events.py
+@@ -9,8 +9,8 @@ if TYPE_CHECKING:
+ 
+ def reset_and_toss_object(
+     env: "ManagerBasedRLEnv",
+-    env_ids: torch.Tensor,          # ✅ 이벤트 매니저가 넘겨줌
+-    asset_name: str,                # ✅ env_cfg.py의 params에서 받음
++    env_ids: torch.Tensor,          
++    asset_name: str,                
+     pos_x=(0.7, 0.9),
+     pos_y=(-0.15, 0.15),
+     pos_z=(0.9, 1.2),
+@@ -21,13 +21,14 @@ def reset_and_toss_object(
+     obj = env.scene[asset_name]
+     device = env.device
+ 
+-    # ✅ reset 되는 env만 샘플링
++    # env_ids가 None이면 전체 환경 리셋
+     if env_ids is None:
+         env_ids = torch.arange(env.num_envs, device=device)
+ 
+     n = env_ids.shape[0]
+ 
+-    pos = torch.stack(
++    # 1. 로봇 기준의 랜덤 위치 생성 (Local)
++    local_pos = torch.stack(
+         [
+             torch.empty(n, device=device).uniform_(*pos_x),
+             torch.empty(n, device=device).uniform_(*pos_y),
+@@ -35,8 +36,14 @@ def reset_and_toss_object(
+         ],
+         dim=-1,
+     )
++    
++    # ★ 2. [핵심 수정] 각 환경(방)의 원점 좌표를 더해줌 (Global로 변환)
++    # 이걸 안 해서 아까 중앙에 다 겹쳤던 겁니다!
++    global_pos = local_pos + env.scene.env_origins[env_ids]
++
+     quat = torch.tensor([1.0, 0.0, 0.0, 0.0], device=device).repeat(n, 1)
+ 
++    # 3. 속도는 로봇 쪽으로 던지는 거니까 방향 그대로 유지
+     lin_vel = torch.stack(
+         [
+             torch.empty(n, device=device).uniform_(*vel_x),
+@@ -47,6 +54,6 @@ def reset_and_toss_object(
+     )
+     ang_vel = torch.zeros((n, 3), device=device)
+ 
+-    # ✅ reset env_ids에만 적용
+-    obj.write_root_pose_to_sim(torch.cat([pos, quat], dim=-1), env_ids=env_ids)
+-    obj.write_root_velocity_to_sim(torch.cat([lin_vel, ang_vel], dim=-1), env_ids=env_ids)
++    # 4. 적용
++    obj.write_root_pose_to_sim(torch.cat([global_pos, quat], dim=-1), env_ids=env_ids)
++    obj.write_root_velocity_to_sim(torch.cat([lin_vel, ang_vel], dim=-1), env_ids=env_ids)
+\ No newline at end of file

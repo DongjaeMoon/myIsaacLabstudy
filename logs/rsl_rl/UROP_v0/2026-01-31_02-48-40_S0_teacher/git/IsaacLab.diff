@@ -1,0 +1,192 @@
+--- git status ---
+On branch main
+Your branch is ahead of 'origin/main' by 40 commits.
+  (use "git push" to publish your local commits)
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   run_urop_curriculum.sh
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	env_list.txt
+
+no changes added to commit (use "git add" and/or "git commit -a") 
+
+
+--- git diff ---
+diff --git a/run_urop_curriculum.sh b/run_urop_curriculum.sh
+old mode 100644
+new mode 100755
+index fcd7cb202c..ba135f9294
+--- a/run_urop_curriculum.sh
++++ b/run_urop_curriculum.sh
+@@ -1,132 +1,58 @@
+ #!/usr/bin/env bash
+-set -euo pipefail
++set -e
+ 
+ # -----------------------
+-# paths (script location-safe)
+-# -----------------------
+-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+-ISAACLAB_SH="${SCRIPT_DIR}/isaaclab.sh"
+-TRAIN_PY="${SCRIPT_DIR}/UROP/train_rsl_rl.py"
+-LOG_ROOT="${SCRIPT_DIR}/logs/rsl_rl/UROP_v0"
+-
+-# -----------------------
+-# defaults (you can override by args)
++# default args
+ # -----------------------
+ NUM_ENVS=64
+-ITER0=2000
+-ITER1=4000
+-ITER2=8000
+-HEADLESS=1        # 1=headless, 0=GUI
+-VIDEO=0           # 1=record video
++HEADLESS="--headless"
++ITERS0=2000
++ITERS1=4000
++ITERS2=8000
+ 
+ # -----------------------
+ # arg parsing
+ # -----------------------
+ while [[ $# -gt 0 ]]; do
+-  case "$1" in
+-    --num_envs) NUM_ENVS="$2"; shift 2 ;;
+-    --iters0)   ITER0="$2"; shift 2 ;;
+-    --iters1)   ITER1="$2"; shift 2 ;;
+-    --iters2)   ITER2="$2"; shift 2 ;;
+-    --headless) HEADLESS=1; shift ;;
+-    --gui)      HEADLESS=0; shift ;;
+-    --video)    VIDEO=1; shift ;;
+-    --no-video) VIDEO=0; shift ;;
+-    *)
+-      echo "Unknown arg: $1"
+-      echo "Usage: $0 [--num_envs N] [--iters0 I] [--iters1 I] [--iters2 I] [--headless|--gui] [--video|--no-video]"
+-      exit 1
+-      ;;
++  case $1 in
++    --num_envs) NUM_ENVS="$2"; shift 2;;
++    --iters0) ITERS0="$2"; shift 2;;
++    --iters1) ITERS1="$2"; shift 2;;
++    --iters2) ITERS2="$2"; shift 2;;
++    --headless) HEADLESS="--headless"; shift;;
++    --gui) HEADLESS=""; shift;;
++    *) shift;;
+   esac
+ done
+ 
+-extra_flags=()
+-if [[ "${HEADLESS}" -eq 1 ]]; then
+-  extra_flags+=(--headless)
+-fi
+-if [[ "${VIDEO}" -eq 1 ]]; then
+-  # tweak to taste
+-  extra_flags+=(--video --video_length 150 --video_interval 200)
+-fi
+-
+-# -----------------------
+-# helpers
+-# -----------------------
+-latest_run_name() {
+-  # newest run folder name (basename)
+-  ls -1dt "${LOG_ROOT}"/*/ 2>/dev/null | head -n 1 | xargs -n1 basename
+-}
+-
+-latest_ckpt_name() {
+-  local run="$1"
+-  # newest checkpoint filename inside that run
+-  ls -1t "${LOG_ROOT}/${run}/checkpoints"/*.pt 2>/dev/null | head -n 1 | xargs -n1 basename
+-}
+-
+-run_stage() {
+-  local stage="$1"
+-  local iters="$2"
+-  local run_name="$3"
+-  local resume="$4"      # "yes" or "no"
+-  local load_run="$5"    # folder name
+-  local ckpt="$6"        # checkpoint filename
+-
+-  export UROP_STAGE="${stage}"
+-  export UROP_MODE="teacher"
+-
+-  cmd=( "${ISAACLAB_SH}" -p "${TRAIN_PY}"
+-        --task Isaac-Urop-v0
+-        --num_envs "${NUM_ENVS}"
+-        --max_iterations "${iters}"
+-        --run_name "${run_name}"
+-      )
+ 
+-  cmd+=( "${extra_flags[@]}" )
++ISAACLAB_ROOT="$(cd "$(dirname "$0")" && pwd)"
++ISAACLAB_SH="${ISAACLAB_ROOT}/isaaclab.sh"
++TRAIN_SCRIPT="${ISAACLAB_ROOT}/UROP/train_rsl_rl.py"
+ 
+-  if [[ "${resume}" == "yes" ]]; then
+-    # NOTE: your cli uses --resume/--load_run/--checkpoint (not --load_checkpoint)
+-    cmd+=( --resume True --load_run "${load_run}" --checkpoint "${ckpt}" )
+-  fi
++run_stage () {
++  STAGE=$1
++  ITERS=$2
++  RUN_NAME="S${STAGE}_teacher"
+ 
+-  echo ""
+   echo "=============================="
+-  echo "[RUN] stage=${stage} iters=${iters} num_envs=${NUM_ENVS} run_name=${run_name}"
+-  if [[ "${resume}" == "yes" ]]; then
+-    echo "[RESUME] from run=${load_run}, ckpt=${ckpt}"
+-  fi
+-  echo "CMD: ${cmd[*]}"
++  echo "[RUN] stage=${STAGE} iters=${ITERS} num_envs=${NUM_ENVS}"
+   echo "=============================="
+-  echo ""
+ 
+-  "${cmd[@]}"
+-}
++  export UROP_STAGE=${STAGE}
++  export UROP_MODE=teacher
+ 
+-# -----------------------
+-# main: Stage0 -> Stage1 -> Stage2
+-# -----------------------
+-mkdir -p "${LOG_ROOT}"
+-
+-# Stage0: balance/recovery (fresh)
+-run_stage 0 "${ITER0}" "S0_teacher" "no" "-" "-"
+-
+-# Stage1: gentle catch (resume from Stage0's latest checkpoint)
+-RUN0="$(latest_run_name)"
+-CKPT0="$(latest_ckpt_name "${RUN0}")"
+-if [[ -z "${RUN0}" || -z "${CKPT0}" ]]; then
+-  echo "[ERR] Could not find Stage0 run/checkpoint under ${LOG_ROOT}"
+-  exit 2
+-fi
+-run_stage 1 "${ITER1}" "S1_teacher" "yes" "${RUN0}" "${CKPT0}"
++  ${ISAACLAB_SH} -p ${TRAIN_SCRIPT} \
++    --task Isaac-Urop-v0 \
++    --num_envs ${NUM_ENVS} \
++    --max_iterations ${ITERS} \
++    --run_name ${RUN_NAME} \
++    ${HEADLESS}
++}
+ 
+-# Stage2: full catch + shock mitigation (resume from Stage1's latest checkpoint)
+-RUN1="$(latest_run_name)"
+-CKPT1="$(latest_ckpt_name "${RUN1}")"
+-if [[ -z "${RUN1}" || -z "${CKPT1}" ]]; then
+-  echo "[ERR] Could not find Stage1 run/checkpoint under ${LOG_ROOT}"
+-  exit 3
+-fi
+-run_stage 2 "${ITER2}" "S2_teacher" "yes" "${RUN1}" "${CKPT1}"
++run_stage 0 ${ITERS0}
++run_stage 1 ${ITERS1}
++run_stage 2 ${ITERS2}
+ 
+-echo ""
+-echo "[DONE] Curriculum finished. Latest run: $(latest_run_name)"
++echo "🎉 All curriculum stages finished"
+ 

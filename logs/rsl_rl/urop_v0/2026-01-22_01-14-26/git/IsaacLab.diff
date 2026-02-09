@@ -1,0 +1,189 @@
+--- git status ---
+On branch main
+Your branch is ahead of 'origin/main' by 29 commits.
+  (use "git push" to publish your local commits)
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   example/urop_v0/agents/rsl_rl_ppo_cfg.py
+	modified:   example/urop_v0/env_cfg.py
+	modified:   example/urop_v0/mdp/rewards.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	env_list.txt
+
+no changes added to commit (use "git add" and/or "git commit -a") 
+
+
+--- git diff ---
+diff --git a/example/urop_v0/agents/rsl_rl_ppo_cfg.py b/example/urop_v0/agents/rsl_rl_ppo_cfg.py
+index fdde61d0f2..6575bde2ee 100644
+--- a/example/urop_v0/agents/rsl_rl_ppo_cfg.py
++++ b/example/urop_v0/agents/rsl_rl_ppo_cfg.py
+@@ -10,8 +10,8 @@ from isaaclab.utils import configclass
+ 
+ @configclass
+ class SteelPPORunnerCfg(RslRlOnPolicyRunnerCfg):
+-    num_steps_per_env = 16
+-    max_iterations = 1000
++    num_steps_per_env = 100
++    max_iterations = 10000
+     save_interval = 50
+     experiment_name = "urop_v0"
+     empirical_normalization = True
+@@ -29,12 +29,12 @@ class SteelPPORunnerCfg(RslRlOnPolicyRunnerCfg):
+         num_learning_epochs=5,
+         num_mini_batches=4,
+         # num_mini_batches=8,
+-        learning_rate=1.0e-4, #5.0e-4->1.0e-4
++        learning_rate=5.0e-4, #5.0e-4->1.0e-4
+         schedule="adaptive",
+         gamma=0.99,
+         lam=0.95,
+         desired_kl=0.02,
+-        max_grad_norm=0.5, #1.0->0.5
++        max_grad_norm=1.0, #1.0->0.5
+     )
+      # (4) action clip을 여기서 강제로 걸어주기 (train_rsl_rl.py가 agent_cfg.clip_actions를 씀)
+     clip_actions = 1.0  # [-1,1]로 자르기(보통 float max abs로 씀)
+\ No newline at end of file
+diff --git a/example/urop_v0/env_cfg.py b/example/urop_v0/env_cfg.py
+index bdbec307be..b10d0d8da8 100644
+--- a/example/urop_v0/env_cfg.py
++++ b/example/urop_v0/env_cfg.py
+@@ -243,8 +243,10 @@ class EventCfg:
+         mode="reset",
+         params={
+             "asset_name": "target_ball",
+-            "x_offset": 2.0, 
+-            "speed_range": (1.0, 1.5), 
++            "x_offset": 1.5, 
++            "y_range": (-0.4, 0.4),   
++            "z_range": (0.5, 0.7),    
++            "speed_range": (2.0, 2.1), 
+         },
+     )
+ 
+@@ -278,18 +280,18 @@ class RewardsCfg:
+     # 2. 선방 보상 
+     save_shoulder = RewTerm(
+         func=mdp.ball_touched,
+-        weight=100.0,
+-        params={"sensor_name": "contact_shoulder", "min_force": 0.1},
++        weight=10.0,
++        params={"sensor_name": "contact_shoulder", "min_force": 0.001},
+     )
+     save_arm1 = RewTerm(
+         func=mdp.ball_touched,
+         weight=100.0,
+-        params={"sensor_name": "contact_arm1", "min_force": 0.1},
++        params={"sensor_name": "contact_arm1", "min_force": 0.001},
+     )
+     save_arm2 = RewTerm(
+         func=mdp.ball_touched,
+         weight=100.0,
+-        params={"sensor_name": "contact_arm2", "min_force": 0.1},
++        params={"sensor_name": "contact_arm2", "min_force": 0.001},
+     )
+     
+     # 3. 거리 보상 (팔 끝이 공이랑 가까울수록 좋음 -> 유도 기능)
+@@ -307,8 +309,8 @@ class RewardsCfg:
+     )
+     # Need fix
+     # 액션 부드럽게
+-    action_rate_penalty = RewTerm(func=mdp.action_rate_l2, weight=-0.05)
+-    dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)
++    #action_rate_penalty = RewTerm(func=mdp.action_rate_l2, weight=-0.05)
++    #dof_acc_l2 = RewTerm(func=mdp.joint_acc_l2, weight=-2.5e-7)
+ 
+     '''# ----------------------------------------------------
+     # [핵심] 걷기 안정화 (Penalty) - 걷는 게 문제라면 이 부분 가중치를 높이세요
+@@ -378,15 +380,15 @@ class TerminationsCfg:
+     # 1. 공 막음 (성공!) -> 리셋하고 다음 공 막기
+     success_shoulder = DoneTerm(
+         func=mdp.ball_touched,
+-        params={"sensor_name": "contact_shoulder", "min_force": 0.1},
++        params={"sensor_name": "contact_shoulder", "min_force": 0.001},
+     )
+     success_arm1 = DoneTerm(
+         func=mdp.ball_touched,
+-        params={"sensor_name": "contact_arm1", "min_force": 0.1},
++        params={"sensor_name": "contact_arm1", "min_force": 0.001},
+     )
+     success_arm2 = DoneTerm(
+         func=mdp.ball_touched,
+-        params={"sensor_name": "contact_arm2", "min_force": 0.1},
++        params={"sensor_name": "contact_arm2", "min_force": 0.001},
+     )
+     
+     # 2. 골 먹힘 (실패!) -> 공이 로봇 뒤로 지나가면 리셋
+diff --git a/example/urop_v0/mdp/rewards.py b/example/urop_v0/mdp/rewards.py
+index 20b7e220e2..63ef67742f 100644
+--- a/example/urop_v0/mdp/rewards.py
++++ b/example/urop_v0/mdp/rewards.py
+@@ -282,15 +282,17 @@ def teleport_ball_if_touched(
+ '''
+ 
+ # 1. 공 발사 함수 (Reset 시 사용)
++# [urop_v0/mdp/rewards.py]
++
+ def shoot_ball_towards_robot(
+     env: ManagerBasedRLEnv,
+     env_ids: torch.Tensor,
+     asset_name: str = "target_ball",
+     robot_name: str = "robot",
+-    x_offset: float = 2.5,    # 로봇 앞 2.5m 에서 발사
+-    y_range: tuple = (-0.5, 0.5), # 좌우 랜덤 범위
+-    z_range: tuple = (0.3, 0.8),  # 높이 랜덤 범위
+-    speed_range: tuple = (4.0, 6.0), # 공 속도 (m/s)
++    x_offset: float = 1.5,    # 로봇 앞 1.5m (속도 2.5m/s 기준 0.6초 거리)
++    y_range: tuple = (-0.5, 0.5), # 공 생성 위치의 좌우 범위
++    z_range: tuple = (0.5, 1.0),  # 공 생성 위치의 높이 범위
++    speed_range: tuple = (2.4, 2.5), # 공 속도
+ ) -> None:
+     device = env.device
+     n = len(env_ids)
+@@ -299,29 +301,32 @@ def shoot_ball_towards_robot(
+     robot_pos = env.scene[robot_name].data.root_pos_w[env_ids]
+     
+     # 2. 공 시작 위치 계산 (로봇 앞 x_offset 지점)
++    # 시작 위치는 랜덤하게 하되...
+     ball_pos = robot_pos.clone()
+     ball_pos[:, 0] += x_offset 
+     ball_pos[:, 1] += torch.rand(n, device=device) * (y_range[1] - y_range[0]) + y_range[0]
+     ball_pos[:, 2] = torch.rand(n, device=device) * (z_range[1] - z_range[0]) + z_range[0]
+     
+-    # 3. 속도 벡터 계산 (목표점: 로봇 몸통 쪽)
+-    # 목표점 = 로봇 위치 + 약간의 랜덤 노이즈 (골대 구석구석 찌르도록)
+-    target_pos = robot_pos.clone()
+-    target_pos[:, 1] += torch.rand(n, device=device) * 0.4 - 0.2 # 좌우 20cm 오차
+-    target_pos[:, 2] += torch.rand(n, device=device) * 0.4 + 0.2 # 높이 조절
+-    
+-    direction = target_pos - ball_pos
+-    direction = direction / torch.norm(direction, dim=-1, keepdim=True) # 단위 벡터
++    # 3. [핵심 수정] 속도 벡터 계산 (X축 일직선)
++    # 목표점 계산(target_pos) 로직을 제거하고,
++    # 무조건 로봇을 향해 '수평'으로 날아오게 방향을 고정합니다.
+     
++    direction = torch.zeros(n, 3, device=device)
++    direction[:, 0] = -1.0 # X축 반대 방향 (로봇 쪽)
++    # direction[:, 1] = 0.0 # Y축 속도 없음
++    # direction[:, 2] = 0.0 # Z축 속도 없음 (일직선)
++
++    # 속도 크기 적용
+     speed = torch.rand(n, device=device) * (speed_range[1] - speed_range[0]) + speed_range[0]
+     lin_vel = direction * speed.unsqueeze(-1)
+     
+     # 4. 물리 적용
+     ball = env.scene[asset_name]
++    
+     # 위치 설정
+     new_pose = torch.zeros(n, 7, device=device)
+     new_pose[:, :3] = ball_pos
+-    new_pose[:, 3] = 1.0 # quat w
++    new_pose[:, 3] = 1.0 # quat w (회전 없음)
+     
+     # 속도 설정
+     new_vel = torch.zeros(n, 6, device=device)
