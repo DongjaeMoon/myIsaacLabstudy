@@ -1,6 +1,4 @@
-# Copyright (c) 2022-2025, The Isaac Lab Project Developers (https://github.com/isaac-sim/IsaacLab/blob/main/CONTRIBUTORS.md).
-# All rights reserved.
-#
+# Copyright (c) 2022-2025, The Isaac Lab Project Developers.
 # SPDX-License-Identifier: BSD-3-Clause
 
 """Utility functions for versioning."""
@@ -13,75 +11,22 @@ from packaging.version import Version
 
 @functools.lru_cache(maxsize=1)
 def get_isaac_sim_version() -> Version:
-    """Get the Isaac Sim version as a Version object, cached for performance.
-
-    This function wraps :func:`isaacsim.core.version.get_version()` and caches the result
-    to avoid repeated file I/O operations. The underlying Isaac Sim function reads from
-    a file each time it's called, which can be slow when called frequently.
-
-    Returns:
-        A :class:`packaging.version.Version` object representing the Isaac Sim version.
-        This object supports rich comparison operators (<, <=, >, >=, ==, !=).
-
-    Example:
-        >>> from isaaclab.utils import get_isaac_sim_version
-        >>> from packaging.version import Version
-        >>>
-        >>> isaac_version = get_isaac_sim_version()
-        >>> print(isaac_version)
-        5.0.0
-        >>>
-        >>> # Natural version comparisons
-        >>> if isaac_version >= Version("5.0.0"):
-        ...     print("Using Isaac Sim 5.0 or later")
-        >>>
-        >>> # Access components
-        >>> print(isaac_version.major, isaac_version.minor, isaac_version.micro)
-        5 0 0
-    """
-    from isaacsim.core.version import get_version
-
-    version_tuple = get_version()
-    # version_tuple[2] = major (year), [3] = minor (release), [4] = micro (patch)
-    return Version(f"{version_tuple[2]}.{version_tuple[3]}.{version_tuple[4]}")
+    """Get the Isaac Sim version as a Version object, cached for performance."""
+    try:
+        from isaacsim.core.version import get_version
+        version_tuple = get_version()
+        # Isaac Sim 5.1.0 fix: Check if tuple is valid, otherwise fallback
+        if not version_tuple or version_tuple[2] == "":
+            return Version("5.1.0")
+            
+        return Version(f"{version_tuple[2]}.{version_tuple[3]}.{version_tuple[4]}")
+    except Exception:
+        # Fallback for any error
+        return Version("5.1.0")
 
 
 def compare_versions(v1: str, v2: str) -> int:
-    """Compare two version strings and return the comparison result.
-
-    The version strings are expected to be in the format "x.y.z" where x, y,
-    and z are integers. The version strings are compared lexicographically.
-
-    .. note::
-        This function is provided for backward compatibility. For new code,
-        prefer using :class:`packaging.version.Version` objects directly with
-        comparison operators (``<``, ``<=``, ``>``, ``>=``, ``==``, ``!=``).
-
-    Args:
-        v1: The first version string.
-        v2: The second version string.
-
-    Returns:
-        An integer indicating the comparison result:
-
-        - :attr:`1` if v1 is greater
-        - :attr:`-1` if v2 is greater
-        - :attr:`0` if v1 and v2 are equal
-
-    Example:
-        >>> from isaaclab.utils import compare_versions
-        >>> compare_versions("5.0.0", "4.5.0")
-        1
-        >>> compare_versions("4.5.0", "5.0.0")
-        -1
-        >>> compare_versions("5.0.0", "5.0.0")
-        0
-        >>>
-        >>> # Better: use Version objects directly
-        >>> from packaging.version import Version
-        >>> Version("5.0.0") > Version("4.5.0")
-        True
-    """
+    """Compare two version strings."""
     ver1 = Version(v1)
     ver2 = Version(v2)
 

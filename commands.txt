@@ -1,14 +1,15 @@
 # 'isaaclab'이라는 이름이 들어간 것만 죽이기
 pkill -9 -f isaaclab
 
-
+github token
+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
 
 [tensorboard]
 tensorboard --logdir=logs/rsl_rl/UROP_v0/2026-01-31_03-00-17_S0_teacher
 tensorboard --logdir=logs/rsl_rl/UROP_v0/2026-01-31_04-18-29_S1_teacher
 tensorboard --logdir=logs/rsl_rl/UROP_v0/2026-01-31_08-16-09_S2_teacher
 
-tensorboard --logdir=logs/rsl_rl/UROP_v1/2026-02-05_23-14-31
+tensorboard --logdir=logs/rsl_rl/UROP_v1/2026-02-07_01-51-27
 
 ./isaaclab.sh -p UROP/train_rsl_rl.py --task Isaac-Urop-v0 --num_envs 64
 UROP_EVAL_STAGE=2 \
@@ -21,21 +22,43 @@ UROP_NUM_STEPS_PER_ENV=96 \
 ./isaaclab.sh -p UROP/train_rsl_rl.py --task Isaac-Urop-v1 --num_envs 64 --max_iterations 20000 --headless
 
 UROP_MODE=teacher \
-UROP_STAGE0_ITERS=5000 \
-UROP_STAGE1_ITERS=3000 \
-./isaaclab.sh -p UROP/train_rsl_rl.py --task Isaac-Urop-v1 --num_envs 512 --max_iterations 20000 --headless
+UROP_STAGE0_ITERS=2000 \
+UROP_STAGE1_ITERS=2000 \
+./isaaclab.sh -p UROP/train_rsl_rl.py --task Isaac-Urop-v1 --num_envs 512 --max_iterations 10000 --headless
 
 UROP_EVAL_STAGE=1 \
 ./isaaclab.sh -p UROP/play_rsl_rl.py \
     --task Isaac-Urop-v1 \
     --num_envs 16 \
-    --checkpoint "logs/rsl_rl/UROP_v1/2026-02-05_23-14-31/model_8000.pt"
+    --checkpoint "logs/rsl_rl/UROP_v1/2026-02-06_20-31-35/model_2500.pt"
+    
+
+UROP_MODE=teacher \
+UROP_STAGE0_ITERS=2000 \
+UROP_STAGE1_ITERS=3000 \
+./isaaclab.sh -p UROP/train_rsl_rl.py \
+    --task Isaac-Urop-v1 \
+    --num_envs 4096 \
+    --max_iterations 10000 \
+    --headless
+
+UROP_EVAL_STAGE=2 \
+./isaaclab.sh -p UROP/play_rsl_rl.py \
+    --task Isaac-Urop-v1 \
+    --num_envs 16 \
+    --checkpoint "logs/rsl_rl/UROP_v1/2026-02-05_23-14-31/model_9999.pt"
+    
+    
 
 
 UROP_MODE=teacher \
 UROP_STAGE0_ITERS=20 \
 UROP_STAGE1_ITERS=20 \
 ./isaaclab.sh -p UROP/train_rsl_rl.py --task Isaac-Urop-v1 --num_envs 16 --max_iterations 100
+
+[[[Sim2sim]
+./isaaclab.sh -p deploy/sim2sim_g1.py
+
 
 ./run_urop_curriculum.sh --num_envs 256 --iters0 3000 --iters1 6000 --iters2 12000
 ./run_urop_curriculum.sh --num_envs 256 --iters0 20 --iters1 20 --iters2 20
