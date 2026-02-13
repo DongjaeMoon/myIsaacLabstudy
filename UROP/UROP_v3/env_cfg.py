@@ -280,7 +280,7 @@ class EventCfg:
         params={
             #"asset_name": "object",
             "stage0": {  # off (멀리)
-                "pos_x": (2.0, 2.4), "pos_y": (-0.2, 0.2), "pos_z": (0.25, 0.35),
+                "pos_x": (1.5, 1.6), "pos_y": (0.0, 0.1), "pos_z": (0.25, 0.27),
                 "vel_x": (0.0, 0.0), "vel_y": (0.0, 0.0), "vel_z": (0.0, 0.0),
             },
             "stage1": {  # gentle (v1 감 그대로)  :contentReference[oaicite:2]{index=2}
