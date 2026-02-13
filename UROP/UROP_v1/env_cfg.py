@@ -194,13 +194,13 @@ class RewardsCfg:
     )
     not_drop = RewTerm(
         func=mdp.object_not_dropped_bonus_curriculum,
-        weight=3.0,
+        weight=2.0,
         params={"min_z": 0.25, "w0": 0.0, "w1": 0.5, "w2": 0.5},
     )
 
     impact = RewTerm(
         func=mdp.impact_peak_penalty_curriculum,
-        weight=-0.00,
+        weight=-0.01,
         params={
             "sensor_names": ["contact_torso", "contact_lhand", "contact_rhand"],
             "force_thr_stage1": 400.0,
@@ -213,7 +213,7 @@ class RewardsCfg:
 
     action_rate = RewTerm(
         func=mdp.action_rate_penalty_curriculum,
-        weight=-0.05,
+        weight=-0.01,
         params={"w0": 0.05, "w1": 0.02, "w2": 0.01},
     )
 
@@ -234,8 +234,8 @@ class EventCfg:
         mode="reset",
         params={
             "asset_name": "robot",
-            "stage0": {"lin_x": (-0.2, 0.2), "lin_y": (-0.2, 0.2), "yaw_rate": (-0.2, 0.2)},
-            "stage1": {"lin_x": (-0.1, 0.1), "lin_y": (-0.1, 0.1), "yaw_rate": (-0.0, 0.0)},
+            "stage0": {"lin_x": (-0.0, 0.0), "lin_y": (-0.0, 0.0), "yaw_rate": (-0.0, 0.0)},
+            "stage1": {"lin_x": (-0.0, 0.0), "lin_y": (-0.0, 0.0), "yaw_rate": (-0.0, 0.0)},
             "stage2": {"lin_x": (-0.0, 0.0), "lin_y": (-0.0, 0.0), "yaw_rate": (-0.0, 0.0)},
         },
     )

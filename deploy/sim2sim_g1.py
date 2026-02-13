@@ -29,7 +29,7 @@ from isaacsim.core.utils.types import ArticulationAction
 
 
 # ----------------- Paths (keep your original constants) -----------------
-POLICY_PATH = "/home/dongjae/isaaclab/myIsaacLabstudy/logs/rsl_rl/UROP_v1/2026-02-06_20-31-35/exported/policy.pt"
+POLICY_PATH = "/home/dongjae/isaaclab/myIsaacLabstudy/logs/rsl_rl/UROP_v1/2026-02-05_23-14-31/exported/policy.pt"
 ROBOT_USD_PATH = "/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_v1/usd/G1_23DOF_UROP.usd"
 ROBOT_PRIM_PATH = "/World/G1"
 

@@ -12,15 +12,15 @@ from isaaclab.utils import configclass
 class SteelPPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 96
     max_iterations = 10000
-    save_interval = 50
+    save_interval = 250
     experiment_name = "UROP_v1"
     empirical_normalization = True
     policy = RslRlPpoActorCriticCfg(
         init_noise_std=0.3,
-        #actor_hidden_dims=[256, 128, 64],
-        actor_hidden_dims=[512, 256, 128],
-        #critic_hidden_dims=[256, 128, 64],
-        critic_hidden_dims=[512, 256, 128],
+        actor_hidden_dims=[256, 128, 64],
+        #actor_hidden_dims=[512, 256, 128],
+        critic_hidden_dims=[256, 128, 64],
+        #critic_hidden_dims=[512, 256, 128],
         activation="elu",
     )
     algorithm = RslRlPpoAlgorithmCfg(
@@ -29,7 +29,7 @@ class SteelPPORunnerCfg(RslRlOnPolicyRunnerCfg):
         clip_param=0.2,
         entropy_coef=5e-3,
         num_learning_epochs=5,
-        num_mini_batches=32,
+        num_mini_batches=8,
         # num_mini_batches=8,
         learning_rate=5.0e-4, #5.0e-4->1.0e-4
         schedule="adaptive",
