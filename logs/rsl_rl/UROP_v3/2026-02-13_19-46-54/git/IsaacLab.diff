@@ -1,0 +1,49 @@
+--- git status ---
+On branch main
+Your branch and 'origin/main' have diverged,
+and have 54 and 47 different commits each, respectively.
+  (use "git pull" to merge the remote branch into yours)
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   UROP/UROP_v3/scene_objects_cfg.py
+	modified:   commands.txt
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	env_list.txt
+
+no changes added to commit (use "git add" and/or "git commit -a") 
+
+
+--- git diff ---
+diff --git a/UROP/UROP_v3/scene_objects_cfg.py b/UROP/UROP_v3/scene_objects_cfg.py
+index 31411da933..ca0106465c 100644
+--- a/UROP/UROP_v3/scene_objects_cfg.py
++++ b/UROP/UROP_v3/scene_objects_cfg.py
+@@ -16,8 +16,8 @@ dj_robot_cfg = ArticulationCfg(
+     prim_path="{ENV_REGEX_NS}/Robot",
+     spawn=sim_utils.UsdFileCfg(
+         # ★ 동재님이 만드신 최종 파일 경로
+-        #usd_path="/home/roro_common/mdj/IsaacLab/UROP/UROP_v0/usd/G1_23DOF_UROP.usd",
+-        usd_path="/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_v3/usd/G1_23DOF_UROP.usd",
++        usd_path="/home/roro_common/mdj/IsaacLab/UROP/UROP_v3/usd/G1_23DOF_UROP.usd",
++        #usd_path="/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_v3/usd/G1_23DOF_UROP.usd",
+         activate_contact_sensors=True, # 충격 감지를 위해 필수
+     ),
+     init_state=ArticulationCfg.InitialStateCfg(
+diff --git a/commands.txt b/commands.txt
+index 737b9dff8d..1689afd915 100644
+--- a/commands.txt
++++ b/commands.txt
+@@ -1,9 +1,6 @@
+ # 'isaaclab'이라는 이름이 들어간 것만 죽이기
+ pkill -9 -f isaaclab
+ 
+-github token
+-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
+-
+ [tensorboard]
+ tensorboard --logdir=logs/rsl_rl/UROP_v0/2026-01-31_03-00-17_S0_teacher
+ tensorboard --logdir=logs/rsl_rl/UROP_v0/2026-01-31_04-18-29_S1_teacher
