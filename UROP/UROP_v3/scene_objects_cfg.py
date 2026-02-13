@@ -63,8 +63,91 @@ bulky_object_cfg = RigidObjectCfg(
             disable_gravity=False,    # 이중 안전장치
         ),
         collision_props=sim_utils.CollisionPropertiesCfg(),
+        activate_contact_sensors=True, # 충격 감지를 위해 필수
     ),
     init_state=RigidObjectCfg.InitialStateCfg(pos=(0.5, 0.0, 1.0)), # 로봇 앞 1m
 )
 
+# -------------------------
+# Contact sensor configs
+# -------------------------
 
+contact_object_ground_cfg = ContactSensorCfg(
+    prim_path="{ENV_REGEX_NS}/Object",
+    # ground prim이 /World/ground 가 맞다면 OK. 아니면 네 stage의 실제 ground prim으로 수정.
+    # (필터가 정확히 매칭되도록 wildcard 권장)
+    filter_prim_paths_expr=["{ENV_REGEX_NS}/Ground"],
+    update_period=0.0,
+    history_length=1,
+)
+
+contact_torso_cfg = ContactSensorCfg(
+    prim_path="{ENV_REGEX_NS}/Robot/torso_link",
+    filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],
+    update_period=0.0,
+    history_length=1,
+)
+
+# Left arm
+contact_l_shoulder_pitch_cfg = ContactSensorCfg(
+    prim_path="{ENV_REGEX_NS}/Robot/left_shoulder_pitch_link",
+    filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],
+    update_period=0.0,
+    history_length=1,
+)
+contact_l_shoulder_roll_cfg = ContactSensorCfg(
+    prim_path="{ENV_REGEX_NS}/Robot/left_shoulder_roll_link",
+    filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],
+    update_period=0.0,
+    history_length=1,
+)
+contact_l_shoulder_yaw_cfg = ContactSensorCfg(
+    prim_path="{ENV_REGEX_NS}/Robot/left_shoulder_yaw_link",
+    filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],
+    update_period=0.0,
+    history_length=1,
+)
+contact_l_elbow_cfg = ContactSensorCfg(
+    prim_path="{ENV_REGEX_NS}/Robot/left_elbow_link",
+    filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],
+    update_period=0.0,
+    history_length=1,
+)
+contact_l_hand_cfg = ContactSensorCfg(
+    prim_path="{ENV_REGEX_NS}/Robot/left_wrist_roll_rubber_hand",
+    filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],
+    update_period=0.0,
+    history_length=1,
+)
+
+# Right arm
+contact_r_shoulder_pitch_cfg = ContactSensorCfg(
+    prim_path="{ENV_REGEX_NS}/Robot/right_shoulder_pitch_link",
+    filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],
+    update_period=0.0,
+    history_length=1,
+)
+contact_r_shoulder_roll_cfg = ContactSensorCfg(
+    prim_path="{ENV_REGEX_NS}/Robot/right_shoulder_roll_link",
+    filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],
+    update_period=0.0,
+    history_length=1,
+)
+contact_r_shoulder_yaw_cfg = ContactSensorCfg(
+    prim_path="{ENV_REGEX_NS}/Robot/right_shoulder_yaw_link",
+    filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],
+    update_period=0.0,
+    history_length=1,
+)
+contact_r_elbow_cfg = ContactSensorCfg(
+    prim_path="{ENV_REGEX_NS}/Robot/right_elbow_link",
+    filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],
+    update_period=0.0,
+    history_length=1,
+)
+contact_r_hand_cfg = ContactSensorCfg(
+    prim_path="{ENV_REGEX_NS}/Robot/right_wrist_roll_rubber_hand",
+    filter_prim_paths_expr=["{ENV_REGEX_NS}/Object"],
+    update_period=0.0,
+    history_length=1,
+)

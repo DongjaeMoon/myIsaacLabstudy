@@ -1,5 +1,6 @@
 from __future__ import annotations
 import torch
+import math
 from typing import TYPE_CHECKING
 
 from .observations import quat_rotate_inverse, quat_mul, quat_conj
@@ -28,6 +29,15 @@ def _get_stage(env) -> int:
 def _stage_w(env, w0: float, w1: float, w2: float) -> float:
     s = _get_stage(env)
     return float(w0 if s == 0 else (w1 if s == 1 else w2))
+
+def _upright_cos(env: "ManagerBasedRLEnv") -> torch.Tensor:
+    """cos(tilt). 1=완전 직립, 0=90도 누움"""
+    robot = env.scene["robot"]
+    q = robot.data.root_quat_w
+    g_world = torch.tensor([0.0, 0.0, -1.0], device=env.device).unsqueeze(0).repeat(env.num_envs, 1)
+    g_b = quat_rotate_inverse(q, g_world)
+    return (-g_b[:, 2]).clamp(0.0, 1.0)
+
 
 # -------------------------
 # Basic stabilization
@@ -109,6 +119,8 @@ def hold_pose_reward_curriculum(
     env: "ManagerBasedRLEnv",
     torso_body_name: str = "torso_link",
     sigma: float = 0.35,
+    upright_pow: float = 2.0,   # <-- 추가
+    min_upright: float = 0.2,   # <-- 추가
     w0: float = 0.0,
     w1: float = 2.0,
     w2: float = 2.5,
@@ -132,6 +144,9 @@ def hold_pose_reward_curriculum(
 
     d = torch.norm(obj.data.root_pos_w - torso_pos, dim=-1)
     r = torch.exp(-(d / sigma) ** 2)
+        # ---- 추가
+    u = _upright_cos(env)
+    r = r * torch.clamp(u, min_upright, 1.0) ** upright_pow
     return r * _stage_w(env, w0, w1, w2)
 
 
@@ -139,6 +154,8 @@ def hold_object_vel_reward_curriculum(
     env: "ManagerBasedRLEnv",
     torso_body_name: str = "torso_link",
     sigma: float = 0.6,
+    upright_pow: float = 2.0,   # <-- 추가
+    min_upright: float = 0.2,   # <-- 추가
     w0: float = 0.0,
     w1: float = 0.6,
     w2: float = 1.0,
@@ -166,6 +183,10 @@ def hold_object_vel_reward_curriculum(
 
     dv = torch.norm(obj.data.root_lin_vel_w - torso_v, dim=-1)
     r = torch.exp(-(dv / sigma) ** 2)
+
+        # ---- 추가
+    u = _upright_cos(env)
+    r = r * torch.clamp(u, min_upright, 1.0) ** upright_pow
     return r * _stage_w(env, w0, w1, w2)
 
 
@@ -209,4 +230,6 @@ def object_not_dropped_bonus_curriculum(env: "ManagerBasedRLEnv", min_z=0.70, ma
     z_ok = (obj.data.root_pos_w[:, 2] > min_z).float()
     dist = torch.norm(obj.data.root_pos_w - robot.data.root_pos_w, dim=-1)
     d_ok = (dist < max_dist).float()
-    return (z_ok * d_ok) * _stage_w(env, w0, w1, w2)
+    u = _upright_cos(env)
+    upright_gate = torch.clamp(u, 0.0, 1.0) ** 2.0   # <-- 추가 (기울면 보너스 깎임)
+    return (z_ok * d_ok) * upright_gate * _stage_w(env, w0, w1, w2)
