@@ -1,5 +1,4 @@
 # ~/isaaclab/myIsaacLabstudy/deploy/sim2sim_g1.py
-# ~/isaaclab/myIsaacLabstudy/deploy/sim2sim_g1.py
 # Refactored: match IsaacLab training pipeline as closely as possible.
 # Key fixes:
 #  - [FIX] Action-to-DOF mapping uses ActionsCfg joint order (NOT robot.dof_names order).

@@ -1,7 +1,8 @@
 # Copyright (c) 2022-2025, The Isaac Lab Project Developers.
 # All rights reserved.
-#
+# [/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_v3/agents/rsl_rl_ppo_cfg.py]
 # SPDX-License-Identifier: BSD-3-Clause
+
 
 from isaaclab_rl.rsl_rl import RslRlOnPolicyRunnerCfg, RslRlPpoActorCriticCfg, RslRlPpoAlgorithmCfg
 

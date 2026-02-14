@@ -83,6 +83,7 @@ import UROP_v0
 import UROP_v1
 import UROP_v2
 import UROP_v3
+import UROP_v4
 
 @hydra_task_config(args_cli.task, args_cli.agent)
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: RslRlBaseRunnerCfg):

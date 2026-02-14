@@ -1,3 +1,4 @@
+#[/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_v3/scene_objects_cfg.py]
 import isaaclab.sim as sim_utils
 from isaaclab.assets import Articulation
 from isaaclab.assets import ArticulationCfg

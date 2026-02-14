@@ -1,0 +1,23 @@
+[package]
+# 확장 프로그램의 버전과 정보를 입력합니다.
+version = "1.0.0"
+title = "Dongjae G1 Study Extension"
+description = "Custom G1 loading example for study"
+authors = ["Dongjae"]
+repository = ""
+keywords = ["isaac", "g1", "study"]
+changelog = ""
+readme = ""
+preview_image = ""
+icon = ""
+
+# 이 확장 프로그램이 의존하는 다른 모듈들입니다.
+[dependencies]
+"isaacsim.examples.browser" = {}
+"isaacsim.examples.interactive" = {}
+"isaacsim.core.api" = {}
+
+# [중요] 실행할 메인 파이썬 모듈을 지정합니다.
+# example_extension.py 파일이 있는 폴더가 모듈로 인식되게 설정합니다.
+[[python.module]]
+name = "example_extension"

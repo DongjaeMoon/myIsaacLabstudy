@@ -1,3 +1,4 @@
+#[/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_v3/env_cfg.py]
 import os
 from dataclasses import MISSING
 import isaaclab.sim as sim_utils
