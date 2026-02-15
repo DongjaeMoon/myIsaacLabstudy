@@ -1,0 +1,85 @@
+G1 23DOF URDF/mesh 요약 (자동 추출)
+------------------------------------------------------------
+- URDF: /mnt/data/g1_23dof.urdf
+- Meshes: /mnt/data/meshes.zip (해제 후 'meshes/*.STL' 사용)
+
+[1] 모델 구조
+- Root link (기준 프레임): pelvis (URDF base)
+- 링크 수: 33
+- 조인트 수(고정 포함): 32
+- 구동 DOF 조인트 수: 23 (revolute/continuous/prismatic)
+
+[2] 질량(URDF inertial 기준)
+- 총 질량(모든 링크 mass 합): 34.134 kg
+- 무거운 링크 TOP 8:
+  * torso_link               : 8.562 kg
+  * pelvis                   : 3.813 kg
+  * left_knee_link           : 1.932 kg
+  * right_knee_link          : 1.932 kg
+  * left_hip_yaw_link        : 1.702 kg
+  * right_hip_yaw_link       : 1.702 kg
+  * left_hip_roll_link       : 1.520 kg
+  * right_hip_roll_link      : 1.520 kg
+
+[3] 0-자세(모든 조인트 각=0)에서의 외형 치수(visual mesh AABB)
+  ※ visual mesh 기반이라 실제 충돌/하드웨어와 약간 다를 수 있음.
+- pelvis 프레임에서 전체 AABB min [m]: x=-0.0726, y=-0.1816, z=-0.7923
+- pelvis 프레임에서 전체 AABB max [m]: x=0.3691, y=0.1816, z=0.5306
+- 전체 크기(가로/세로/높이) [m]: X=0.4417, Y=0.3632, Z=1.3228
+- 최저점(z_min) 기준 pelvis 높이 [m] ~= 0.7923
+
+[4] 주요 링크 원점 위치 (pelvis 기준, 0-자세)
+- pelvis                      : x=0.0000, y=0.0000, z=0.0000
+- torso_link                  : x=-0.0040, y=0.0000, z=0.0540
+- left_hip_pitch_link         : x=0.0000, y=0.0645, z=-0.1027
+- right_hip_pitch_link        : x=0.0000, y=-0.0645, z=-0.1027
+- left_ankle_roll_link        : x=-0.0000, y=0.1185, z=-0.7569
+- right_ankle_roll_link       : x=-0.0000, y=-0.1185, z=-0.7569
+- left_shoulder_pitch_link    : x=-0.0000, y=0.1002, z=0.2918
+- right_shoulder_pitch_link   : x=-0.0000, y=-0.1002, z=0.2918
+- left_wrist_roll_rubber_hand : x=0.1158, y=0.1487, z=0.0952
+- right_wrist_roll_rubber_hand: x=0.1158, y=-0.1487, z=0.0952
+
+[5] 팔/다리 길이(대략, 0-자세 + visual mesh 기준)
+- Left arm (left_shoulder_pitch_link 기준, 팔 전체 mesh 최원점 거리) : 0.428 m
+- Right arm (right_shoulder_pitch_link 기준, 팔 전체 mesh 최원점 거리): 0.428 m
+- Left leg (left_hip_pitch_link -> 해당 다리 mesh 최저점 거리) : 0.694 m
+- Right leg (right_hip_pitch_link -> 해당 다리 mesh 최저점 거리): 0.694 m
+- Shoulder pitch link 간 거리(어깨 폭 proxy): 0.200 m
+- Hip pitch link 간 거리(골반 폭 proxy): 0.129 m
+
+[6] 발 최저점(0-자세, pelvis 기준; 해당 다리 mesh 중 z 최소점)
+- Left lowest point:  x=-0.0628, y=0.1084, z=-0.7923
+- Right lowest point: x=-0.0628, y=-0.1084, z=-0.7923
+
+[7] 구동 조인트(23 DOF) limit 요약 (있으면 rad/deg)
+  형식: joint_name | parent->child | axis | [lower, upper] (rad / deg)
+- left_hip_pitch_joint         | pelvis -> left_hip_pitch_link | axis=(0,1,0) | [-2.531, 2.880] rad  /  [-145.0, 165.0] deg
+- left_hip_roll_joint          | left_hip_pitch_link -> left_hip_roll_link | axis=(1,0,0) | [-0.524, 2.967] rad  /  [-30.0, 170.0] deg
+- left_hip_yaw_joint           | left_hip_roll_link -> left_hip_yaw_link | axis=(0,0,1) | [-2.758, 2.758] rad  /  [-158.0, 158.0] deg
+- left_knee_joint              | left_hip_yaw_link -> left_knee_link | axis=(0,1,0) | [-0.087, 2.880] rad  /  [-5.0, 165.0] deg
+- left_ankle_pitch_joint       | left_knee_link -> left_ankle_pitch_link | axis=(0,1,0) | [-0.873, 0.524] rad  /  [-50.0, 30.0] deg
+- left_ankle_roll_joint        | left_ankle_pitch_link -> left_ankle_roll_link | axis=(1,0,0) | [-0.262, 0.262] rad  /  [-15.0, 15.0] deg
+- right_hip_pitch_joint        | pelvis -> right_hip_pitch_link | axis=(0,1,0) | [-2.531, 2.880] rad  /  [-145.0, 165.0] deg
+- right_hip_roll_joint         | right_hip_pitch_link -> right_hip_roll_link | axis=(1,0,0) | [-2.967, 0.524] rad  /  [-170.0, 30.0] deg
+- right_hip_yaw_joint          | right_hip_roll_link -> right_hip_yaw_link | axis=(0,0,1) | [-2.758, 2.758] rad  /  [-158.0, 158.0] deg
+- right_knee_joint             | right_hip_yaw_link -> right_knee_link | axis=(0,1,0) | [-0.087, 2.880] rad  /  [-5.0, 165.0] deg
+- right_ankle_pitch_joint      | right_knee_link -> right_ankle_pitch_link | axis=(0,1,0) | [-0.873, 0.524] rad  /  [-50.0, 30.0] deg
+- right_ankle_roll_joint       | right_ankle_pitch_link -> right_ankle_roll_link | axis=(1,0,0) | [-0.262, 0.262] rad  /  [-15.0, 15.0] deg
+- waist_yaw_joint              | pelvis -> torso_link | axis=(0,0,1) | [-2.618, 2.618] rad  /  [-150.0, 150.0] deg
+- left_shoulder_pitch_joint    | torso_link -> left_shoulder_pitch_link | axis=(0,1,0) | [-3.089, 2.670] rad  /  [-177.0, 153.0] deg
+- left_shoulder_roll_joint     | left_shoulder_pitch_link -> left_shoulder_roll_link | axis=(1,0,0) | [-1.588, 2.252] rad  /  [-91.0, 129.0] deg
+- left_shoulder_yaw_joint      | left_shoulder_roll_link -> left_shoulder_yaw_link | axis=(0,0,1) | [-2.618, 2.618] rad  /  [-150.0, 150.0] deg
+- left_elbow_joint             | left_shoulder_yaw_link -> left_elbow_link | axis=(0,1,0) | [-1.047, 2.094] rad  /  [-60.0, 120.0] deg
+- left_wrist_roll_joint        | left_elbow_link -> left_wrist_roll_rubber_hand | axis=(1,0,0) | [-1.972, 1.972] rad  /  [-113.0, 113.0] deg
+- right_shoulder_pitch_joint   | torso_link -> right_shoulder_pitch_link | axis=(0,1,0) | [-3.089, 2.670] rad  /  [-177.0, 153.0] deg
+- right_shoulder_roll_joint    | right_shoulder_pitch_link -> right_shoulder_roll_link | axis=(1,0,0) | [-2.252, 1.588] rad  /  [-129.0, 91.0] deg
+- right_shoulder_yaw_joint     | right_shoulder_roll_link -> right_shoulder_yaw_link | axis=(0,0,1) | [-2.618, 2.618] rad  /  [-150.0, 150.0] deg
+- right_elbow_joint            | right_shoulder_yaw_link -> right_elbow_link | axis=(0,1,0) | [-1.047, 2.094] rad  /  [-60.0, 120.0] deg
+- right_wrist_roll_joint       | right_elbow_link -> right_wrist_roll_rubber_hand | axis=(1,0,0) | [-1.972, 1.972] rad  /  [-113.0, 113.0] deg
+
+[8] upright(넘어짐 판정) 참고
+현재 코드에서 upright = -g_b[:,2] 는 '몸체 +Z축이 world +Z축과 이루는 기울기 각도 θ'의 cos(θ) 값임.
+예: min_upright=0.4  =>  θ_max = arccos(0.4) ≈ 66.4 deg (이보다 더 기울면 fallen)
+
+끝. (필요하면: 특정 링크/조인트 기준으로 더 정확한 길이/COM/관절 위치도 계산해 줄 수 있음)
