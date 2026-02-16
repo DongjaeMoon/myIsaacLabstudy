@@ -185,7 +185,7 @@ class RewardsCfg:
     #hold_pose = RewTerm(func=mdp.hold_pose_reward_curriculum, weight=1.0, params={"target_offset": (0.50, 0.0, 1.00), "sigma": 0.30})
     hold_pose = RewTerm(
     func=mdp.hold_pose_reward_curriculum,
-    weight=3.0,
+    weight=2.0,
     params={
         "torso_body_name": "torso_link",  # 네 body_names에 맞게 필요시 수정
         "sigma": 0.35,
@@ -211,16 +211,28 @@ class RewardsCfg:
 
     # 2. contact_hold (합집합) -> contact_symmetric (교집합)
     # 한쪽만 닿으면 점수 없음!
-    contact_hold = RewTerm(
+    contact_symmetric = RewTerm(
         func=mdp.contact_hold_bonus_symmetric,
-        weight=1.0, # 잡았을 때 보상을 좀 더 강력하게
+        weight=2.0,  # 기본 2점 + 몸통 닿으면 4점
         params={
-            "sensor_names_left": ["contact_l_elbow", "contact_l_hand"],
-            "sensor_names_right": ["contact_r_elbow", "contact_r_hand"],
+            # [수정] 왼팔: 어깨(yaw) + 팔꿈치 + 손
+            "sensor_names_left": [
+                "contact_l_shoulder_yaw", 
+                "contact_l_elbow", 
+                "contact_l_hand"
+            ],
+            # [수정] 오른팔: 어깨(yaw) + 팔꿈치 + 손
+            "sensor_names_right": [
+                "contact_r_shoulder_yaw", 
+                "contact_r_elbow", 
+                "contact_r_hand"
+            ],
+            # [유지] 몸통 보너스용
+            "sensor_names_torso": ["contact_torso"], 
             "thr": 1.0,
         },
     )
-
+    '''
     contact_hold = RewTerm(
         func=mdp.contact_hold_bonus_curriculum,
         weight=1.5,
@@ -234,7 +246,7 @@ class RewardsCfg:
             ],
             "thr": 1.0,
         },
-    )
+    )'''
 
     not_drop = RewTerm(func=mdp.object_not_dropped_bonus_curriculum, weight=1.0, params={"min_z": 0.70})
     impact = RewTerm(

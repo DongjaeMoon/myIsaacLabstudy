@@ -288,43 +288,51 @@ def hands_reach_object_reward_curriculum(
     return (rew_l * rew_r) * _stage_w(env, w0, w1, w2) * _toss_active(env)
 
 
+# [UROP_v4/mdp/rewards.py]
+
 def contact_hold_bonus_symmetric(
     env: "ManagerBasedRLEnv", 
     sensor_names_left: list[str], 
-    sensor_names_right: list[str], 
+    sensor_names_right: list[str],
+    sensor_names_torso: list[str] = None,  # <-- 이 부분이 있어야 함
     thr=1.0, 
     w0=0.0, 
     w1=0.6, 
     w2=0.9
 ) -> torch.Tensor:
-    """
-    [MODIFIED] 왼쪽과 오른쪽이 '동시에' 닿아야만 보상.
-    한쪽만 닿으면 국물도 없음.
-    """
-    # 1. 왼쪽 접촉 확인
+    # 1. 왼쪽
     left_contacts = []
     for name in sensor_names_left:
         s = env.scene[name]
         f = s.data.net_forces_w.reshape(env.num_envs, -1)
         left_contacts.append((torch.norm(f, dim=-1) > thr).float())
     
-    # 2. 오른쪽 접촉 확인
+    # 2. 오른쪽
     right_contacts = []
     for name in sensor_names_right:
         s = env.scene[name]
         f = s.data.net_forces_w.reshape(env.num_envs, -1)
         right_contacts.append((torch.norm(f, dim=-1) > thr).float())
 
-    # 3. 각 팔이 접촉했는가? (Max로 하나라도 닿으면 True)
+    # 3. 몸통 (보너스)
+    if sensor_names_torso is not None:
+        torso_contacts = []
+        for name in sensor_names_torso:
+            s = env.scene[name]
+            f = s.data.net_forces_w.reshape(env.num_envs, -1)
+            torso_contacts.append((torch.norm(f, dim=-1) > thr).float())
+        t_hit = torch.stack(torso_contacts, dim=-1).max(dim=-1).values
+    else:
+        t_hit = torch.zeros(env.num_envs, device=env.device)
+
     l_hit = torch.stack(left_contacts, dim=-1).max(dim=-1).values
     r_hit = torch.stack(right_contacts, dim=-1).max(dim=-1).values
-
-    # 4. 양쪽 다 닿았을 때만 보상 (AND 조건)
-    score = l_hit * r_hit 
+    
+    # [로직] 양손 필수(AND) * (1 + 몸통보너스)
+    hands_ok = l_hit * r_hit 
+    score = hands_ok * (1.0 + 1.0 * t_hit) 
 
     return (score * _stage_w(env, w0, w1, w2)) * _toss_active(env)
-
-# [UROP_v4/mdp/rewards.py] 맨 아래에 추가
 
 def ready_pose_when_waiting(
     env: "ManagerBasedRLEnv",
