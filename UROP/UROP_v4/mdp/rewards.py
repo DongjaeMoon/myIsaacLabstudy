@@ -323,3 +323,39 @@ def contact_hold_bonus_symmetric(
     score = l_hit * r_hit 
 
     return (score * _stage_w(env, w0, w1, w2)) * _toss_active(env)
+
+# [UROP_v4/mdp/rewards.py] 맨 아래에 추가
+
+def ready_pose_when_waiting(
+    env: "ManagerBasedRLEnv",
+    sigma: float = 0.5,
+    w0: float = 1.0,  # stage0 가중치
+    w1: float = 1.0,  # stage1 가중치
+    w2: float = 1.0,  # stage2 가중치
+) -> torch.Tensor:
+    """
+    [핵심] Toss 신호가 0일 때(대기 중), 로봇이 초기 자세(Default Pose)와 다르면 점수를 깎음.
+    이게 있어야 '팔 뒤로 뻗고 대기하는' 이상한 짓을 안 함.
+    """
+    # 1. 현재 던져진 상태인지 확인
+    if hasattr(env, "_urop_toss_count"):
+        is_tossed = (env._urop_toss_count > 0).float()
+    else:
+        is_tossed = torch.ones(env.num_envs, device=env.device)
+
+    # 2. 로봇 데이터 가져오기
+    robot = env.scene["robot"]
+    
+    # default_joint_pos는 로봇 로딩될 때의 그 '차려 자세'입니다.
+    target = robot.data.default_joint_pos
+    current = robot.data.joint_pos
+
+    # 3. 자세 차이 계산
+    diff = torch.norm(current - target, dim=-1)
+    rew = torch.exp(-(diff / sigma) ** 2)
+
+    # 4. [중요] 박스가 날아오면(is_tossed=1) 이 보상을 꺼버림 (0점)
+    # 그래야 박스 잡으려고 자유롭게 움직임
+    mask = (1.0 - is_tossed)
+    
+    return rew * mask * _stage_w(env, w0, w1, w2)

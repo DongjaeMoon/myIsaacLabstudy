@@ -2,7 +2,7 @@
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
-
+#[/home/dongjae/isaaclab/myIsaacLabstudy/source/isaaclab_tasks/isaaclab_tasks/manager_based/locomotion/velocity/mdp/rewards.py]
 """Common functions that can be used to define rewards for the learning environment.
 
 The functions can be passed to the :class:`isaaclab.managers.RewardTermCfg` object to

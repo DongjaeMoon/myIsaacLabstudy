@@ -2,7 +2,7 @@
 # All rights reserved.
 #
 # SPDX-License-Identifier: BSD-3-Clause
-
+#[/home/dongjae/isaaclab/myIsaacLabstudy/source/isaaclab_tasks/isaaclab_tasks/manager_based/locomotion/velocity/mdp/terminations.py]
 """Common functions that can be used to activate certain terminations.
 
 The functions can be passed to the :class:`isaaclab.managers.TerminationTermCfg` object to enable

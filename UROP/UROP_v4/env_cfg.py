@@ -174,6 +174,12 @@ class RewardsCfg:
     joint_vel = RewTerm(func=mdp.joint_vel_l2_penalty_curriculum, weight=-0.0001)
     torque = RewTerm(func=mdp.torque_l2_penalty_curriculum, weight=-0.00001)
 
+    ready_pose_wait = RewTerm(
+        func=mdp.ready_pose_when_waiting,
+        weight=1.0,  
+        params={"sigma": 0.5}
+    )
+
     # catch/hold
     reach = RewTerm(func=mdp.torso_reach_object_reward_curriculum, weight=0.6, params={"sigma": 0.9, "w0": 0.0, "w1": 1.0, "w2": 0.8})
     #hold_pose = RewTerm(func=mdp.hold_pose_reward_curriculum, weight=1.0, params={"target_offset": (0.50, 0.0, 1.00), "sigma": 0.30})
