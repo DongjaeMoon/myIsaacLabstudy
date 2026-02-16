@@ -51,6 +51,20 @@ def quat_to_rot6d(q: torch.Tensor) -> torch.Tensor:
 # -------------------------
 # Observations
 # -------------------------
+
+def toss_state(env: "ManagerBasedRLEnv") -> torch.Tensor:
+    """
+    박스가 던져졌는지 여부를 알려주는 1차원 신호.
+    1.0 = 던져짐 (Action!), 0.0 = 대기중 (Wait)
+    """
+    if hasattr(env, "_urop_toss_count"):
+        # boolean을 float으로 변환 (True=1.0, False=0.0)
+        return (env._urop_toss_count > 0).float().unsqueeze(-1)
+    
+    # 만약 toss_count가 없는 초기화 단계라면 기본 0.0 반환
+    return torch.zeros((env.num_envs, 1), device=env.device)
+
+
 def robot_proprio(env: "ManagerBasedRLEnv", torque_scale: float = 1.0/80.0) -> torch.Tensor:
     robot = env.scene["robot"]
     q = robot.data.root_quat_w
@@ -125,10 +139,9 @@ def object_rel_state(
         mask = (torch.rand(env.num_envs, device=env.device) < drop_prob).float().unsqueeze(-1)
         x = x * (1.0 - mask)
 
-        # ✅ toss 이후에만 object 관측 활성화 (toss 전에는 0)
-    if hasattr(env, "_urop_toss_count"):
-        active = (env._urop_toss_count > 0).float().unsqueeze(-1)
-        x = x * active
+    # [수정됨] 이전에 있던 "x = x * active" 코드는 삭제했습니다.
+    # 대기 중일 때도 "주차된 박스"의 위치를 정확히 보는 것이 학습에 유리합니다.
+    # 대신 별도의 toss_state 함수가 "지금은 잡지 마"라는 신호를 줍니다.
 
     return x
 
@@ -145,4 +158,3 @@ def contact_forces(env: "ManagerBasedRLEnv", sensor_names: list[str], scale: flo
         out = out * active
 
     return out
-

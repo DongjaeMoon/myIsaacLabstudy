@@ -1,4 +1,4 @@
-# UROP/UROP_v3/mdp/curriculum.py
+# UROP/UROP_v4/mdp/curriculum.py
 
 from __future__ import annotations
 import torch

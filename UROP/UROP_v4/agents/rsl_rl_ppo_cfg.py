@@ -10,7 +10,7 @@ from isaaclab.utils import configclass
 
 @configclass
 class UropV4PPORunnerCfg(RslRlOnPolicyRunnerCfg):
-    num_steps_per_env = 200
+    num_steps_per_env = 64
     max_iterations = 10000
     save_interval = 250
     experiment_name = "UROP_v4"

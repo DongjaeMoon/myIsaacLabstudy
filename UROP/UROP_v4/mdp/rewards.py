@@ -235,3 +235,91 @@ def object_not_dropped_bonus_curriculum(env: "ManagerBasedRLEnv", min_z=0.70, ma
     u = _upright_cos(env)
     upright_gate = torch.clamp(u, 0.0, 1.0) ** 2.0   # <-- 추가 (기울면 보너스 깎임)
     return ((z_ok * d_ok) * upright_gate * _stage_w(env, w0, w1, w2)) * _toss_active(env)
+
+
+# [UROP_v4/mdp/rewards.py] 맨 아래에 추가
+
+def hands_reach_object_reward_curriculum(
+    env: "ManagerBasedRLEnv",
+    sigma: float = 0.5,
+    w0: float = 0.0,
+    w1: float = 1.0,
+    w2: float = 1.0,
+) -> torch.Tensor:
+    """
+    [NEW] 양손이 모두 박스에 가까워져야만 높은 점수를 줌.
+    하나라도 멀어지면 점수가 급격히 떨어지도록 설계 (Product logic).
+    """
+    robot = env.scene["robot"]
+    obj = env.scene["object"]
+    
+    # 1. Body Index 찾기 (Left Hand, Right Hand)
+    mp = getattr(env, "_urop_body_name_to_id", None)
+    if mp is None:
+        names = list(getattr(robot.data, "body_names", []))
+        mp = {n: i for i, n in enumerate(names)}
+        env._urop_body_name_to_id = mp
+
+    # 손 이름은 scene_objects_cfg.py의 contact sensor 이름 참고
+    # (G1 로봇의 손 링크 이름을 정확히 넣어야 함. 아래는 추정값)
+    l_name = "left_wrist_roll_rubber_hand" # 또는 left_hand_link
+    r_name = "right_wrist_roll_rubber_hand" # 또는 right_hand_link
+    
+    # 이름이 없으면 0점 처리 방지용 fallback
+    if l_name in mp and r_name in mp:
+        l_idx = mp[l_name]
+        r_idx = mp[r_name]
+        l_pos = robot.data.body_pos_w[:, l_idx, :]
+        r_pos = robot.data.body_pos_w[:, r_idx, :]
+    else:
+        # 만약 이름을 못 찾으면 root로 대체하되 경고 느낌 (보통은 잘 찾음)
+        l_pos = robot.data.root_pos_w
+        r_pos = robot.data.root_pos_w
+
+    # 2. 거리 계산
+    d_l = torch.norm(obj.data.root_pos_w - l_pos, dim=-1)
+    d_r = torch.norm(obj.data.root_pos_w - r_pos, dim=-1)
+
+    # 3. 핵심 로직: 곱하기(*)를 사용해서 하나라도 멀면 0점이 되게 함!
+    # (Counterweight로 한 팔 뒤로 빼면 d_r이 커져서 전체 점수가 0이 됨)
+    rew_l = torch.exp(-(d_l / sigma) ** 2)
+    rew_r = torch.exp(-(d_r / sigma) ** 2)
+    
+    return (rew_l * rew_r) * _stage_w(env, w0, w1, w2) * _toss_active(env)
+
+
+def contact_hold_bonus_symmetric(
+    env: "ManagerBasedRLEnv", 
+    sensor_names_left: list[str], 
+    sensor_names_right: list[str], 
+    thr=1.0, 
+    w0=0.0, 
+    w1=0.6, 
+    w2=0.9
+) -> torch.Tensor:
+    """
+    [MODIFIED] 왼쪽과 오른쪽이 '동시에' 닿아야만 보상.
+    한쪽만 닿으면 국물도 없음.
+    """
+    # 1. 왼쪽 접촉 확인
+    left_contacts = []
+    for name in sensor_names_left:
+        s = env.scene[name]
+        f = s.data.net_forces_w.reshape(env.num_envs, -1)
+        left_contacts.append((torch.norm(f, dim=-1) > thr).float())
+    
+    # 2. 오른쪽 접촉 확인
+    right_contacts = []
+    for name in sensor_names_right:
+        s = env.scene[name]
+        f = s.data.net_forces_w.reshape(env.num_envs, -1)
+        right_contacts.append((torch.norm(f, dim=-1) > thr).float())
+
+    # 3. 각 팔이 접촉했는가? (Max로 하나라도 닿으면 True)
+    l_hit = torch.stack(left_contacts, dim=-1).max(dim=-1).values
+    r_hit = torch.stack(right_contacts, dim=-1).max(dim=-1).values
+
+    # 4. 양쪽 다 닿았을 때만 보상 (AND 조건)
+    score = l_hit * r_hit 
+
+    return (score * _stage_w(env, w0, w1, w2)) * _toss_active(env)

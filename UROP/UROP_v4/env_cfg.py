@@ -64,7 +64,7 @@ class ActionsCfg:
             "right_hip_pitch_joint", "right_knee_joint", "right_ankle_pitch_joint",
         ],
         # 앞뒤 균형/충격 흡수(무릎/발목)용: 너무 작으면 여전히 넘어짐, 너무 크면 펌핑/쪼그려 치팅
-        scale=0.35,   # 시작 추천: 0.25~0.35 (fine-tune면 0.25부터)
+        scale=0.5,   # 시작 추천: 0.25~0.35 (fine-tune면 0.25부터)
     )
 
     legs_frontal = mdp.JointPositionActionCfg(
@@ -129,6 +129,7 @@ class ActionsCfg:
 class ObservationsCfg:
     @configclass
     class PolicyCfg(ObsGroup):
+        toss_signal = ObsTerm(func=mdp.toss_state)
         proprio = ObsTerm(func=mdp.robot_proprio, params={"torque_scale": 1.0/80.0})
         prev_actions = ObsTerm(func=mdp.prev_actions)
 
@@ -167,9 +168,9 @@ class ObservationsCfg:
 class RewardsCfg:
     alive = RewTerm(func=mdp.alive_bonus_curriculum, weight=1.0, params={"w0": 0.2, "w1": 0.05, "w2": 0.02})
     upright = RewTerm(func=mdp.upright_reward_curriculum, weight=0.8, params={"w0": 1.0, "w1": 1.0, "w2": 1.0})
-    height = RewTerm(func=mdp.root_height_reward_curriculum, weight=1.0, params={"target_z": 0.78, "sigma": 0.10, "w0": 1.0, "w1": 0.5, "w2": 0.3})
+    height = RewTerm(func=mdp.root_height_reward_curriculum, weight=1.0, params={"target_z": 0.78, "sigma": 0.20, "w0": 1.0, "w1": 0.5, "w2": 0.3})
 
-    base_vel = RewTerm(func=mdp.base_velocity_penalty_curriculum, weight=-0.1, params={"w0": 0.2, "w1": 0.08, "w2": 0.06})
+    base_vel = RewTerm(func=mdp.base_velocity_penalty_curriculum, weight=-0.01, params={"w0": 0.2, "w1": 0.08, "w2": 0.06})
     joint_vel = RewTerm(func=mdp.joint_vel_l2_penalty_curriculum, weight=-0.0001)
     torque = RewTerm(func=mdp.torque_l2_penalty_curriculum, weight=-0.00001)
 
@@ -196,20 +197,32 @@ class RewardsCfg:
     },
     )
 
+    hands_reach = RewTerm(
+        func=mdp.hands_reach_object_reward_curriculum,
+        weight=1.0, # 양손을 뻗는 행위 자체에 보상
+        params={"sigma": 0.5},
+    )
+
+    # 2. contact_hold (합집합) -> contact_symmetric (교집합)
+    # 한쪽만 닿으면 점수 없음!
+    contact_hold = RewTerm(
+        func=mdp.contact_hold_bonus_symmetric,
+        weight=1.0, # 잡았을 때 보상을 좀 더 강력하게
+        params={
+            "sensor_names_left": ["contact_l_elbow", "contact_l_hand"],
+            "sensor_names_right": ["contact_r_elbow", "contact_r_hand"],
+            "thr": 1.0,
+        },
+    )
+
     contact_hold = RewTerm(
         func=mdp.contact_hold_bonus_curriculum,
         weight=1.5,
         params={
             "sensor_names": [
             "contact_torso",
-            #"contact_l_shoulder_pitch",
-            #"contact_l_shoulder_roll",
-            #"contact_l_shoulder_yaw",
             "contact_l_elbow",
             "contact_l_hand",
-            #"contact_r_shoulder_pitch",
-            #"contact_r_shoulder_roll",
-            #"contact_r_shoulder_yaw",
             "contact_r_elbow",
             "contact_r_hand",
             ],
@@ -305,7 +318,7 @@ class CurriculumCfg:
         params={
             "stage0_iters": 2000,
             "stage1_iters": 4000,
-            "num_steps_per_env": 200,
+            "num_steps_per_env": 64,
             "eval_stage": -1,
         },
     )
