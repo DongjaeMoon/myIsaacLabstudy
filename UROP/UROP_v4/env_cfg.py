@@ -170,7 +170,7 @@ class RewardsCfg:
     upright = RewTerm(func=mdp.upright_reward_curriculum, weight=0.8, params={"w0": 1.0, "w1": 1.0, "w2": 1.0})
     height = RewTerm(func=mdp.root_height_reward_curriculum, weight=1.0, params={"target_z": 0.78, "sigma": 0.20, "w0": 1.0, "w1": 0.5, "w2": 0.3})
 
-    base_vel = RewTerm(func=mdp.base_velocity_penalty_curriculum, weight=-0.2, params={"w0": 0.2, "w1": 0.08, "w2": 0.06})
+    base_vel = RewTerm(func=mdp.base_velocity_penalty_curriculum, weight=-0.5, params={"w0": 0.2, "w1": 0.08, "w2": 0.06})
     joint_vel = RewTerm(func=mdp.joint_vel_l2_penalty_curriculum, weight=-0.001)
     torque = RewTerm(func=mdp.torque_l2_penalty_curriculum, weight=-0.00001)
 
@@ -182,7 +182,7 @@ class RewardsCfg:
     # [추가] 대기 중 이동 페널티 (뒷걸음질 방지)
     stand_still = RewTerm(
         func=mdp.stand_still_when_waiting_penalty,
-        weight=-0.01,
+        weight=-1.0,
         params={"w_lin": 0.05, "w_ang": 0.01}
     )
 
@@ -230,13 +230,11 @@ class RewardsCfg:
         params={
             # [수정] 왼팔: 어깨(yaw) + 팔꿈치 + 손
             "sensor_names_left": [
-                "contact_l_shoulder_yaw", 
                 "contact_l_elbow", 
                 "contact_l_hand"
             ],
             # [수정] 오른팔: 어깨(yaw) + 팔꿈치 + 손
             "sensor_names_right": [
-                "contact_r_shoulder_yaw", 
                 "contact_r_elbow", 
                 "contact_r_hand"
             ],

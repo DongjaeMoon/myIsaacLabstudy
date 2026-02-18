@@ -334,37 +334,57 @@ def contact_hold_bonus_symmetric(
 
     return (score * _stage_w(env, w0, w1, w2)) * _toss_active(env)
 
+# ready_pose_when_waiting 함수 전체 교체
+
 def ready_pose_when_waiting(
     env: "ManagerBasedRLEnv",
     sigma: float = 0.5,
-    w0: float = 1.0,  # stage0 가중치
-    w1: float = 1.0,  # stage1 가중치
-    w2: float = 1.0,  # stage2 가중치
+    w0: float = 1.0,
+    w1: float = 1.0,
+    w2: float = 1.0,
 ) -> torch.Tensor:
-    """
-    [핵심] Toss 신호가 0일 때(대기 중), 로봇이 초기 자세(Default Pose)와 다르면 점수를 깎음.
-    이게 있어야 '팔 뒤로 뻗고 대기하는' 이상한 짓을 안 함.
-    """
-    # 1. 현재 던져진 상태인지 확인
+    # 1. Toss 확인
     if hasattr(env, "_urop_toss_count"):
         is_tossed = (env._urop_toss_count > 0).float()
     else:
         is_tossed = torch.ones(env.num_envs, device=env.device)
-
-    # 2. 로봇 데이터 가져오기
-    robot = env.scene["robot"]
     
-    # default_joint_pos는 로봇 로딩될 때의 그 '차려 자세'입니다.
-    target = robot.data.default_joint_pos
-    current = robot.data.joint_pos
-
-    # 3. 자세 차이 계산
-    diff = torch.norm(current - target, dim=-1)
-    rew = torch.exp(-(diff / sigma) ** 2)
-
-    # 4. [중요] 박스가 날아오면(is_tossed=1) 이 보상을 꺼버림 (0점)
-    # 그래야 박스 잡으려고 자유롭게 움직임
+    # 박스 오면 보상 꺼버림 (자유롭게 움직이도록)
     mask = (1.0 - is_tossed)
+
+    robot = env.scene["robot"]
+    current = robot.data.joint_pos
+    
+    # [핵심 수정] 목표 자세를 'Default'가 아니라 '우리가 설정한 Squat'로 강제 고정
+    # 매번 dict 만들면 느리니까 env에 캐싱
+    if not hasattr(env, "_urop_target_pose"):
+        # 1. 일단 기본값 복사
+        target = robot.data.default_joint_pos.clone()
+        
+        # 2. scene_objects_cfg.py의 init_state 값 하드코딩 (빠른 수정)
+        joint_names = robot.data.joint_names
+        name_to_idx = {n: i for i, n in enumerate(joint_names)}
+
+        # 동재님의 init_state 값
+        squat_vals = {
+            "left_hip_pitch_joint": -0.2, "right_hip_pitch_joint": -0.2,
+            "left_knee_joint": 0.4,       "right_knee_joint": 0.4,
+            "left_ankle_pitch_joint": -0.2, "right_ankle_pitch_joint": -0.2,
+            "left_shoulder_pitch_joint": 0.2, "right_shoulder_pitch_joint": 0.2,
+            "left_elbow_joint": 0.5,      "right_elbow_joint": 0.5,
+        }
+        
+        for name, val in squat_vals.items():
+            if name in name_to_idx:
+                target[:, name_to_idx[name]] = val
+        
+        env._urop_target_pose = target
+
+    target_pose = env._urop_target_pose
+
+    # 3. 차이 계산
+    diff = torch.norm(current - target_pose, dim=-1)
+    rew = torch.exp(-(diff / sigma) ** 2)
     
     return rew * mask * _stage_w(env, w0, w1, w2)
 
