@@ -16,31 +16,83 @@ import os
 dj_robot_cfg = ArticulationCfg(
     prim_path="{ENV_REGEX_NS}/Robot",
     spawn=sim_utils.UsdFileCfg(
-        # ★ 동재님이 만드신 최종 파일 경로
-        #usd_path="/home/roro_common/mdj/IsaacLab/UROP/UROP_v0/usd/G1_23DOF_UROP.usd",
         usd_path="/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_v3/usd/G1_23DOF_UROP.usd",
-        activate_contact_sensors=True, # 충격 감지를 위해 필수
+        activate_contact_sensors=True, 
     ),
     init_state=ArticulationCfg.InitialStateCfg(
-        pos=(0.0, 0.0, 0.78), # 로봇 키에 맞춰서 살짝 띄움 (골반 높이)
-        # 초기 자세 (살짝 무릎 굽힌 자세 추천)
+        pos=(0.0, 0.0, 0.78),
+        # [수정] 정규표현식 대신 명시적 관절 이름 사용
         joint_pos={
-            ".*_hip_pitch_joint": -0.2,
-            ".*_knee_joint": 0.4,
-            ".*_ankle_pitch_joint": -0.2,
-            ".*_shoulder_pitch_joint": 0.2, # 팔을 살짝 앞으로
-            ".*_elbow_joint": 0.5,          # 팔 굽힘 (받을 준비)
+            # --- 다리 (Legs) : 약간 굽힌 자세 (Squat) ---
+            "left_hip_pitch_joint": -0.2,
+            "right_hip_pitch_joint": -0.2,
+            "left_knee_joint": 0.4,
+            "right_knee_joint": 0.4,
+            "left_ankle_pitch_joint": -0.2,
+            "right_ankle_pitch_joint": -0.2,
+            
+            # 나머지 다리 관절은 0.0 (직립)
+            "left_hip_roll_joint": 0.0,
+            "right_hip_roll_joint": 0.0,
+            "left_hip_yaw_joint": 0.0,
+            "right_hip_yaw_joint": 0.0,
+            "left_ankle_roll_joint": 0.0,
+            "right_ankle_roll_joint": 0.0,
+            "waist_yaw_joint": 0.0,
+
+            # --- 팔 (Arms) : 받을 준비 자세 ---
+            # Shoulder Pitch: 0.2 (살짝 앞으로 들어올림)
+            "left_shoulder_pitch_joint": 0.2,
+            "right_shoulder_pitch_joint": 0.2,
+            
+            # Elbow: 0.5 (굽힘)
+            "left_elbow_joint": 0.5,
+            "right_elbow_joint": 0.5,
+
+            # 나머지 팔 관절 0.0
+            "left_shoulder_roll_joint": 0.0,
+            "right_shoulder_roll_joint": 0.0,
+            "left_shoulder_yaw_joint": 0.0,
+            "right_shoulder_yaw_joint": 0.0,
+            "left_wrist_roll_joint": 0.0,
+            "right_wrist_roll_joint": 0.0,
         },
     ),
     actuators={
+        # 1. 하체 & 허리 (강한 지지력 필요)
         "legs": ImplicitActuatorCfg(
-            joint_names_expr=[".*_hip_.*", ".*_knee_.*", ".*_ankle_.*", "waist_.*"],
-            stiffness=120.0, # 다리는 단단하게
-            damping=6.0,
+            joint_names_expr=[
+                "left_hip_pitch_joint", "left_hip_roll_joint", "left_hip_yaw_joint",
+                "left_knee_joint",
+                "left_ankle_pitch_joint", "left_ankle_roll_joint",
+                "right_hip_pitch_joint", "right_hip_roll_joint", "right_hip_yaw_joint",
+                "right_knee_joint",
+                "right_ankle_pitch_joint", "right_ankle_roll_joint",
+                "waist_yaw_joint",
+            ],
+            stiffness=120.0, # 지면 반발력과 박스 무게를 버팀
+            damping=5.0,     # 너무 높으면 반응이 느려지므로 6.0 -> 5.0 소폭 조정
         ),
-        "arms": ImplicitActuatorCfg(
-            joint_names_expr=[".*_shoulder_.*", ".*_elbow_.*", ".*_wrist_.*"],
-            stiffness=60.0,  # 팔은 충격 흡수를 위해 조금 부드럽게
+        
+        # 2. 상체 - 주요 부하 담당 (어깨 피치, 팔꿈치)
+        # 박스 무게를 직접 받는 관절들이라 조금 더 단단해야 처지지 않음
+        "arms_load": ImplicitActuatorCfg(
+            joint_names_expr=[
+                "left_shoulder_pitch_joint", "left_elbow_joint",
+                "right_shoulder_pitch_joint", "right_elbow_joint",
+            ],
+            stiffness=80.0,  # 기존 60 -> 80 상향 (무게 지탱)
+            damping=4.0,     # 진동 방지
+        ),
+
+        # 3. 상체 - 위치 제어 담당 (나머지 팔 관절)
+        # 유연하게 움직여서 박스를 감싸안거나 충격 흡수
+        "arms_pos": ImplicitActuatorCfg(
+            joint_names_expr=[
+                "left_shoulder_roll_joint", "left_shoulder_yaw_joint", "left_wrist_roll_joint",
+                "right_shoulder_roll_joint", "right_shoulder_yaw_joint", "right_wrist_roll_joint",
+            ],
+            stiffness=60.0,  # 유연성 유지
             damping=3.0,
         ),
     },
@@ -51,13 +103,13 @@ bulky_object_cfg = RigidObjectCfg(
     prim_path="{ENV_REGEX_NS}/Object",
     spawn=sim_utils.CuboidCfg(
         size=(0.4, 0.3, 0.3),  # 택배 상자 크기
-        mass_props=sim_utils.MassPropertiesCfg(mass=5.0), # 초기 질량 5kg
+        mass_props=sim_utils.MassPropertiesCfg(mass=2.0),
         visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 0.8, 0.0)),
         # [추가됨] 마찰력 설정: 고무나 거친 종이 박스처럼 마찰을 높임
         physics_material=RigidBodyMaterialCfg(
-            static_friction=2.0,  # 정지 마찰계수 (높게)
-            dynamic_friction=2.0, # 운동 마찰계수 (높게)
-            restitution=0.01,      # 반발계수 (튕겨나가지 않게 0.1으로)
+            static_friction=0.5,
+            dynamic_friction=0.5, # 운동 마찰계수 (높게)
+            restitution=0.1,      # 반발계수 (튕겨나가지 않게 0.1으로)
         ),
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             kinematic_enabled=False,  # True로 하면 중력을 무시하고 그 자리에 고정됨 (또는 코드로 위치 제어 가능)
@@ -72,15 +124,6 @@ bulky_object_cfg = RigidObjectCfg(
 # -------------------------
 # Contact sensor configs
 # -------------------------
-
-contact_object_ground_cfg = ContactSensorCfg(
-    prim_path="{ENV_REGEX_NS}/Object",
-    # ground prim이 /World/ground 가 맞다면 OK. 아니면 네 stage의 실제 ground prim으로 수정.
-    # (필터가 정확히 매칭되도록 wildcard 권장)
-    filter_prim_paths_expr=["{ENV_REGEX_NS}/Ground"],
-    update_period=0.0,
-    history_length=1,
-)
 
 contact_torso_cfg = ContactSensorCfg(
     prim_path="{ENV_REGEX_NS}/Robot/torso_link",

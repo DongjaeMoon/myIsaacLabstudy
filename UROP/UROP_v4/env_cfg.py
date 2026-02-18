@@ -264,7 +264,7 @@ class RewardsCfg:
     not_drop = RewTerm(func=mdp.object_not_dropped_bonus_curriculum, weight=1.0, params={"min_z": 0.70})
     impact = RewTerm(
         func=mdp.impact_peak_penalty_curriculum,
-        weight=-0.0005,
+        weight=-0.001,
         params={
             "sensor_names": [
             "contact_torso",

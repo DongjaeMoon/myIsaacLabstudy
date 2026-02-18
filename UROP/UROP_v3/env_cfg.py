@@ -37,7 +37,6 @@ class dj_urop_v3_SceneCfg(InteractiveSceneCfg):
     # -------------------------
     # Contact sensors
     # -------------------------
-    #contact_object_ground = scene_objects_cfg.contact_object_ground_cfg
     contact_torso = scene_objects_cfg.contact_torso_cfg
     contact_l_shoulder_pitch = scene_objects_cfg.contact_l_shoulder_pitch_cfg
     contact_l_shoulder_roll  = scene_objects_cfg.contact_l_shoulder_roll_cfg
@@ -204,14 +203,8 @@ class RewardsCfg:
         params={
             "sensor_names": [
             "contact_torso",
-            #"contact_l_shoulder_pitch",
-            #"contact_l_shoulder_roll",
-            #"contact_l_shoulder_yaw",
             "contact_l_elbow",
             "contact_l_hand",
-            #"contact_r_shoulder_pitch",
-            #"contact_r_shoulder_roll",
-            #"contact_r_shoulder_yaw",
             "contact_r_elbow",
             "contact_r_hand",
             ],
