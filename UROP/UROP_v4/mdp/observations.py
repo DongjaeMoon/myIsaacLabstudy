@@ -131,13 +131,15 @@ def object_rel_state(
 
     x = torch.cat([rel_p_b, rel_r6, rel_v_b, rel_w_b], dim=-1)
 
+    # [수정] Toss 신호가 0(대기중)일 때는 박스 정보를 0으로 가려버림 (Masking)
+    if hasattr(env, "_urop_toss_count"):
+        # active = 1.0 (던져짐), 0.0 (대기)
+        is_active = (env._urop_toss_count > 0).float().unsqueeze(-1)
+        x = x * is_active 
+    
+    # 노이즈 추가 (기존 코드)
     if noise_std > 0.0:
         x = x + torch.randn_like(x) * noise_std
-
-    # teacher/student gating용 (필요 없으면 drop_prob=0으로 고정)
-    if drop_prob > 0.0:
-        mask = (torch.rand(env.num_envs, device=env.device) < drop_prob).float().unsqueeze(-1)
-        x = x * (1.0 - mask)
 
     # [수정됨] 이전에 있던 "x = x * active" 코드는 삭제했습니다.
     # 대기 중일 때도 "주차된 박스"의 위치를 정확히 보는 것이 학습에 유리합니다.

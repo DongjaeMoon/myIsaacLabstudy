@@ -367,3 +367,53 @@ def ready_pose_when_waiting(
     mask = (1.0 - is_tossed)
     
     return rew * mask * _stage_w(env, w0, w1, w2)
+
+
+# UROP_v4/mdp/rewards.py
+
+# 1. 대기 중에 움직이면 감점 (뒷걸음질 방지)
+def stand_still_when_waiting_penalty(
+    env: "ManagerBasedRLEnv", 
+    w_lin: float = 0.1, 
+    w_ang: float = 0.05
+) -> torch.Tensor:
+    # Toss가 0일 때(대기 중)만 작동
+    if hasattr(env, "_urop_toss_count"):
+        is_tossed = (env._urop_toss_count > 0).float()
+    else:
+        is_tossed = torch.ones(env.num_envs, device=env.device)
+    
+    # Toss가 1이면 mask=0 (페널티 없음), Toss가 0이면 mask=1 (페널티 적용)
+    mask = (1.0 - is_tossed)
+    
+    robot = env.scene["robot"]
+    # x,y 속도 제곱
+    lin_sq = torch.sum(robot.data.root_lin_vel_w[:, 0:2] ** 2, dim=-1)
+    ang_sq = torch.sum(robot.data.root_ang_vel_w[:, 2] ** 2, dim=-1)
+    
+    return (w_lin * lin_sq + w_ang * ang_sq) * mask
+
+# 2. 팔 뒤로 꺾기 방지 (Soft Joint Limit)
+# URDF 수정 없이 "나루토 자세"를 막는 핵심 함수
+def arm_extension_penalty(env: "ManagerBasedRLEnv", limit_angle: float = -0.5) -> torch.Tensor:
+    robot = env.scene["robot"]
+    
+    # 1. 어깨 Pitch 관절 인덱스 찾기 (한번만 찾고 캐싱)
+    if not hasattr(env, "_urop_shoulder_pitch_idx"):
+        indices = []
+        for i, name in enumerate(robot.data.joint_names):
+            if "shoulder_pitch" in name: # 좌/우 어깨 피치
+                indices.append(i)
+        env._urop_shoulder_pitch_idx = indices
+    
+    if not env._urop_shoulder_pitch_idx:
+        return torch.zeros(env.num_envs, device=env.device)
+
+    # 2. 관절 각도 가져오기
+    joint_pos = robot.data.joint_pos[:, env._urop_shoulder_pitch_idx]
+    
+    # 3. limit_angle보다 더 뒤로(-값) 가면 페널티
+    # 예: -0.5보다 작으면(더 뒤로 젖히면) 위반
+    violation = torch.clamp(limit_angle - joint_pos, min=0.0)
+    
+    return torch.sum(violation ** 2, dim=-1)

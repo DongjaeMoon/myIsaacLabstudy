@@ -170,8 +170,8 @@ class RewardsCfg:
     upright = RewTerm(func=mdp.upright_reward_curriculum, weight=0.8, params={"w0": 1.0, "w1": 1.0, "w2": 1.0})
     height = RewTerm(func=mdp.root_height_reward_curriculum, weight=1.0, params={"target_z": 0.78, "sigma": 0.20, "w0": 1.0, "w1": 0.5, "w2": 0.3})
 
-    base_vel = RewTerm(func=mdp.base_velocity_penalty_curriculum, weight=-0.01, params={"w0": 0.2, "w1": 0.08, "w2": 0.06})
-    joint_vel = RewTerm(func=mdp.joint_vel_l2_penalty_curriculum, weight=-0.0001)
+    base_vel = RewTerm(func=mdp.base_velocity_penalty_curriculum, weight=-0.2, params={"w0": 0.2, "w1": 0.08, "w2": 0.06})
+    joint_vel = RewTerm(func=mdp.joint_vel_l2_penalty_curriculum, weight=-0.001)
     torque = RewTerm(func=mdp.torque_l2_penalty_curriculum, weight=-0.00001)
 
     ready_pose_wait = RewTerm(
@@ -179,7 +179,20 @@ class RewardsCfg:
         weight=1.0,  
         params={"sigma": 0.5}
     )
+    # [추가] 대기 중 이동 페널티 (뒷걸음질 방지)
+    stand_still = RewTerm(
+        func=mdp.stand_still_when_waiting_penalty,
+        weight=-0.01,
+        params={"w_lin": 0.05, "w_ang": 0.01}
+    )
 
+    # [추가] 팔 뒤로 꺾기 페널티 (URDF 수정 대용)
+    # limit_angle = -0.5 (약 30도) 이상 뒤로 젖히면 감점
+    arm_extension_limit = RewTerm(
+        func=mdp.arm_extension_penalty,
+        weight=-3.0,
+        params={"limit_angle": -0.5}
+    )
     # catch/hold
     reach = RewTerm(func=mdp.torso_reach_object_reward_curriculum, weight=0.6, params={"sigma": 0.9, "w0": 0.0, "w1": 1.0, "w2": 0.8})
     #hold_pose = RewTerm(func=mdp.hold_pose_reward_curriculum, weight=1.0, params={"target_offset": (0.50, 0.0, 1.00), "sigma": 0.30})
@@ -208,7 +221,7 @@ class RewardsCfg:
         weight=1.0, # 양손을 뻗는 행위 자체에 보상
         params={"sigma": 0.5},
     )
-
+    
     # 2. contact_hold (합집합) -> contact_symmetric (교집합)
     # 한쪽만 닿으면 점수 없음!
     contact_symmetric = RewTerm(
@@ -279,7 +292,7 @@ class TerminationsCfg:
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
     #fall = DoneTerm(func=mdp.robot_fallen, params={"min_root_z": 0.55, "min_upright": 0.4})
     fall = DoneTerm(func=mdp.robot_fallen_degree, params={"min_root_z": 0.30, "max_tilt_deg": 66.4})
-    drop = DoneTerm(func=mdp.object_dropped_curriculum, params={"min_z": 0.30, "max_dist": 3.0})
+    drop = DoneTerm(func=mdp.object_dropped_curriculum, params={"min_z": 0.40, "max_dist": 3.0})
     # env_cfg.py : TerminationsCfg 내부 drop 교체
     #drop = DoneTerm(
     #func=mdp.object_ground_contact_curriculum,
@@ -336,7 +349,7 @@ class CurriculumCfg:
         params={
             "stage0_iters": 2000,
             "stage1_iters": 4000,
-            "num_steps_per_env": 64,
+            "num_steps_per_env": 96,
             "eval_stage": -1,
         },
     )
