@@ -102,7 +102,7 @@ bulky_object_cfg = RigidObjectCfg(
     prim_path="{ENV_REGEX_NS}/Object",
     spawn=sim_utils.CuboidCfg(
         size=(0.4, 0.3, 0.3),  # 택배 상자 크기
-        mass_props=sim_utils.MassPropertiesCfg(mass=2.0),
+        mass_props=sim_utils.MassPropertiesCfg(mass=3.0),
         visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 0.8, 0.0)),
         # [추가됨] 마찰력 설정: 고무나 거친 종이 박스처럼 마찰을 높임
         physics_material=RigidBodyMaterialCfg(

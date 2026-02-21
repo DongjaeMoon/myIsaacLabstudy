@@ -31,5 +31,7 @@ def stage_schedule(
     env.urop_stage = int(s)
 
     # ✅ env_ids 길이에 맞춰 리턴 (CurriculumManager가 env_ids 기반으로 term을 평가함)
-    #return torch.tensor(float(s), device=env.device)
-    return torch.full((env_ids.shape[0],), float(s), device=env.device)
+    return torch.tensor(float(s), device=env.device)
+    #return torch.full((env_ids.shape[0],), float(s), device=env.device)
+
+
