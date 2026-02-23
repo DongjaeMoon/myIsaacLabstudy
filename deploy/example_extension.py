@@ -8,6 +8,7 @@ from isaacsim.examples.interactive.base_sample import BaseSampleUITemplate
 from example import Example          # 기존 G1
 from example_v3 import ExampleV3
 from example_v4 import ExampleV4
+from example_v5 import ExampleV5
 from go2_example import Go2Example   # 새로 만든 Go2 (파일명과 클래스명 주의!)
 from example_h1 import H1Example
 
@@ -94,6 +95,21 @@ class ExampleExtension(omni.ext.IExt):
             category=self.category
         )
 
+        ui_handle_6 = BaseSampleUITemplate(
+            ext_id=ext_id,
+            file_path=os.path.abspath(__file__),
+            # [중요] title은 메뉴판에 보일 이름입니다. 겹치지 않게!
+            title="G1 UROP V5",      
+            overview="Testing UROP V5 Policy",
+            sample=ExampleV5()       # [중요] 위에서 임포트한 V3 클래스 실행
+        )
+        get_browser_instance().register_example(
+            name="G1 UROP V5",       # [중요] title과 똑같이 적어주세요
+            execute_entrypoint=ui_handle_6.build_window,
+            ui_hook=ui_handle_6.build_ui,
+            category=self.category
+        )
+
         return
 
     def on_shutdown(self):
@@ -103,4 +119,5 @@ class ExampleExtension(omni.ext.IExt):
         get_browser_instance().deregister_example(name="G1 UROP V3", category=self.category)
         get_browser_instance().deregister_example(name="H1 deploy practice", category=self.category)
         get_browser_instance().deregister_example(name="G1 UROP V4", category=self.category)
+        get_browser_instance().deregister_example(name="G1 UROP V5", category=self.category)
         return
