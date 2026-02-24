@@ -122,7 +122,7 @@ def hold_pose_reward_curriculum(
     env: "ManagerBasedRLEnv",
     torso_body_name: str = "torso_link",
     sigma: float = 0.35,
-    target_offset: tuple[float, float, float] = (0.45, 0.0, 0.95),
+    target_offset: tuple[float, float, float] = (0.2, 0.0, 0.2),
     w0: float = 0.0,
     w1: float = 2.0,
     w2: float = 2.5,

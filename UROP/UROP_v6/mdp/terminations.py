@@ -27,7 +27,7 @@ def robot_fallen_degree(
     upright_min = math.cos(math.radians(max_tilt_deg))
     return (z < min_root_z) | (upright < upright_min)
 
-def object_dropped_curriculum(env: "ManagerBasedRLEnv", min_z=0.50, max_dist=3.0) -> torch.Tensor:
+def object_dropped_curriculum(env: "ManagerBasedRLEnv", min_z=0.40, max_dist=3.0) -> torch.Tensor:
     if _get_stage(env) == 0:
         return torch.zeros(env.num_envs, device=env.device, dtype=torch.bool)
 

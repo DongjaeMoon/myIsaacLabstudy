@@ -239,7 +239,7 @@ class EventCfg:
     toss = EventTerm(
         func=mdp.toss_object_relative_curriculum,
         mode="interval",
-        interval_range_s=(1.0, 3.5),
+        interval_range_s=(1.0, 2.5),
         params={
             "max_throws_per_episode": 1,
             "throw_prob_stage1": 1.0,
@@ -256,7 +256,7 @@ class EventCfg:
             },
             "stage2": {
                 "pos_x": (0.4, 0.6), "pos_y": (-0.05, 0.05), "pos_z": (0.30, 0.42),
-                "vel_x": (-1.5, -1.0), "vel_y": (-0.1, 0.1), "vel_z": (0.05, 0.2),
+                "vel_x": (-1.5, -1.0), "vel_y": (-0.1, 0.1), "vel_z": (0.05, 0.1),
             },
         },
     )
@@ -288,7 +288,7 @@ class dj_urop_v6_EnvCfg(ManagerBasedRLEnvCfg):
 
     def __post_init__(self):
         self.decimation = 2
-        self.episode_length_s = 8.0
+        self.episode_length_s = 7.0
         self.sim.dt = 1 / 120
         self.sim.render_interval = self.decimation
 
