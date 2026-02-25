@@ -21,9 +21,12 @@ from isaacsim.sensors.physics import ContactSensor
 # [설정] 경로 (너 환경에 맞게 수정)
 # --------------------------------------------------------------------------
 POLICY_PATH = "/home/dongjae/isaaclab/myIsaacLabstudy/logs/rsl_rl/UROP_v5/2026-02-21_22-40-07/exported/policy.pt"
-#POLICY_PATH = "/home/dongjae/isaaclab/myIsaacLabstudy/logs/rsl_rl/UROP_v6/2026-02-23_23-58-09/exported/policy.pt"
+# POLICY_PATH = "/home/dongjae/isaaclab/myIsaacLabstudy/logs/rsl_rl/UROP_v6/2026-02-23_23-58-09/exported/policy.pt"
 ROBOT_USD_PATH = "/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_v5/usd/G1_23DOF_UROP.usd"
 ROBOT_PRIM_PATH = "/World/G1"
+
+# [MOD] physics callback name 고정
+PHYSICS_CALLBACK_NAME = "policy_physics_step_v5"
 
 
 # env_cfg.py Observation contact 순서(11개)와 동일해야 함
@@ -93,12 +96,12 @@ TRAIN_INIT_JOINT_POS = {
     "left_wrist_roll_joint": 0.0, "right_wrist_roll_joint": 0.0,
 }
 
-# v5 parking pose(학습 reset_object_parked와 동일 컨셉)
+# v5 parking pose
 PARK_REL_POS = (0.0, 1.30, -0.60)  # (x,y,z) in robot yaw frame
 
-# v5 throw(네 env.yaml stage2 그대로; 나중에 학습구조 바꾸면 여기만 바꾸면 됨)
-THROW_REL_POS_RANGE = ((0.4, 0.6), (-0.1, 0.1), (0.30, 0.42))
-THROW_REL_VEL_RANGE = ((-1.5, -1.0), (-0.1, 0.1), (0.05, 0.2))
+# [MOD] v5 env.yaml(stage2) 분포와 맞춤
+THROW_REL_POS_RANGE = ((0.3, 0.5), (-0.1, 0.1), (0.30, 0.40))
+THROW_REL_VEL_RANGE = ((-2.0, -0.8), (-0.1, 0.1), (-0.20, 0.20))
 
 
 class ExampleV5(BaseSample):
@@ -127,21 +130,20 @@ class ExampleV5(BaseSample):
 
         # box parked mode
         self._box_hold_mode = True
-
         self.follow_parked_box_every_step = False
 
-        # (2) 토크 obs는 IsaacSim API 의미가 다를 수 있어서 초기 검증 단계에서는 끄는 게 안전
-        self.use_torque_obs = False
+        # IsaacLab applied_torque vs IsaacSim effort mismatch 가능성
+        self.use_torque_obs = False  # [MOD]
 
-        # (3) reset 직후 몇 프레임은 정책 끄고 자세 settling (학습엔 없지만 deploy 안정성에 도움)
+        # reset 직후 settle
         self.reset_settle_sec = 0.35
         self._sim_time_since_reset = 0.0
 
-        # (4) 토크 obs 사용할 때 low-pass filter (선택)
+        # torque low-pass
         self._torque_lp = None
         self._torque_lp_alpha = 0.2
 
-        # policy on/off
+        # policy on/off (사용자 토글 상태는 reset/stop-play에서도 유지)
         self._use_policy = True
 
         # prev action (policy order 23)
@@ -151,6 +153,21 @@ class ExampleV5(BaseSample):
         self._printed_torque_hint = False
         self._t0_wall = time.time()
 
+        # [MOD] STOP->PLAY 이후 runtime 재초기화 플래그
+        self._pending_play_reinit = False
+
+        # [MOD] callback/input 상태 추적
+        self._physics_callback_name = PHYSICS_CALLBACK_NAME
+        self._sub_keyboard = None
+        self._input = None
+        self._keyboard = None
+
+        # handles
+        self._world = None
+        self._robot = None
+        self._box = None
+        self.contact_sensors = {}
+
     # ---------------- Quaternion utils (training uses wxyz) ----------------
     def _detect_and_lock_quat_order(self, q_raw):
         if self._quat_raw_is_xyzw is not None:
@@ -159,7 +176,7 @@ class ExampleV5(BaseSample):
         if q.shape[0] != 4:
             self._quat_raw_is_xyzw = True
             return
-        # upright 초기에서 w~1이면 xyzw일 확률 큼
+        # upright 초기에서 w~1이면 xyzw일 확률 큼 / q[0]~1이면 wxyz
         if abs(q[3]) > 0.90:
             self._quat_raw_is_xyzw = True
         elif abs(q[0]) > 0.90:
@@ -167,8 +184,10 @@ class ExampleV5(BaseSample):
         else:
             self._quat_raw_is_xyzw = True
         if self.debug_mode:
-            print(f"[DEBUG] quat raw order locked: "
-                  f"{'xyzw(x,y,z,w)' if self._quat_raw_is_xyzw else 'wxyz(w,x,y,z)'} raw={q_raw}")
+            print(
+                f"[DEBUG] quat raw order locked: "
+                f"{'xyzw(x,y,z,w)' if self._quat_raw_is_xyzw else 'wxyz(w,x,y,z)'} raw={q_raw}"
+            )
 
     def _to_wxyz(self, q_raw):
         q = np.asarray(q_raw, dtype=np.float32).copy()
@@ -185,10 +204,10 @@ class ExampleV5(BaseSample):
         w2, x2, y2, z2 = q2[..., 0], q2[..., 1], q2[..., 2], q2[..., 3]
         return torch.stack(
             [
-                w1*w2 - x1*x2 - y1*y2 - z1*z2,
-                w1*x2 + x1*w2 + y1*z2 - z1*y2,
-                w1*y2 - x1*z2 + y1*w2 + z1*x2,
-                w1*z2 + x1*y2 - y1*x2 + z1*w2,
+                w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
+                w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+                w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
+                w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2,
             ],
             dim=-1,
         )
@@ -203,22 +222,23 @@ class ExampleV5(BaseSample):
 
     def _quat_to_rot6d(self, q):
         w, x, y, z = q[..., 0], q[..., 1], q[..., 2], q[..., 3]
-        r00 = 1 - 2*(y*y + z*z)
-        r01 = 2*(x*y - z*w)
-        r10 = 2*(x*y + z*w)
-        r11 = 1 - 2*(x*x + z*z)
-        r20 = 2*(x*z - y*w)
-        r21 = 2*(y*z + x*w)
+        r00 = 1 - 2 * (y * y + z * z)
+        r01 = 2 * (x * y - z * w)
+        r10 = 2 * (x * y + z * w)
+        r11 = 1 - 2 * (x * x + z * z)
+        r20 = 2 * (x * z - y * w)
+        r21 = 2 * (y * z + x * w)
         return torch.stack([r00, r10, r20, r01, r11, r21], dim=-1)
 
     def _yaw_from_wxyz(self, q_wxyz):
         w, x, y, z = q_wxyz
-        return math.atan2(2*(w*z + x*y), 1 - 2*(y*y + z*z))
+        return math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
 
     def _rotate_vec_by_yaw(self, yaw, v3):
-        c = math.cos(yaw); s = math.sin(yaw)
+        c = math.cos(yaw)
+        s = math.sin(yaw)
         x, y, z = float(v3[0]), float(v3[1]), float(v3[2])
-        return np.array([c*x - s*y, s*x + c*y, z], dtype=np.float32)
+        return np.array([c * x - s * y, s * x + c * y, z], dtype=np.float32)
 
     # ---------------- Scene setup ----------------
     def setup_scene(self):
@@ -258,6 +278,71 @@ class ExampleV5(BaseSample):
                 )
             except Exception:
                 self.contact_sensors[link_name] = None
+
+    # ---------------- Runtime callback / input helpers ----------------
+    def _safe_remove_physics_callback(self):
+        # [MOD] STOP/PLAY 후 callback stale 방지
+        if self._world is None:
+            return
+        try:
+            if hasattr(self._world, "remove_physics_callback"):
+                self._world.remove_physics_callback(self._physics_callback_name)
+                if self.debug_mode:
+                    print(f"[DEBUG] removed physics callback: {self._physics_callback_name}")
+        except Exception:
+            pass
+        self._callback_registered = False
+
+    def _ensure_physics_callback_registered(self, force_rebind=False):
+        # [MOD] PLAY 때 callback 재등록 강제
+        try:
+            self._world = self.get_world()
+        except Exception:
+            pass
+
+        if self._world is None:
+            return False
+
+        if force_rebind:
+            self._safe_remove_physics_callback()
+
+        if self._callback_registered:
+            return True
+
+        try:
+            self._world.add_physics_callback(self._physics_callback_name, callback_fn=self._robot_control)
+            self._callback_registered = True
+            if self.debug_mode:
+                print(f"[DEBUG] physics callback registered: {self._physics_callback_name}")
+            return True
+        except Exception as e:
+            print(f"[WARN] add_physics_callback failed: {e}")
+            self._callback_registered = False
+            return False
+
+    def _ensure_keyboard_subscription(self):
+        # [MOD] keyboard subscription 재생성 (필요시)
+        try:
+            if self._sub_keyboard is not None:
+                return True
+            self._input = carb.input.acquire_input_interface()
+            self._keyboard = omni.appwindow.get_default_app_window().get_keyboard()
+            self._sub_keyboard = self._input.subscribe_to_keyboard_events(self._keyboard, self._on_key)
+            if self.debug_mode:
+                print("[DEBUG] keyboard subscription registered")
+            return True
+        except Exception as e:
+            print(f"[WARN] keyboard subscribe failed: {e}")
+            self._sub_keyboard = None
+            return False
+
+    def _unsubscribe_keyboard(self):
+        try:
+            if self._input is not None and self._sub_keyboard is not None:
+                self._input.unsubscribe_to_keyboard_events(self._sub_keyboard)
+        except Exception:
+            pass
+        self._sub_keyboard = None
 
     # ---------------- Post load ----------------
     async def setup_post_load(self):
@@ -311,17 +396,14 @@ class ExampleV5(BaseSample):
         self.prev_action_policy_order = torch.zeros(23, device=self.device, dtype=torch.float32)
         self._last_action_policy_order = torch.zeros(23, device=self.device, dtype=torch.float32)
 
-        # configure drives like training (scene_objects_cfg actuators)
+        # configure drives like training
         self._configure_joint_drives_like_training()
 
-        if not self._callback_registered:
-            self._world.add_physics_callback("policy_physics_step", callback_fn=self._robot_control)
-            self._callback_registered = True
+        # [MOD] callback 등록 helper 사용
+        self._ensure_physics_callback_registered(force_rebind=True)
 
-        # keyboard
-        self._input = carb.input.acquire_input_interface()
-        self._keyboard = omni.appwindow.get_default_app_window().get_keyboard()
-        self._sub_keyboard = self._input.subscribe_to_keyboard_events(self._keyboard, self._on_key)
+        # [MOD] keyboard 등록 helper 사용
+        self._ensure_keyboard_subscription()
 
         # hard reset
         self._hard_reset_all()
@@ -342,8 +424,12 @@ class ExampleV5(BaseSample):
             traceback.print_exc()
 
         print(">>> ExampleV5 setup_post_load done.")
+        print(">>> Controls: [Play], K=throw, R=hard reset, P=policy on/off, H=park hold on/off, T=torque obs toggle")
 
     async def setup_post_reset(self):
+        # GUI reset 계열 대비
+        self._ensure_physics_callback_registered(force_rebind=True)  # [MOD]
+        self._ensure_keyboard_subscription()  # [MOD]
         self._hard_reset_all()
 
     def _hard_reset_all(self):
@@ -354,6 +440,7 @@ class ExampleV5(BaseSample):
         self._torque_lp = None
         self._toss_active = False
         self._box_hold_mode = True
+        self._pending_play_reinit = False  # [MOD]
 
         if self.prev_action_policy_order is not None:
             self.prev_action_policy_order.zero_()
@@ -362,12 +449,14 @@ class ExampleV5(BaseSample):
 
         # reset robot to training init pose
         if self._robot and self._robot.is_valid():
-            self._robot.initialize()
-            self._configure_joint_drives_like_training()
+            try:
+                self._robot.initialize()
+            except Exception:
+                pass
 
+            self._configure_joint_drives_like_training()
             self._robot.set_world_pose(position=np.array([0.0, 0.0, 0.78], dtype=np.float32))
 
-            # robot dof order로 init pose 구성
             init = np.zeros(self.num_dof, dtype=np.float32)
             for i, jn in enumerate(self.robot_dof_names):
                 if jn in TRAIN_INIT_JOINT_POS:
@@ -376,30 +465,120 @@ class ExampleV5(BaseSample):
             self._robot.set_joint_positions(init)
             self._robot.set_joint_velocities(np.zeros(self.num_dof, dtype=np.float32))
 
-            # 매우 중요: default_pos는 "학습의 default_joint_pos"와 동일해야 함
+            # default_pos는 학습의 default_joint_pos와 동일
             self.default_pos = torch.tensor(init, device=self.device, dtype=torch.float32)
 
-        # park box
+            # [MOD] reset 직후 target 1회 적용 (drive initialize 안정화)
+            try:
+                self._robot.apply_action(ArticulationAction(joint_positions=init.astype(np.float32)))
+            except Exception:
+                pass
+
+        # park box (1회 배치)
         self._place_box_parked()
 
     # ---------------- Timeline ----------------
     def _on_timeline_event(self, event):
-        if event.type == int(omni.timeline.TimelineEventType.PLAY):
-            self._is_running = True
-            if self.debug_mode:
-                print("[DEBUG] Timeline PLAY -> hard reset")
-            self._hard_reset_all()
+        """[MOD] STOP/PLAY 이후 callback/handle stale 문제 robust 처리."""
+        etype = int(event.type)
+        play_type = int(omni.timeline.TimelineEventType.PLAY)
+        stop_type = int(omni.timeline.TimelineEventType.STOP)
 
-        elif event.type == int(omni.timeline.TimelineEventType.STOP):
+        pause_type = None
+        if hasattr(omni.timeline.TimelineEventType, "PAUSE"):
+            pause_type = int(omni.timeline.TimelineEventType.PAUSE)
+
+        if etype == play_type:
+            self._is_running = True
+
+            # [MOD] PLAY마다 callback 재바인딩 시도 (핵심)
+            self._ensure_physics_callback_registered(force_rebind=True)
+            self._ensure_keyboard_subscription()
+
+            # [MOD] 첫 physics tick에서 runtime handle 재초기화 + hard reset 하도록 예약
+            self._pending_play_reinit = True
+
+            if self.debug_mode:
+                print("[DEBUG] Timeline PLAY -> callback rebind + pending runtime reinit")
+
+        elif etype == stop_type:
+            self._is_running = False
+
+            # [MOD] STOP 시 callback 제거 (old physics scene에 매달린 callback 제거)
+            self._safe_remove_physics_callback()
+
+            # 다음 PLAY에서 재초기화
+            self._pending_play_reinit = True
+            self._accum_dt = 0.0
+            self._sim_time_since_reset = 0.0
+            self._toss_active = False
+            self._box_hold_mode = True
+
+            if self.debug_mode:
+                print("[DEBUG] Timeline STOP -> callback removed, pending reinit set")
+
+        elif (pause_type is not None) and (etype == pause_type):
             self._is_running = False
             if self.debug_mode:
-                print("[DEBUG] Timeline STOP")
+                print("[DEBUG] Timeline PAUSE")
+
+    def _reacquire_runtime_handles(self):
+        """STOP/PLAY 이후 stale handle 방지용."""
+        self._world = self.get_world()
+
+        try:
+            self._robot = self._world.scene.get_object("g1")
+        except Exception:
+            self._robot = None
+
+        try:
+            self._box = self._world.scene.get_object("box")
+        except Exception:
+            self._box = None
+
+        # contact sensors도 scene에서 다시 가져오기
+        for link_name in CONTACT_SENSOR_LINKS:
+            sensor_name = f"contact_{link_name}"
+            try:
+                self.contact_sensors[link_name] = self._world.scene.get_object(sensor_name)
+            except Exception:
+                self.contact_sensors[link_name] = self.contact_sensors.get(link_name, None)
+
+    def _ensure_runtime_initialized(self):
+        """physics 재시작 후 articulation handle 재생성."""
+        self._reacquire_runtime_handles()
+
+        if self._robot is None:
+            return False
+
+        try:
+            self._robot.initialize()
+        except Exception as e:
+            print(f"[WARN] robot.initialize() failed: {e}")
+            return False
+
+        try:
+            self._configure_joint_drives_like_training()
+        except Exception as e:
+            print(f"[WARN] set gains failed after reinit: {e}")
+
+        # physics dt 재적용
+        try:
+            self._try_set_physics_dt(1.0 / self.physics_hz_target)
+        except Exception:
+            pass
+
+        ok = bool(getattr(self._robot, "handles_initialized", False))
+        if self.debug_mode:
+            print(f"[DEBUG] _ensure_runtime_initialized -> handles_initialized={ok}")
+        return ok
 
     # ---------------- Keyboard ----------------
     # K: throw (toss_active=True)
     # R: reset
     # P: policy on/off
     # H: park hold on/off
+    # T: torque obs on/off
     def _on_key(self, event, *args, **kwargs):
         if event.type != carb.input.KeyboardEventType.KEY_PRESS:
             return
@@ -409,6 +588,9 @@ class ExampleV5(BaseSample):
 
         elif event.input == carb.input.KeyboardInput.R:
             print(">>> Hard reset")
+            # [MOD] handles stale일 수 있으니 재초기화 시도 후 reset
+            if self._is_running:
+                self._ensure_runtime_initialized()
             self._hard_reset_all()
 
         elif event.input == carb.input.KeyboardInput.P:
@@ -419,12 +601,16 @@ class ExampleV5(BaseSample):
             self._box_hold_mode = not self._box_hold_mode
             print(f">>> Toggle box hold mode: {'ON(park)' if self._box_hold_mode else 'OFF(dynamic)'}")
             if self._box_hold_mode:
-                # parked 모드 켤 때 1회만 옆에 배치
                 self._place_box_parked()
+
+        elif event.input == carb.input.KeyboardInput.T:
+            self.use_torque_obs = not self.use_torque_obs
+            self._torque_lp = None
+            print(f">>> Toggle torque obs: {'ON' if self.use_torque_obs else 'OFF'}")
 
     # ---------------- Box placement ----------------
     def _place_box_parked(self):
-        if not self._box or not self._robot:
+        if (self._box is None) or (self._robot is None):
             return
         base_pos, base_quat_raw = self._robot.get_world_pose()
         base_quat = self._to_wxyz(base_quat_raw)
@@ -441,11 +627,18 @@ class ExampleV5(BaseSample):
             pass
 
     def throw_box_stage2_like_training(self):
-        if not self._box or not self._robot:
+        if (self._box is None) or (self._robot is None):
             return
         if not self._is_running:
             print("[WARN] not running (press Play first)")
             return
+
+        # [MOD] PLAY 직후 stale handle 방어
+        if not bool(getattr(self._robot, "handles_initialized", False)):
+            ok = self._ensure_runtime_initialized()
+            if not ok:
+                print("[WARN] runtime not initialized yet. Try Play and wait a moment.")
+                return
 
         self._box_hold_mode = False
         self._toss_active = True
@@ -482,12 +675,11 @@ class ExampleV5(BaseSample):
             pass
 
         if self.debug_mode:
-            print(f">>> THROW: rel_p={rel_p}, rel_v={rel_v} -> pos_w={p_w}, vel_w={v_w}")
+            print(f">>> THROW(stage2-like): rel_p={rel_p}, rel_v={rel_v} -> pos_w={p_w}, vel_w={v_w}")
 
     # ---------------- Observation (must match UROP_v5 env_cfg.py) ----------------
     def _try_get_joint_torque_like_training(self, j_pos_t: torch.Tensor) -> torch.Tensor:
-        # deploy 초기 검증 단계에서는 torque obs를 끄는 것이 안전함
-        # (IsaacLab의 robot.data.applied_torque 와 IsaacSim API get_joint_efforts 의미/타이밍 차이 가능)
+        # deploy 초기 검증은 torque obs OFF 권장
         if not self.use_torque_obs:
             return torch.zeros_like(j_pos_t)
 
@@ -507,7 +699,7 @@ class ExampleV5(BaseSample):
                 cand_t = torch.tensor(cand, device=self.device, dtype=torch.float32)
                 if cand_t.shape == jt.shape:
                     jt = cand_t
-                    # low-pass filter (optional but recommended)
+                    # low-pass filter
                     if self._torque_lp is None:
                         self._torque_lp = jt.clone()
                     else:
@@ -518,6 +710,8 @@ class ExampleV5(BaseSample):
                     if self.debug_mode and (not self._printed_torque_hint):
                         self._printed_torque_hint = True
                         print("[DEBUG] torque obs: using IsaacSim efforts + low-pass filter")
+                else:
+                    jt = torch.zeros_like(j_pos_t)
             except Exception:
                 jt = torch.zeros_like(j_pos_t)
         else:
@@ -530,7 +724,7 @@ class ExampleV5(BaseSample):
         return jt
 
     def _read_contact_11(self) -> torch.Tensor:
-        # training: contact_forces(...) * (1/300) and gated by toss_active
+        # training: contact_forces(...) * (1/300), toss_active로 gate
         forces = []
         for name in CONTACT_SENSOR_LINKS:
             sensor = self.contact_sensors.get(name, None)
@@ -540,7 +734,6 @@ class ExampleV5(BaseSample):
                     reading = sensor.get_current_frame()
                     f = None
                     if isinstance(reading, dict):
-                        # 다양한 키 케이스 대응
                         for k in ["net_force", "net_forces", "force", "forces"]:
                             if k in reading:
                                 f = reading[k]
@@ -556,8 +749,8 @@ class ExampleV5(BaseSample):
             contact *= 0.0
         return contact
 
-    def _get_observation(self) -> torch.Tensor:
-
+    def _get_observation(self):
+        # toss_signal (1)
         toss_signal = torch.tensor([1.0 if self._toss_active else 0.0], device=self.device, dtype=torch.float32)
 
         base_pos, base_quat_raw = self._robot.get_world_pose()
@@ -573,13 +766,17 @@ class ExampleV5(BaseSample):
         lin_b = self._quat_rotate_inverse(q, base_lin_w)
         ang_b = self._quat_rotate_inverse(q, base_ang_w)
 
+        # [MOD] v5 training observations.py는 joint_pos absolute 사용 (rel 아님)
         j_pos = torch.tensor(self._robot.get_joint_positions(), device=self.device, dtype=torch.float32)
         j_vel = torch.tensor(self._robot.get_joint_velocities(), device=self.device, dtype=torch.float32)
         j_torque = self._try_get_joint_torque_like_training(j_pos)
 
+        # training: [g_b(3), lin_b(3), ang_b(3), joint_pos(23), joint_vel(23), applied_torque(23)] = 78
         proprio = torch.cat([g_b, lin_b, ang_b, j_pos, j_vel, j_torque], dim=-1)
 
-        prev_act = self.prev_action_policy_order  
+        prev_act = self.prev_action_policy_order  # (23)
+
+        # object_rel (15)
         obj_pos, obj_quat_raw = self._box.get_world_pose()
         obj_quat = self._to_wxyz(obj_quat_raw)
 
@@ -599,22 +796,56 @@ class ExampleV5(BaseSample):
         rel_r6 = self._quat_to_rot6d(rel_q)
 
         obj_rel = torch.cat([rel_p_b, rel_r6, rel_v_b, rel_w_b], dim=-1)
+
+        # contact (11)
         contact = self._read_contact_11()
 
+        # final obs = [toss(1), proprio(78), prev_action(23), obj_rel(15), contact(11)] = 128
         obs = torch.cat([toss_signal, proprio, prev_act, obj_rel, contact], dim=-1)
+
+        # [MOD] 방어 체크
+        if obs.numel() != 128:
+            raise RuntimeError(f"obs_dim mismatch: got {obs.numel()}, expected 128")
+        if not torch.isfinite(obs).all():
+            raise RuntimeError("non-finite value in observation")
         return obs
 
     # ---------------- Control loop ----------------
     def _robot_control(self, step_size: float):
-        if (not self._robot) or (not self._robot.handles_initialized):
-            return
-
-        self._physics_step_count += 1
+        # [MOD] callback이 실제 살아있는지 확인용 (낮은 빈도 로그)
         dt = float(step_size)
         if dt <= 0.0:
             return
 
-        
+        # [MOD] PLAY 후 callback은 살아있지만 handle stale일 수 있으므로 먼저 복구
+        need_reinit = False
+        if self._robot is None:
+            need_reinit = True
+        else:
+            if not bool(getattr(self._robot, "handles_initialized", False)):
+                need_reinit = True
+        if self._pending_play_reinit:
+            need_reinit = True
+
+        if need_reinit and self._is_running:
+            ok = self._ensure_runtime_initialized()
+            if not ok:
+                return
+
+            if self._pending_play_reinit:
+                if self.debug_mode:
+                    print("[DEBUG] runtime reinit complete -> hard reset after PLAY")
+                self._hard_reset_all()
+                # [MOD] hard reset 후에도 playback 상태는 유지
+                self._is_running = True
+
+        # 여기까지 왔는데 robot 없음/handle 미초기화면 제어 불가
+        if (self._robot is None) or (not bool(getattr(self._robot, "handles_initialized", False))):
+            return
+
+        self._physics_step_count += 1
+
+        # parked mode: 옵션으로만 follow (기본 False)
         if self._is_running and self._box_hold_mode and self.follow_parked_box_every_step:
             self._place_box_parked()
 
@@ -622,15 +853,20 @@ class ExampleV5(BaseSample):
             try:
                 p, qraw = self._robot.get_world_pose()
                 q = self._to_wxyz(qraw)
-                print(f"[DEBUG] t={time.time()-self._t0_wall:6.2f}s phys={self._physics_step_count:06d} "
-                      f"policy={'ON' if self._use_policy else 'OFF'} toss={self._toss_active} hold={self._box_hold_mode}")
+                print(
+                    f"[DEBUG] t={time.time()-self._t0_wall:6.2f}s "
+                    f"phys={self._physics_step_count:06d} "
+                    f"policy={'ON' if self._use_policy else 'OFF'} "
+                    f"toss={self._toss_active} hold={self._box_hold_mode} "
+                    f"callback={'ON' if self._callback_registered else 'OFF'}"
+                )
                 print(f"        base_pos={np.array(p).round(3)} base_quat_wxyz={np.array(q).round(3)}")
             except Exception:
                 pass
 
         if not self._is_running:
             return
-        
+
         self._sim_time_since_reset += dt
         if self._sim_time_since_reset < self.reset_settle_sec:
             self._apply_policy_action(torch.zeros(23, device=self.device))
@@ -643,7 +879,7 @@ class ExampleV5(BaseSample):
 
         self._accum_dt += dt
 
-        # policy 60Hz
+        # policy 60Hz, 사이사이에는 이전 action hold
         if self._accum_dt < (1.0 / self.policy_hz):
             self._apply_policy_action(self._last_action_policy_order)
             return
@@ -659,10 +895,6 @@ class ExampleV5(BaseSample):
                 traceback.print_exc()
             return
 
-        if torch.isnan(obs).any():
-            print("[FATAL] NaN in observation. Abort policy step.")
-            return
-
         with torch.no_grad():
             out = self.policy(obs.unsqueeze(0))
             if isinstance(out, (tuple, list)):
@@ -671,7 +903,11 @@ class ExampleV5(BaseSample):
 
         action_policy_order = torch.clamp(action_policy_order, -1.0, 1.0)
 
-        # update prev_action AFTER computing obs -> 이게 training의 prev_action 의미와 맞음
+        if not torch.isfinite(action_policy_order).all():
+            print("[FATAL] non-finite action from policy.")
+            return
+
+        # training 의미와 맞게 obs 계산 후 prev_action 갱신
         self.prev_action_policy_order = action_policy_order.clone()
         self._last_action_policy_order = action_policy_order.clone()
 
@@ -679,11 +915,19 @@ class ExampleV5(BaseSample):
         if self.debug_mode and (self._policy_step_count % self.debug_print_every_n_policy_steps == 0):
             a_min = float(action_policy_order.min().item())
             a_max = float(action_policy_order.max().item())
-            print(f"[DEBUG] policy_step={self._policy_step_count:06d} action(min,max)=({a_min:+.3f},{a_max:+.3f}) obs_dim={obs.numel()}")
+            print(
+                f"[DEBUG] policy_step={self._policy_step_count:06d} "
+                f"action(min,max)=({a_min:+.3f},{a_max:+.3f}) obs_dim={obs.numel()}"
+            )
 
         self._apply_policy_action(action_policy_order)
 
     def _apply_policy_action(self, action_policy_order: torch.Tensor):
+        if self._robot is None:
+            return
+        if not bool(getattr(self._robot, "handles_initialized", False)):
+            return
+
         # robot order action vector
         action_robot_order = torch.zeros(self.num_dof, device=self.device, dtype=torch.float32)
         action_robot_order[self.policy_to_robot_indices] = action_policy_order
@@ -766,7 +1010,5 @@ class ExampleV5(BaseSample):
     # ---------------- Cleanup ----------------
     def world_cleanup(self):
         self._timeline_sub = None
-        try:
-            self._input.unsubscribe_to_keyboard_events(self._sub_keyboard)
-        except Exception:
-            pass
+        self._unsubscribe_keyboard()
+        self._safe_remove_physics_callback()
