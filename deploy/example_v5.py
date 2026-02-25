@@ -21,6 +21,7 @@ from isaacsim.sensors.physics import ContactSensor
 # [설정] 경로 (너 환경에 맞게 수정)
 # --------------------------------------------------------------------------
 POLICY_PATH = "/home/dongjae/isaaclab/myIsaacLabstudy/logs/rsl_rl/UROP_v5/2026-02-21_22-40-07/exported/policy.pt"
+#POLICY_PATH = "/home/dongjae/isaaclab/myIsaacLabstudy/logs/rsl_rl/UROP_v6/2026-02-23_23-58-09/exported/policy.pt"
 ROBOT_USD_PATH = "/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_v5/usd/G1_23DOF_UROP.usd"
 ROBOT_PRIM_PATH = "/World/G1"
 
@@ -126,6 +127,19 @@ class ExampleV5(BaseSample):
 
         # box parked mode
         self._box_hold_mode = True
+
+        self.follow_parked_box_every_step = False
+
+        # (2) 토크 obs는 IsaacSim API 의미가 다를 수 있어서 초기 검증 단계에서는 끄는 게 안전
+        self.use_torque_obs = False
+
+        # (3) reset 직후 몇 프레임은 정책 끄고 자세 settling (학습엔 없지만 deploy 안정성에 도움)
+        self.reset_settle_sec = 0.35
+        self._sim_time_since_reset = 0.0
+
+        # (4) 토크 obs 사용할 때 low-pass filter (선택)
+        self._torque_lp = None
+        self._torque_lp_alpha = 0.2
 
         # policy on/off
         self._use_policy = True
@@ -319,7 +333,10 @@ class ExampleV5(BaseSample):
                 out = self.policy(obs.unsqueeze(0))
                 if isinstance(out, (tuple, list)):
                     out = out[0]
-            print(f">>> obs_dim={obs.numel()}  policy_out_dim={out.numel()}  (expected obs_dim=137, act_dim=23)")
+            expected_obs_dim = 128  # v5: 1 + 78 + 23 + 15 + 11
+            print(f">>> obs_dim={obs.numel()}  policy_out_dim={out.numel()}  (expected obs_dim={expected_obs_dim}, act_dim=23)")
+            if obs.numel() != expected_obs_dim:
+                print("[FATAL] Observation dim mismatch. Do NOT run deploy until fixed.")
         except Exception:
             print("[WARN] policy I/O dim check failed:")
             traceback.print_exc()
@@ -333,7 +350,8 @@ class ExampleV5(BaseSample):
         self._accum_dt = 0.0
         self._physics_step_count = 0
         self._policy_step_count = 0
-
+        self._sim_time_since_reset = 0.0
+        self._torque_lp = None
         self._toss_active = False
         self._box_hold_mode = True
 
@@ -400,6 +418,9 @@ class ExampleV5(BaseSample):
         elif event.input == carb.input.KeyboardInput.H:
             self._box_hold_mode = not self._box_hold_mode
             print(f">>> Toggle box hold mode: {'ON(park)' if self._box_hold_mode else 'OFF(dynamic)'}")
+            if self._box_hold_mode:
+                # parked 모드 켤 때 1회만 옆에 배치
+                self._place_box_parked()
 
     # ---------------- Box placement ----------------
     def _place_box_parked(self):
@@ -465,6 +486,11 @@ class ExampleV5(BaseSample):
 
     # ---------------- Observation (must match UROP_v5 env_cfg.py) ----------------
     def _try_get_joint_torque_like_training(self, j_pos_t: torch.Tensor) -> torch.Tensor:
+        # deploy 초기 검증 단계에서는 torque obs를 끄는 것이 안전함
+        # (IsaacLab의 robot.data.applied_torque 와 IsaacSim API get_joint_efforts 의미/타이밍 차이 가능)
+        if not self.use_torque_obs:
+            return torch.zeros_like(j_pos_t)
+
         jt = torch.zeros_like(j_pos_t)
 
         cand = None
@@ -481,17 +507,25 @@ class ExampleV5(BaseSample):
                 cand_t = torch.tensor(cand, device=self.device, dtype=torch.float32)
                 if cand_t.shape == jt.shape:
                     jt = cand_t
+                    # low-pass filter (optional but recommended)
+                    if self._torque_lp is None:
+                        self._torque_lp = jt.clone()
+                    else:
+                        a = self._torque_lp_alpha
+                        self._torque_lp = (1.0 - a) * self._torque_lp + a * jt
+                    jt = self._torque_lp
+
                     if self.debug_mode and (not self._printed_torque_hint):
                         self._printed_torque_hint = True
-                        print("[DEBUG] torque obs: using joint efforts from IsaacSim API")
+                        print("[DEBUG] torque obs: using IsaacSim efforts + low-pass filter")
             except Exception:
-                pass
+                jt = torch.zeros_like(j_pos_t)
         else:
             if self.debug_mode and (not self._printed_torque_hint):
                 self._printed_torque_hint = True
                 print("[DEBUG] torque obs: not available -> zeros")
 
-        # training torque_scale = 1/80, clamp [-1,1]
+        # training torque_scale = 1/80, clamp [-1, 1]
         jt = torch.clamp(jt * (1.0 / 80.0), -1.0, 1.0)
         return jt
 
@@ -523,7 +557,7 @@ class ExampleV5(BaseSample):
         return contact
 
     def _get_observation(self) -> torch.Tensor:
-        # toss_signal (1)
+
         toss_signal = torch.tensor([1.0 if self._toss_active else 0.0], device=self.device, dtype=torch.float32)
 
         base_pos, base_quat_raw = self._robot.get_world_pose()
@@ -543,12 +577,9 @@ class ExampleV5(BaseSample):
         j_vel = torch.tensor(self._robot.get_joint_velocities(), device=self.device, dtype=torch.float32)
         j_torque = self._try_get_joint_torque_like_training(j_pos)
 
-        # proprio = [g_b(3), lin_b(3), ang_b(3), jpos(23), jvel(23), jt(23)] => 87
         proprio = torch.cat([g_b, lin_b, ang_b, j_pos, j_vel, j_torque], dim=-1)
 
-        prev_act = self.prev_action_policy_order  # (23)
-
-        # object_rel (15)
+        prev_act = self.prev_action_policy_order  
         obj_pos, obj_quat_raw = self._box.get_world_pose()
         obj_quat = self._to_wxyz(obj_quat_raw)
 
@@ -568,11 +599,8 @@ class ExampleV5(BaseSample):
         rel_r6 = self._quat_to_rot6d(rel_q)
 
         obj_rel = torch.cat([rel_p_b, rel_r6, rel_v_b, rel_w_b], dim=-1)
-
-        # contact (11)
         contact = self._read_contact_11()
 
-        # 최종 obs = [toss(1), proprio(87), prev_action(23), obj_rel(15), contact(11)] = 137
         obs = torch.cat([toss_signal, proprio, prev_act, obj_rel, contact], dim=-1)
         return obs
 
@@ -586,8 +614,8 @@ class ExampleV5(BaseSample):
         if dt <= 0.0:
             return
 
-        # parked mode: 매 physics step에 박스를 parked 위치로 고정
-        if self._is_running and self._box_hold_mode:
+        
+        if self._is_running and self._box_hold_mode and self.follow_parked_box_every_step:
             self._place_box_parked()
 
         if self.debug_mode and (self._physics_step_count % self.debug_print_every_n_physics_steps == 0):
@@ -601,6 +629,11 @@ class ExampleV5(BaseSample):
                 pass
 
         if not self._is_running:
+            return
+        
+        self._sim_time_since_reset += dt
+        if self._sim_time_since_reset < self.reset_settle_sec:
+            self._apply_policy_action(torch.zeros(23, device=self.device))
             return
 
         # policy off -> zero action (default pose 유지)

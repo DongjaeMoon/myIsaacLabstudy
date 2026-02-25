@@ -106,9 +106,9 @@ bulky_object_cfg = RigidObjectCfg(
         visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=(0.0, 0.8, 0.0)),
         # [추가됨] 마찰력 설정: 고무나 거친 종이 박스처럼 마찰을 높임
         physics_material=RigidBodyMaterialCfg(
-            static_friction=0.5,
+            static_friction=0.7,
             dynamic_friction=0.5, # 운동 마찰계수 (높게)
-            restitution=0.1,      # 반발계수 (튕겨나가지 않게 0.1으로)
+            restitution=0.02,      # 반발계수 (튕겨나가지 않게 0.1으로)
         ),
         rigid_props=sim_utils.RigidBodyPropertiesCfg(
             kinematic_enabled=False,  # True로 하면 중력을 무시하고 그 자리에 고정됨 (또는 코드로 위치 제어 가능)

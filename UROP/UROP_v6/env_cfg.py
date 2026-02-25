@@ -87,22 +87,22 @@ class ActionsCfg:
     left_arm_capture = mdp.JointPositionActionCfg(
         asset_name="robot",
         joint_names=["left_shoulder_pitch_joint", "left_elbow_joint"],
-        scale=1.2,
+        scale=0.7,
     )
     right_arm_capture = mdp.JointPositionActionCfg(
         asset_name="robot",
         joint_names=["right_shoulder_pitch_joint", "right_elbow_joint"],
-        scale=1.2,
+        scale=0.7,
     )
     left_arm_wrap = mdp.JointPositionActionCfg(
         asset_name="robot",
         joint_names=["left_shoulder_roll_joint", "left_shoulder_yaw_joint", "left_wrist_roll_joint"],
-        scale=0.7,
+        scale=0.4,
     )
     right_arm_wrap = mdp.JointPositionActionCfg(
         asset_name="robot",
         joint_names=["right_shoulder_roll_joint", "right_shoulder_yaw_joint", "right_wrist_roll_joint"],
-        scale=0.7,
+        scale=0.4,
     )
 
 

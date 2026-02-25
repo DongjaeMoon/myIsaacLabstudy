@@ -16,7 +16,7 @@ class UropV6PPORunnerCfg(RslRlOnPolicyRunnerCfg):
     experiment_name = "UROP_v6"
     empirical_normalization = True
     policy = RslRlPpoActorCriticCfg(
-        init_noise_std=0.5,
+        init_noise_std=0.35,
         #actor_hidden_dims=[256, 128, 64],
         actor_hidden_dims=[512, 256, 128],
         #critic_hidden_dims=[256, 128, 64],
@@ -27,7 +27,7 @@ class UropV6PPORunnerCfg(RslRlOnPolicyRunnerCfg):
         value_loss_coef=1.0,
         use_clipped_value_loss=True,
         clip_param=0.2,
-        entropy_coef=0.01,
+        entropy_coef=0.005,
         num_learning_epochs=5,
         num_mini_batches=32,
         # num_mini_batches=8,
