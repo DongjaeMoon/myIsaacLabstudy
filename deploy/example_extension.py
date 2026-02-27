@@ -11,7 +11,7 @@ from example_v4 import ExampleV4
 from example_v5 import ExampleV5
 from go2_example import Go2Example   # 새로 만든 Go2 (파일명과 클래스명 주의!)
 from example_h1 import H1Example
-
+from g1_loco_v0 import G1LocoV0
 class ExampleExtension(omni.ext.IExt):
     def on_startup(self, ext_id: str):
         self.category = "My Study"
@@ -110,6 +110,21 @@ class ExampleExtension(omni.ext.IExt):
             category=self.category
         )
 
+        ui_handle_7 = BaseSampleUITemplate(
+            ext_id=ext_id,
+            file_path=os.path.abspath(__file__),
+            # [중요] title은 메뉴판에 보일 이름입니다. 겹치지 않게!
+            title="G1 Loco v0",      
+            overview="G1 locomotion practice v0",
+            sample=G1LocoV0()       
+        )
+        get_browser_instance().register_example(
+            name="G1 Loco v0",       # [중요] title과 똑같이 적어주세요
+            execute_entrypoint=ui_handle_7.build_window,
+            ui_hook=ui_handle_7.build_ui,
+            category=self.category
+        )
+
         return
 
     def on_shutdown(self):
@@ -120,4 +135,5 @@ class ExampleExtension(omni.ext.IExt):
         get_browser_instance().deregister_example(name="H1 deploy practice", category=self.category)
         get_browser_instance().deregister_example(name="G1 UROP V4", category=self.category)
         get_browser_instance().deregister_example(name="G1 UROP V5", category=self.category)
+        get_browser_instance().deregister_example(name="G1 Loco v0", category=self.category)
         return

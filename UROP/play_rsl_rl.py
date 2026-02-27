@@ -79,6 +79,7 @@ from isaaclab_tasks.utils.hydra import hydra_task_config
 
 # PLACEHOLDER: Extension template (do not remove this comment)
 
+import UROP_g1_loco_v0
 import UROP_v0
 import UROP_v1
 import UROP_v2
@@ -86,6 +87,7 @@ import UROP_v3
 import UROP_v4
 import UROP_v5
 import UROP_v6
+import UROP_v7
 
 @hydra_task_config(args_cli.task, args_cli.agent)
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: RslRlBaseRunnerCfg):
