@@ -1,5 +1,5 @@
+#[/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_v7/env_cfg.py]
 import os
-
 import isaaclab.sim as sim_utils
 from isaaclab.utils import configclass
 

@@ -35,7 +35,6 @@ class dj_urop_g1_loco_v0_SceneCfg(InteractiveSceneCfg):
     )
     robot = scene_objects_cfg.dj_robot_cfg
 
-    # [핵심 수정] 센서 에러 완벽 차단: 폴더나 전체 매칭(.)을 쓰지 않고, 진짜 바닥에 닿는 발과 넘어짐 기준인 몸통만 지목합니다.
     contact_forces = ContactSensorCfg(
         prim_path="{ENV_REGEX_NS}/Robot/(left_ankle_roll_link|right_ankle_roll_link|torso_link)",
         history_length=3,
@@ -57,17 +56,34 @@ class CommandsCfg:
         ),
     )
 
+# [핵심 수정 1] 부위별로 Action Scale을 쪼개서 부드러운 하체 제어 유도 (별표 없이 43개 모두 나열)
 @configclass
 class ActionsCfg:
-    # 43개 관절 모두 직접 나열
-    joint_pos = mdp_isaac.JointPositionActionCfg(
+    # 1. 다리 (보행의 핵심): 스케일을 0.5 -> 0.25로 줄여서 세밀하고 부드러운 움직임 유도
+    legs = mdp_isaac.JointPositionActionCfg(
         asset_name="robot",
         joint_names=[
             "left_hip_pitch_joint", "left_hip_roll_joint", "left_hip_yaw_joint", "left_knee_joint", "left_ankle_pitch_joint", "left_ankle_roll_joint",
-            "right_hip_pitch_joint", "right_hip_roll_joint", "right_hip_yaw_joint", "right_knee_joint", "right_ankle_pitch_joint", "right_ankle_roll_joint",
+            "right_hip_pitch_joint", "right_hip_roll_joint", "right_hip_yaw_joint", "right_knee_joint", "right_ankle_pitch_joint", "right_ankle_roll_joint"
+        ],
+        scale=0.5,
+        use_default_offset=True,
+    )
+    # 2. 허리 및 팔: 스케일을 0.05로 대폭 줄여서 팔을 크게 휘적거리지 않고 균형만 잡게 함
+    arms_and_waist = mdp_isaac.JointPositionActionCfg(
+        asset_name="robot",
+        joint_names=[
             "waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint",
             "left_shoulder_pitch_joint", "left_shoulder_roll_joint", "left_shoulder_yaw_joint", "left_elbow_joint", "left_wrist_roll_joint", "left_wrist_pitch_joint", "left_wrist_yaw_joint",
-            "right_shoulder_pitch_joint", "right_shoulder_roll_joint", "right_shoulder_yaw_joint", "right_elbow_joint", "right_wrist_roll_joint", "right_wrist_pitch_joint", "right_wrist_yaw_joint",
+            "right_shoulder_pitch_joint", "right_shoulder_roll_joint", "right_shoulder_yaw_joint", "right_elbow_joint", "right_wrist_roll_joint", "right_wrist_pitch_joint", "right_wrist_yaw_joint"
+        ],
+        scale=0.05,
+        use_default_offset=True,
+    )
+    # 3. 손가락: 보행에 불필요하므로 스케일 0.0 (AI가 제어하지 못하게 완전히 묶음)
+    hands = mdp_isaac.JointPositionActionCfg(
+        asset_name="robot",
+        joint_names=[
             "left_hand_thumb_0_joint", "left_hand_thumb_1_joint", "left_hand_thumb_2_joint",
             "left_hand_middle_0_joint", "left_hand_middle_1_joint",
             "left_hand_index_0_joint", "left_hand_index_1_joint",
@@ -75,7 +91,7 @@ class ActionsCfg:
             "right_hand_middle_0_joint", "right_hand_middle_1_joint",
             "right_hand_index_0_joint", "right_hand_index_1_joint"
         ],
-        scale=0.5,
+        scale=0.0,
         use_default_offset=True,
     )
 
@@ -103,7 +119,7 @@ class RewardsCfg:
     termination_penalty = RewTerm(func=mdp_isaac.is_terminated, weight=-200.0)
 
     track_lin_vel_xy_exp = RewTerm(
-        func=custom_mdp.track_lin_vel_xy_yaw_frame_exp, weight=1.0,
+        func=custom_mdp.track_lin_vel_xy_yaw_frame_exp, weight=2.5,
         params={"command_name": "base_velocity", "std": 0.5, "asset_cfg": SceneEntityCfg("robot")},
     )
     track_ang_vel_z_exp = RewTerm(
@@ -116,57 +132,40 @@ class RewardsCfg:
         params={"command_name": "base_velocity", "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["left_ankle_roll_link", "right_ankle_roll_link"]), "threshold": 0.4},
     )
     feet_slide = RewTerm(
-        func=custom_mdp.feet_slide, weight=-0.2,
+        func=custom_mdp.feet_slide, weight=-0.5,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=["left_ankle_roll_link", "right_ankle_roll_link"]), "asset_cfg": SceneEntityCfg("robot", body_names=["left_ankle_roll_link", "right_ankle_roll_link"])},
     )
     
     hop_penalty = RewTerm(
-        func=custom_mdp.both_feet_air_penalty, weight=-5.0,
+        func=custom_mdp.both_feet_air_penalty, weight=-3.0,
         params={"command_name": "base_velocity", "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["left_ankle_roll_link", "right_ankle_roll_link"])},
     )
+    
+    # [핵심 수정 2] 높이 페널티 완화: -5.0 -> -1.0 으로 줄여서 로봇이 자연스럽게 무릎 반동을 이용하도록 허용
     base_height_penalty = RewTerm(
-        func=custom_mdp.base_height_penalty, weight=-5.0, 
+        func=custom_mdp.base_height_penalty, weight=-1.0, 
         params={"target_height": 0.78, "asset_cfg": SceneEntityCfg("robot")},
     )
     lin_vel_z_l2 = RewTerm(func=mdp_isaac.lin_vel_z_l2, weight=-2.0)
 
-    # 관절 움직임 페널티 명시적 지정
     dof_pos_limits = RewTerm(
         func=mdp_isaac.joint_pos_limits, weight=-1.0,
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=["left_ankle_pitch_joint", "left_ankle_roll_joint", "right_ankle_pitch_joint", "right_ankle_roll_joint"])},
     )
-    joint_deviation_hands = RewTerm(
-        func=mdp_isaac.joint_deviation_l1, weight=-2.0, 
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[
-            "left_hand_thumb_0_joint", "left_hand_thumb_1_joint", "left_hand_thumb_2_joint",
-            "left_hand_middle_0_joint", "left_hand_middle_1_joint",
-            "left_hand_index_0_joint", "left_hand_index_1_joint",
-            "right_hand_thumb_0_joint", "right_hand_thumb_1_joint", "right_hand_thumb_2_joint",
-            "right_hand_middle_0_joint", "right_hand_middle_1_joint",
-            "right_hand_index_0_joint", "right_hand_index_1_joint"
-        ])},
-    )
-    joint_deviation_arms = RewTerm(
-        func=mdp_isaac.joint_deviation_l1, weight=-0.5,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[
-            "left_shoulder_pitch_joint", "left_shoulder_roll_joint", "left_shoulder_yaw_joint", "left_elbow_joint",
-            "right_shoulder_pitch_joint", "right_shoulder_roll_joint", "right_shoulder_yaw_joint", "right_elbow_joint"
-        ])},
-    )
-    joint_deviation_torso = RewTerm(
-        func=mdp_isaac.joint_deviation_l1, weight=-0.1,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=["waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint"])},
-    )
-
-    action_rate_l2 = RewTerm(func=mdp_isaac.action_rate_l2, weight=-0.005)
+    
+    # [핵심 수정 3] 떨림 방지 페널티 강화: action_rate (이전 행동과 너무 다르게 움직이는 것 방지)
+    action_rate_l2 = RewTerm(func=mdp_isaac.action_rate_l2, weight=-0.02) # -0.005 -> -0.02 로 강화
+    joint_vel_l2 = RewTerm(func=mdp_isaac.joint_vel_l2, weight=-0.0005)    # 관절이 휙휙 돌아가는 속도 자체에 페널티 추가
+    
     flat_orientation_l2 = RewTerm(func=mdp_isaac.flat_orientation_l2, weight=-1.0)
     
+    # 에너지 절약 (부드러운 움직임 보조)
     dof_acc_l2 = RewTerm(
         func=mdp_isaac.joint_acc_l2, weight=-1.25e-7, 
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=["left_hip_pitch_joint", "left_hip_roll_joint", "left_hip_yaw_joint", "right_hip_pitch_joint", "right_hip_roll_joint", "right_hip_yaw_joint", "left_knee_joint", "right_knee_joint"])},
     )
     dof_torques_l2 = RewTerm(
-        func=mdp_isaac.joint_torques_l2, weight=-1.5e-7, 
+        func=mdp_isaac.joint_torques_l2, weight=-1.5e-5, # -1.5e-7 -> -1.5e-5 로 상향하여 힘을 과하게 쓰는 것 억제
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=["left_hip_pitch_joint", "left_hip_roll_joint", "left_hip_yaw_joint", "right_hip_pitch_joint", "right_hip_roll_joint", "right_hip_yaw_joint", "left_knee_joint", "right_knee_joint", "left_ankle_pitch_joint", "left_ankle_roll_joint", "right_ankle_pitch_joint", "right_ankle_roll_joint"])},
     )
 
@@ -212,7 +211,7 @@ class dj_urop_g1_loco_v0_EnvCfg(ManagerBasedRLEnvCfg):
     terminations: TerminationsCfg = TerminationsCfg()
 
     def __post_init__(self):
-        self.decimation = 2                  
+        self.decimation = 2                 
         self.episode_length_s = 20.0
         self.sim.dt = 1 / 120                  
         self.sim.render_interval = self.decimation

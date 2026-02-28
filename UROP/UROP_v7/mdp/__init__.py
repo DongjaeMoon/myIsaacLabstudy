@@ -1,7 +1,4 @@
-# Copyright (c) 2022-2024, The Isaac Lab Project Developers.
-# All rights reserved.
-#
-# SPDX-License-Identifier: BSD-3-Clause
+#[/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_v7/mdp/__init__.py]
 
 """This sub-module contains the functions that are specific to the locomotion environments."""
 

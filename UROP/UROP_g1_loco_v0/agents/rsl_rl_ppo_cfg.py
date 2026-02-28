@@ -13,14 +13,15 @@ class UropG1LOCOv0PPORunnerCfg(RslRlOnPolicyRunnerCfg):
     max_iterations = 10000
     save_interval = 100
     experiment_name = "UROP_g1_loco_v0"
-    #empirical_normalization = True
+    
+    # [핵심 수정 1] 주석 해제: State 정규화는 보행 학습의 필수 요소입니다.
+    empirical_normalization = True 
+    
     policy = RslRlPpoActorCriticCfg(
         init_noise_std=1.0,
         actor_obs_normalization=False,
         critic_obs_normalization=False,
-        #actor_hidden_dims=[256, 128, 64],
         actor_hidden_dims=[512, 256, 128],
-        #critic_hidden_dims=[256, 128, 64],
         critic_hidden_dims=[512, 256, 128],
         activation="elu",
     )
@@ -28,16 +29,14 @@ class UropG1LOCOv0PPORunnerCfg(RslRlOnPolicyRunnerCfg):
         value_loss_coef=1.0,
         use_clipped_value_loss=True,
         clip_param=0.2,
-        entropy_coef=0.005,
+        entropy_coef=0.01,  # 탐험을 조금 더 하도록 0.005 -> 0.01로 상향
         num_learning_epochs=5,
-        #num_mini_batches=32,
-         num_mini_batches=8,
-        learning_rate=5.0e-4, #5.0e-4->1.0e-4
+        num_mini_batches=8,
+        learning_rate=1.0e-3, # [핵심 수정 2] 빠른 걸음걸이 학습을 위해 학습률 1.0e-3 적용
         schedule="adaptive",
         gamma=0.99,
         lam=0.95,
         desired_kl=0.01,
-        max_grad_norm=1.0, #1.0->0.5
+        max_grad_norm=1.0, 
     )
-     # (4) action clip을 여기서 강제로 걸어주기 (train_rsl_rl.py가 agent_cfg.clip_actions를 씀)
-    clip_actions = 1.0  # [-1,1]로 자르기(보통 float max abs로 씀)
+    clip_actions = 1.0

@@ -1,3 +1,4 @@
+#[/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_v7/scene_objects_cfg.py]
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg, RigidObjectCfg
 from isaaclab.actuators import ImplicitActuatorCfg
