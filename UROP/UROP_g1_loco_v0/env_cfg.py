@@ -33,16 +33,14 @@ class dj_urop_g1_loco_v0_SceneCfg(InteractiveSceneCfg):
         prim_path="/World/DomeLight",
         spawn=sim_utils.DomeLightCfg(color=(0.9, 0.9, 0.9), intensity=500.0),
     )
-
     robot = scene_objects_cfg.dj_robot_cfg
 
-    # Foot/body contact + air-time tracking
+    # [핵심 수정] 센서 에러 완벽 차단: 폴더나 전체 매칭(.)을 쓰지 않고, 진짜 바닥에 닿는 발과 넘어짐 기준인 몸통만 지목합니다.
     contact_forces = ContactSensorCfg(
-        prim_path="{ENV_REGEX_NS}/Robot/.*",
+        prim_path="{ENV_REGEX_NS}/Robot/(left_ankle_roll_link|right_ankle_roll_link|torso_link)",
         history_length=3,
         track_air_time=True,
     )
-
 
 @configclass
 class CommandsCfg:
@@ -55,24 +53,31 @@ class CommandsCfg:
         heading_control_stiffness=0.5,
         debug_vis=True,
         ranges=mdp_isaac.UniformVelocityCommandCfg.Ranges(
-            lin_vel_x=(0.0, 1.0),
-            lin_vel_y=(-0.0, 0.0),
-            ang_vel_z=(-1.0, 1.0),
-            heading=(-math.pi, math.pi),
+            lin_vel_x=(0.0, 1.0), lin_vel_y=(-0.0, 0.0), ang_vel_z=(-1.0, 1.0), heading=(-math.pi, math.pi),
         ),
     )
 
-
 @configclass
 class ActionsCfg:
-    # Keep your original (43-DoF) action space for now to avoid breaking deployment obs/action shapes.
+    # 43개 관절 모두 직접 나열
     joint_pos = mdp_isaac.JointPositionActionCfg(
         asset_name="robot",
-        joint_names=[".*"],
+        joint_names=[
+            "left_hip_pitch_joint", "left_hip_roll_joint", "left_hip_yaw_joint", "left_knee_joint", "left_ankle_pitch_joint", "left_ankle_roll_joint",
+            "right_hip_pitch_joint", "right_hip_roll_joint", "right_hip_yaw_joint", "right_knee_joint", "right_ankle_pitch_joint", "right_ankle_roll_joint",
+            "waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint",
+            "left_shoulder_pitch_joint", "left_shoulder_roll_joint", "left_shoulder_yaw_joint", "left_elbow_joint", "left_wrist_roll_joint", "left_wrist_pitch_joint", "left_wrist_yaw_joint",
+            "right_shoulder_pitch_joint", "right_shoulder_roll_joint", "right_shoulder_yaw_joint", "right_elbow_joint", "right_wrist_roll_joint", "right_wrist_pitch_joint", "right_wrist_yaw_joint",
+            "left_hand_thumb_0_joint", "left_hand_thumb_1_joint", "left_hand_thumb_2_joint",
+            "left_hand_middle_0_joint", "left_hand_middle_1_joint",
+            "left_hand_index_0_joint", "left_hand_index_1_joint",
+            "right_hand_thumb_0_joint", "right_hand_thumb_1_joint", "right_hand_thumb_2_joint",
+            "right_hand_middle_0_joint", "right_hand_middle_1_joint",
+            "right_hand_index_0_joint", "right_hand_index_1_joint"
+        ],
         scale=0.5,
         use_default_offset=True,
     )
-
 
 @configclass
 class ObservationsCfg:
@@ -97,100 +102,81 @@ class ObservationsCfg:
 class RewardsCfg:
     termination_penalty = RewTerm(func=mdp_isaac.is_terminated, weight=-200.0)
 
-    # Tracking
     track_lin_vel_xy_exp = RewTerm(
-        func=custom_mdp.track_lin_vel_xy_yaw_frame_exp,
-        weight=1.0,
+        func=custom_mdp.track_lin_vel_xy_yaw_frame_exp, weight=1.0,
         params={"command_name": "base_velocity", "std": 0.5, "asset_cfg": SceneEntityCfg("robot")},
     )
     track_ang_vel_z_exp = RewTerm(
-        func=custom_mdp.track_ang_vel_z_world_exp,
-        weight=1.0,  # was 2.0
+        func=custom_mdp.track_ang_vel_z_world_exp, weight=1.0,
         params={"command_name": "base_velocity", "std": 0.5, "asset_cfg": SceneEntityCfg("robot")},
     )
 
-    # Gait shaping (make stepping more attractive than pogo hopping)
     feet_air_time = RewTerm(
-        func=custom_mdp.feet_air_time_positive_biped,
-        weight=0.75,  # was 0.25
-        params={
-            "command_name": "base_velocity",
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_ankle_roll_link"),
-            "threshold": 0.4,
-        },
+        func=custom_mdp.feet_air_time_positive_biped, weight=0.75,
+        params={"command_name": "base_velocity", "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["left_ankle_roll_link", "right_ankle_roll_link"]), "threshold": 0.4},
     )
     feet_slide = RewTerm(
-        func=custom_mdp.feet_slide,
-        weight=-0.2,  # was -0.1
-        params={
-            "sensor_cfg": SceneEntityCfg("contact_forces", body_names=".*_ankle_roll_link"),
-            "asset_cfg": SceneEntityCfg("robot", body_names=".*_ankle_roll_link"),
-        },
+        func=custom_mdp.feet_slide, weight=-0.2,
+        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=["left_ankle_roll_link", "right_ankle_roll_link"]), "asset_cfg": SceneEntityCfg("robot", body_names=["left_ankle_roll_link", "right_ankle_roll_link"])},
     )
+    
+    hop_penalty = RewTerm(
+        func=custom_mdp.both_feet_air_penalty, weight=-5.0,
+        params={"command_name": "base_velocity", "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["left_ankle_roll_link", "right_ankle_roll_link"])},
+    )
+    base_height_penalty = RewTerm(
+        func=custom_mdp.base_height_penalty, weight=-5.0, 
+        params={"target_height": 0.78, "asset_cfg": SceneEntityCfg("robot")},
+    )
+    lin_vel_z_l2 = RewTerm(func=mdp_isaac.lin_vel_z_l2, weight=-2.0)
 
-    # Joint limits / posture regularization
+    # 관절 움직임 페널티 명시적 지정
     dof_pos_limits = RewTerm(
-        func=mdp_isaac.joint_pos_limits,
-        weight=-1.0,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_ankle_pitch_joint", ".*_ankle_roll_joint"])},
+        func=mdp_isaac.joint_pos_limits, weight=-1.0,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=["left_ankle_pitch_joint", "left_ankle_roll_joint", "right_ankle_pitch_joint", "right_ankle_roll_joint"])},
     )
-    joint_deviation_hip = RewTerm(
-        func=mdp_isaac.joint_deviation_l1,
-        weight=-0.1,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_yaw_joint", ".*_hip_roll_joint"])},
+    joint_deviation_hands = RewTerm(
+        func=mdp_isaac.joint_deviation_l1, weight=-2.0, 
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[
+            "left_hand_thumb_0_joint", "left_hand_thumb_1_joint", "left_hand_thumb_2_joint",
+            "left_hand_middle_0_joint", "left_hand_middle_1_joint",
+            "left_hand_index_0_joint", "left_hand_index_1_joint",
+            "right_hand_thumb_0_joint", "right_hand_thumb_1_joint", "right_hand_thumb_2_joint",
+            "right_hand_middle_0_joint", "right_hand_middle_1_joint",
+            "right_hand_index_0_joint", "right_hand_index_1_joint"
+        ])},
     )
     joint_deviation_arms = RewTerm(
-        func=mdp_isaac.joint_deviation_l1,
-        weight=-0.1,
-        params={"asset_cfg": SceneEntityCfg(
-            "robot",
-            joint_names=[
-                ".*_shoulder_pitch_joint",
-                ".*_shoulder_roll_joint",
-                ".*_shoulder_yaw_joint",
-                ".*_elbow_joint",
-            ],
-        )},
-    )
-    # Important for 43-DoF G1: keep fingers quiet unless you intentionally want them moving
-    joint_deviation_hands = RewTerm(
-        func=mdp_isaac.joint_deviation_l1,
-        weight=-0.05,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*_hand_.*_joint")},
+        func=mdp_isaac.joint_deviation_l1, weight=-0.5,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[
+            "left_shoulder_pitch_joint", "left_shoulder_roll_joint", "left_shoulder_yaw_joint", "left_elbow_joint",
+            "right_shoulder_pitch_joint", "right_shoulder_roll_joint", "right_shoulder_yaw_joint", "right_elbow_joint"
+        ])},
     )
     joint_deviation_torso = RewTerm(
-        func=mdp_isaac.joint_deviation_l1,
-        weight=-0.1,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names="waist_.*")},
+        func=mdp_isaac.joint_deviation_l1, weight=-0.1,
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=["waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint"])},
     )
-
-    # Stability / smoothness
-    # (KEY) prevent hopping/bouncing:
-    lin_vel_z_l2 = RewTerm(func=mdp_isaac.lin_vel_z_l2, weight=-0.2)
-    ang_vel_xy_l2 = RewTerm(func=mdp_isaac.ang_vel_xy_l2, weight=-0.05)
 
     action_rate_l2 = RewTerm(func=mdp_isaac.action_rate_l2, weight=-0.005)
     flat_orientation_l2 = RewTerm(func=mdp_isaac.flat_orientation_l2, weight=-1.0)
+    
     dof_acc_l2 = RewTerm(
-        func=mdp_isaac.joint_acc_l2,
-        weight=-1.25e-7,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_knee_joint"])},
+        func=mdp_isaac.joint_acc_l2, weight=-1.25e-7, 
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=["left_hip_pitch_joint", "left_hip_roll_joint", "left_hip_yaw_joint", "right_hip_pitch_joint", "right_hip_roll_joint", "right_hip_yaw_joint", "left_knee_joint", "right_knee_joint"])},
     )
     dof_torques_l2 = RewTerm(
-        func=mdp_isaac.joint_torques_l2,
-        weight=-1.5e-7,
-        params={"asset_cfg": SceneEntityCfg("robot", joint_names=[".*_hip_.*", ".*_knee_joint", ".*_ankle_.*"])},
+        func=mdp_isaac.joint_torques_l2, weight=-1.5e-7, 
+        params={"asset_cfg": SceneEntityCfg("robot", joint_names=["left_hip_pitch_joint", "left_hip_roll_joint", "left_hip_yaw_joint", "right_hip_pitch_joint", "right_hip_roll_joint", "right_hip_yaw_joint", "left_knee_joint", "right_knee_joint", "left_ankle_pitch_joint", "left_ankle_roll_joint", "right_ankle_pitch_joint", "right_ankle_roll_joint"])},
     )
-
 
 @configclass
 class TerminationsCfg:
     time_out = DoneTerm(func=mdp_isaac.time_out, time_out=True)
     base_contact = DoneTerm(
         func=mdp_isaac.illegal_contact,
-        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names="torso_link"), "threshold": 1.0},
+        params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=["torso_link"]), "threshold": 1.0},
     )
-
 
 @configclass
 class EventCfg:
@@ -199,23 +185,20 @@ class EventCfg:
         mode="reset",
         params={
             "pose_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5), "yaw": (-3.14, 3.14)},
-            "velocity_range": {
-                "x": (0.0, 0.0), "y": (0.0, 0.0), "z": (0.0, 0.0),
-                "roll": (0.0, 0.0), "pitch": (0.0, 0.0), "yaw": (0.0, 0.0),
-            },
+            "velocity_range": {"x": (0.0, 0.0), "y": (0.0, 0.0), "z": (0.0, 0.0), "roll": (0.0, 0.0), "pitch": (0.0, 0.0), "yaw": (0.0, 0.0)},
         },
     )
     reset_robot_joints = EventTerm(
-        func=mdp_isaac.reset_joints_by_scale,
-        mode="reset",
-        params={"position_range": (1.0, 1.0), "velocity_range": (0.0, 0.0)},
+        func=mdp_isaac.reset_joints_by_scale, mode="reset", params={"position_range": (1.0, 1.0), "velocity_range": (0.0, 0.0)},
     )
-
+    push_robot = EventTerm(
+        func=mdp_isaac.push_by_setting_velocity,
+        mode="interval", interval_range_s=(10.0, 15.0), params={"velocity_range": {"x": (-0.5, 0.5), "y": (-0.5, 0.5)}},
+    )
 
 @configclass
 class CurriculumCfg:
     pass
-
 
 @configclass
 class dj_urop_g1_loco_v0_EnvCfg(ManagerBasedRLEnvCfg):
@@ -229,9 +212,9 @@ class dj_urop_g1_loco_v0_EnvCfg(ManagerBasedRLEnvCfg):
     terminations: TerminationsCfg = TerminationsCfg()
 
     def __post_init__(self):
-        self.decimation = 2
+        self.decimation = 2                  
         self.episode_length_s = 20.0
-        self.sim.dt = 1 / 120
+        self.sim.dt = 1 / 120                  
         self.sim.render_interval = self.decimation
         if self.scene.contact_forces is not None:
             self.scene.contact_forces.update_period = self.sim.dt

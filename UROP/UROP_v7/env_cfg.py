@@ -182,20 +182,20 @@ class RewardsCfg:
     action_rate = RewTerm(func=mdp.action_rate_penalty, weight=-0.012)
 
     # before toss: stand still + keep receive-ready posture
-    ready_pose_wait = RewTerm(func=mdp.ready_pose_when_waiting, weight=4.0, params={"sigma": 0.40})
+    ready_pose_wait = RewTerm(func=mdp.ready_pose_when_waiting, weight=3.0, params={"sigma": 0.40})
     wait_base_drift = RewTerm(func=mdp.wait_base_drift_penalty, weight=-3.0, params={"sigma": 0.18})
 
     # catching / receiving
     reach = RewTerm(func=mdp.torso_reach_object_reward, weight=0.7, params={"sigma": 0.75})
-    hands_reach = RewTerm(func=mdp.hands_reach_object_reward, weight=1.2, params={"sigma": 0.35})
-    support_under = RewTerm(func=mdp.hands_support_under_box_reward, weight=1.5, params={"sigma": 0.16})
+    hands_reach = RewTerm(func=mdp.hands_reach_object_reward, weight=1.0, params={"sigma": 0.35})
+    support_under = RewTerm(func=mdp.hands_support_under_box_reward, weight=1.0, params={"sigma": 0.16})
 
     hold_pose = RewTerm(
         func=mdp.hold_pose_reward,
         weight=2.5,
         params={"torso_body_name": "torso_link", "sigma": 0.22, "target_offset": (0.05, 0.0, 0.05)},
     )
-    hold_vel = RewTerm(func=mdp.hold_object_vel_reward, weight=1.5, params={"torso_body_name": "torso_link", "sigma": 0.60})
+    hold_vel = RewTerm(func=mdp.hold_object_vel_reward, weight=1.0, params={"torso_body_name": "torso_link", "sigma": 0.60})
     contact_symmetric = RewTerm(
         func=mdp.contact_hold_bonus_symmetric,
         weight=2.0,
@@ -206,7 +206,7 @@ class RewardsCfg:
             "thr": 2.0,
         },
     )
-    not_drop = RewTerm(func=mdp.object_not_dropped_bonus, weight=1.2, params={"min_z": 0.45, "max_dist": 2.2})
+    not_drop = RewTerm(func=mdp.object_not_dropped_bonus, weight=1.0, params={"min_z": 0.45, "max_dist": 2.2})
 
     # impact penalty: discourage violent collision spikes
     impact = RewTerm(
@@ -232,11 +232,11 @@ class RewardsCfg:
 
     # latch success: once we believe the object is truly caught
     hold_latched = RewTerm(func=mdp.hold_latched_bonus, weight=3.0)
-    hold_sustain = RewTerm(func=mdp.hold_sustain_bonus, weight=4.0, params={"min_steps": 30})
+    hold_sustain = RewTerm(func=mdp.hold_sustain_bonus, weight=3.0, params={"min_steps": 30})
 
     # 핵심: once caught, stop shuffling / stop walking away
-    post_hold_still = RewTerm(func=mdp.post_hold_still_reward, weight=4.0, params={"lin_sigma": 0.14, "yaw_sigma": 0.45})
-    post_hold_anchor = RewTerm(func=mdp.post_hold_anchor_penalty, weight=-4.0, params={"sigma": 0.12})
+    post_hold_still = RewTerm(func=mdp.post_hold_still_reward, weight=3.0, params={"lin_sigma": 0.14, "yaw_sigma": 0.45})
+    post_hold_anchor = RewTerm(func=mdp.post_hold_anchor_penalty, weight=-3.0, params={"sigma": 0.12})
     post_hold_leg_motion = RewTerm(func=mdp.post_hold_leg_motion_penalty, weight=-0.06)
 
 

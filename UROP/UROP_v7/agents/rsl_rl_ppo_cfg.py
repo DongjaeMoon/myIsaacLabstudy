@@ -10,7 +10,7 @@ from isaaclab.utils import configclass
 
 @configclass
 class UropV7PPORunnerCfg(RslRlOnPolicyRunnerCfg):
-    num_steps_per_env = 96
+    num_steps_per_env = 64
     max_iterations = 10000
     save_interval = 250
     experiment_name = "UROP_v7"
@@ -28,8 +28,8 @@ class UropV7PPORunnerCfg(RslRlOnPolicyRunnerCfg):
         use_clipped_value_loss=True,
         clip_param=0.2,
         entropy_coef=0.005,
-        num_learning_epochs=5,
-        num_mini_batches=32,
+        num_learning_epochs=4,
+        num_mini_batches=16,
         # num_mini_batches=8,
         learning_rate=3.0e-4, #5.0e-4->1.0e-4
         schedule="adaptive",

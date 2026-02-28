@@ -40,3 +40,19 @@ def track_ang_vel_z_world_exp(env: "ManagerBasedRLEnv", command_name: str, std: 
     asset = env.scene[asset_cfg.name]
     ang_vel_error = torch.square(env.command_manager.get_command(command_name)[:, 2] - asset.data.root_ang_vel_w[:, 2])
     return torch.exp(-ang_vel_error / std**2)
+
+# [추가됨] 두 발이 동시에 공중에 떠 있으면(점프) 페널티 부여
+def both_feet_air_penalty(env: "ManagerBasedRLEnv", command_name: str, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    contact_time = contact_sensor.data.current_contact_time[:, sensor_cfg.body_ids]
+    in_contact = contact_time > 0.0
+    both_in_air = (torch.sum(in_contact.int(), dim=1) == 0).float()
+    
+    # 정지 상태가 아닐 때만 페널티 적용
+    both_in_air *= torch.norm(env.command_manager.get_command(command_name)[:, :2], dim=1) > 0.1
+    return both_in_air
+
+# [추가됨] 골반이 특정 높이(0.78)에서 벗어나면 강한 페널티 (위아래 꿀렁임 방지)
+def base_height_penalty(env: "ManagerBasedRLEnv", target_height: float, asset_cfg: SceneEntityCfg) -> torch.Tensor:
+    asset = env.scene[asset_cfg.name]
+    return torch.square(asset.data.root_pos_w[:, 2] - target_height)
