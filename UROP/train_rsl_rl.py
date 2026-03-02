@@ -104,6 +104,7 @@ torch.backends.cudnn.deterministic = False
 torch.backends.cudnn.benchmark = False
 
 import UROP_g1_loco_v0
+import UROP_g1_loco_v1
 import UROP_v0
 import UROP_v1
 import UROP_v2
@@ -112,6 +113,8 @@ import UROP_v4
 import UROP_v5
 import UROP_v6
 import UROP_v7
+import UROP_v8
+import UROP_v9
 
 @hydra_task_config(args_cli.task, args_cli.agent)
 def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: RslRlBaseRunnerCfg):

@@ -12,15 +12,22 @@ if TYPE_CHECKING:
 
 def feet_air_time_positive_biped(env: "ManagerBasedRLEnv", command_name: str, threshold: float, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
     contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
-    air_time = contact_sensor.data.current_air_time[:, sensor_cfg.body_ids]
-    contact_time = contact_sensor.data.current_contact_time[:, sensor_cfg.body_ids]
+
+    air_time = contact_sensor.data.current_air_time[:, sensor_cfg.body_ids]         # (N,2)
+    contact_time = contact_sensor.data.current_contact_time[:, sensor_cfg.body_ids] # (N,2)
     in_contact = contact_time > 0.0
-    in_mode_time = torch.where(in_contact, contact_time, air_time)
-    single_stance = torch.sum(in_contact.int(), dim=1) == 1
-    reward = torch.min(torch.where(single_stance.unsqueeze(-1), in_mode_time, 0.0), dim=1)[0]
-    reward = torch.clamp(reward, max=threshold)
-    reward *= torch.norm(env.command_manager.get_command(command_name)[:, :2], dim=1) > 0.1
-    return reward
+
+    # exactly one foot in contact
+    single_stance = (in_contact.int().sum(dim=1) == 1)
+
+    # reward swing foot air-time (the one NOT in contact)
+    swing_air = (air_time * (~in_contact)).sum(dim=1)
+
+    # clamp + only when moving
+    moving = torch.norm(env.command_manager.get_command(command_name)[:, :2], dim=1) > 0.1
+    rew = torch.clamp(swing_air, max=threshold) * moving
+    rew *= single_stance
+    return rew
 
 def feet_slide(env: "ManagerBasedRLEnv", sensor_cfg: SceneEntityCfg, asset_cfg: SceneEntityCfg) -> torch.Tensor:
     contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]

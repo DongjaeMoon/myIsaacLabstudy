@@ -9,7 +9,7 @@ from isaaclab.utils import configclass
 
 @configclass
 class UropG1LOCOv0PPORunnerCfg(RslRlOnPolicyRunnerCfg):
-    num_steps_per_env = 24
+    num_steps_per_env = 48
     max_iterations = 10000
     save_interval = 100
     experiment_name = "UROP_g1_loco_v0"
@@ -21,9 +21,11 @@ class UropG1LOCOv0PPORunnerCfg(RslRlOnPolicyRunnerCfg):
         init_noise_std=1.0,
         actor_obs_normalization=False,
         critic_obs_normalization=False,
-        actor_hidden_dims=[512, 256, 128],
-        critic_hidden_dims=[512, 256, 128],
+        actor_hidden_dims=[256, 128, 64],
+        critic_hidden_dims=[256, 128, 64],
         activation="elu",
+        #actor_obs_normalization=False,
+        #critic_obs_normalization=False,
     )
     algorithm = RslRlPpoAlgorithmCfg(
         value_loss_coef=1.0,
@@ -32,7 +34,7 @@ class UropG1LOCOv0PPORunnerCfg(RslRlOnPolicyRunnerCfg):
         entropy_coef=0.01,  # 탐험을 조금 더 하도록 0.005 -> 0.01로 상향
         num_learning_epochs=5,
         num_mini_batches=8,
-        learning_rate=1.0e-3, # [핵심 수정 2] 빠른 걸음걸이 학습을 위해 학습률 1.0e-3 적용
+        learning_rate=5e-4, # [핵심 수정 2] 빠른 걸음걸이 학습을 위해 학습률 1.0e-3 적용
         schedule="adaptive",
         gamma=0.99,
         lam=0.95,

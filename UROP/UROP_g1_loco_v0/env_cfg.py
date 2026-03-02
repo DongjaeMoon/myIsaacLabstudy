@@ -77,9 +77,10 @@ class ActionsCfg:
             "left_shoulder_pitch_joint", "left_shoulder_roll_joint", "left_shoulder_yaw_joint", "left_elbow_joint", "left_wrist_roll_joint", "left_wrist_pitch_joint", "left_wrist_yaw_joint",
             "right_shoulder_pitch_joint", "right_shoulder_roll_joint", "right_shoulder_yaw_joint", "right_elbow_joint", "right_wrist_roll_joint", "right_wrist_pitch_joint", "right_wrist_yaw_joint"
         ],
-        scale=0.05,
+        scale=0.3,
         use_default_offset=True,
     )
+    '''
     # 3. 손가락: 보행에 불필요하므로 스케일 0.0 (AI가 제어하지 못하게 완전히 묶음)
     hands = mdp_isaac.JointPositionActionCfg(
         asset_name="robot",
@@ -93,8 +94,9 @@ class ActionsCfg:
         ],
         scale=0.0,
         use_default_offset=True,
-    )
+    )'''
 
+'''
 @configclass
 class ObservationsCfg:
     @configclass
@@ -105,6 +107,44 @@ class ObservationsCfg:
         velocity_commands = ObsTerm(func=mdp_isaac.generated_commands, params={"command_name": "base_velocity"})
         joint_pos = ObsTerm(func=mdp_isaac.joint_pos_rel, noise=Unoise(n_min=-0.01, n_max=0.01))
         joint_vel = ObsTerm(func=mdp_isaac.joint_vel_rel, noise=Unoise(n_min=-1.5, n_max=1.5))
+        actions = ObsTerm(func=mdp_isaac.last_action)
+
+        def __post_init__(self):
+            self.enable_corruption = True
+            self.concatenate_terms = True
+
+    policy: PolicyCfg = PolicyCfg()'''
+
+CONTROLLED_JOINTS = [
+    # legs (12)
+    "left_hip_pitch_joint","left_hip_roll_joint","left_hip_yaw_joint","left_knee_joint","left_ankle_pitch_joint","left_ankle_roll_joint",
+    "right_hip_pitch_joint","right_hip_roll_joint","right_hip_yaw_joint","right_knee_joint","right_ankle_pitch_joint","right_ankle_roll_joint",
+    # waist + arms (17)
+    "waist_yaw_joint","waist_roll_joint","waist_pitch_joint",
+    "left_shoulder_pitch_joint","left_shoulder_roll_joint","left_shoulder_yaw_joint","left_elbow_joint","left_wrist_roll_joint","left_wrist_pitch_joint","left_wrist_yaw_joint",
+    "right_shoulder_pitch_joint","right_shoulder_roll_joint","right_shoulder_yaw_joint","right_elbow_joint","right_wrist_roll_joint","right_wrist_pitch_joint","right_wrist_yaw_joint",
+]
+
+@configclass
+class ObservationsCfg:
+    @configclass
+    class PolicyCfg(ObsGroup):
+        base_lin_vel = ObsTerm(func=mdp_isaac.base_lin_vel, noise=Unoise(n_min=-0.1, n_max=0.1))
+        base_ang_vel = ObsTerm(func=mdp_isaac.base_ang_vel, noise=Unoise(n_min=-0.2, n_max=0.2))
+        projected_gravity = ObsTerm(func=mdp_isaac.projected_gravity, noise=Unoise(n_min=-0.05, n_max=0.05))
+        velocity_commands = ObsTerm(func=mdp_isaac.generated_commands, params={"command_name": "base_velocity"})
+
+        joint_pos = ObsTerm(
+            func=mdp_isaac.joint_pos_rel,
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=CONTROLLED_JOINTS)},
+            noise=Unoise(n_min=-0.01, n_max=0.01),
+        )
+        joint_vel = ObsTerm(
+            func=mdp_isaac.joint_vel_rel,
+            params={"asset_cfg": SceneEntityCfg("robot", joint_names=CONTROLLED_JOINTS)},
+            noise=Unoise(n_min=-1.5, n_max=1.5),
+        )
+
         actions = ObsTerm(func=mdp_isaac.last_action)
 
         def __post_init__(self):
@@ -128,11 +168,11 @@ class RewardsCfg:
     )
 
     feet_air_time = RewTerm(
-        func=custom_mdp.feet_air_time_positive_biped, weight=0.75,
+        func=custom_mdp.feet_air_time_positive_biped, weight=2.0,
         params={"command_name": "base_velocity", "sensor_cfg": SceneEntityCfg("contact_forces", body_names=["left_ankle_roll_link", "right_ankle_roll_link"]), "threshold": 0.4},
     )
     feet_slide = RewTerm(
-        func=custom_mdp.feet_slide, weight=-0.5,
+        func=custom_mdp.feet_slide, weight=-1.0,
         params={"sensor_cfg": SceneEntityCfg("contact_forces", body_names=["left_ankle_roll_link", "right_ankle_roll_link"]), "asset_cfg": SceneEntityCfg("robot", body_names=["left_ankle_roll_link", "right_ankle_roll_link"])},
     )
     
