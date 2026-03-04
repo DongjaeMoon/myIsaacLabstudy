@@ -11,12 +11,16 @@ from example_v4 import ExampleV4
 from example_v5 import ExampleV5
 from go2_example import Go2Example   # 새로 만든 Go2 (파일명과 클래스명 주의!)
 from example_h1 import H1Example
+from g1_loco_flat_example import G1LocoFlatExample
 from g1_loco_v0 import G1LocoV0
 from UROP_v8_deploy import G1DeployV8
 
 class ExampleExtension(omni.ext.IExt):
     def on_startup(self, ext_id: str):
-        self.category = "My Study"
+        self.cat_study = "My Study"
+        self.cat_urop_loco = "2.UROP_loco"
+        self.cat_urop_catching = "1.UROP_catching"
+        self.cat_urop_main = "0.UROP_main"
 
         # ---------------------------------------------------------
         # 1. G1 로봇 메뉴 등록
@@ -32,7 +36,7 @@ class ExampleExtension(omni.ext.IExt):
             name="G1 Practice",        # 메뉴 이름 (title과 같게)
             execute_entrypoint=ui_handle_1.build_window,
             ui_hook=ui_handle_1.build_ui,
-            category=self.category
+            category=self.cat_study
         )
 
         # ---------------------------------------------------------
@@ -49,7 +53,7 @@ class ExampleExtension(omni.ext.IExt):
             name="Go2 Running",        # 메뉴 이름
             execute_entrypoint=ui_handle_2.build_window,
             ui_hook=ui_handle_2.build_ui,
-            category=self.category
+            category=self.cat_study
         )
     
         ui_handle_3 = BaseSampleUITemplate(
@@ -64,22 +68,22 @@ class ExampleExtension(omni.ext.IExt):
             name="G1 UROP V3",       # [중요] title과 똑같이 적어주세요
             execute_entrypoint=ui_handle_3.build_window,
             ui_hook=ui_handle_3.build_ui,
-            category=self.category
+            category=self.cat_study
         )
 
         ui_handle_4 = BaseSampleUITemplate(
             ext_id=ext_id,
             file_path=os.path.abspath(__file__),
             # [중요] title은 메뉴판에 보일 이름입니다. 겹치지 않게!
-            title="H1 deploy practice",      
+            title="G1 deploy practice",      
             overview="Deployment practice",
-            sample=H1Example()       # [중요] 위에서 임포트한 V3 클래스 실행
+            sample=G1LocoFlatExample()     
         )
         get_browser_instance().register_example(
-            name="H1 deploy practice",       # [중요] title과 똑같이 적어주세요
+            name="G1 deploy practice",       # [중요] title과 똑같이 적어주세요
             execute_entrypoint=ui_handle_4.build_window,
             ui_hook=ui_handle_4.build_ui,
-            category=self.category
+            category=self.cat_study
         )
 
         ui_handle_5 = BaseSampleUITemplate(
@@ -94,7 +98,7 @@ class ExampleExtension(omni.ext.IExt):
             name="G1 UROP V4",       # [중요] title과 똑같이 적어주세요
             execute_entrypoint=ui_handle_5.build_window,
             ui_hook=ui_handle_5.build_ui,
-            category=self.category
+            category=self.cat_study
         )
 
         ui_handle_6 = BaseSampleUITemplate(
@@ -109,7 +113,7 @@ class ExampleExtension(omni.ext.IExt):
             name="G1 UROP V5",       # [중요] title과 똑같이 적어주세요
             execute_entrypoint=ui_handle_6.build_window,
             ui_hook=ui_handle_6.build_ui,
-            category=self.category
+            category=self.cat_study
         )
 
         ui_handle_7 = BaseSampleUITemplate(
@@ -124,34 +128,54 @@ class ExampleExtension(omni.ext.IExt):
             name="G1 Loco v0",       # [중요] title과 똑같이 적어주세요
             execute_entrypoint=ui_handle_7.build_window,
             ui_hook=ui_handle_7.build_ui,
-            category=self.category
+            category=self.cat_study
         )
 
         ui_handle_8 = BaseSampleUITemplate(
             ext_id=ext_id,
             file_path=os.path.abspath(__file__),
             # [중요] title은 메뉴판에 보일 이름입니다. 겹치지 않게!
-            title="G1 UROP v8",      
-            overview="G1 UROP box catching deployment v8",
+            title="G1 UROP V8",      
+            overview="G1 UROP box catching deployment V8",
             sample=G1DeployV8()       
         )
         get_browser_instance().register_example(
-            name="G1 UROP v8",       # [중요] title과 똑같이 적어주세요
+            name="G1 UROP V8",       # [중요] title과 똑같이 적어주세요
             execute_entrypoint=ui_handle_8.build_window,
             ui_hook=ui_handle_8.build_ui,
-            category=self.category
+            category=self.cat_urop_catching
         )
+
+        ui_handle_9 = BaseSampleUITemplate(
+            ext_id=ext_id,
+            file_path=os.path.abspath(__file__),
+            # [중요] title은 메뉴판에 보일 이름입니다. 겹치지 않게!
+            title="G1 UROP V9",      
+            overview="G1 UROP box catching deployment V9",
+            sample=G1DeployV8()       
+        )
+        get_browser_instance().register_example(
+            name="G1 UROP V9",       # [중요] title과 똑같이 적어주세요
+            execute_entrypoint=ui_handle_9.build_window,
+            ui_hook=ui_handle_9.build_ui,
+            category=self.cat_urop_catching
+        )
+
+
+        import omni.ui as ui
+        ui.Workspace.show_window("Robotics Examples")
 
         return
 
     def on_shutdown(self):
         # 켜진 거 다 꺼줘야 에러가 안 납니다.
-        get_browser_instance().deregister_example(name="G1 Practice", category=self.category)
-        get_browser_instance().deregister_example(name="Go2 Running", category=self.category)
-        get_browser_instance().deregister_example(name="G1 UROP V3", category=self.category)
-        get_browser_instance().deregister_example(name="H1 deploy practice", category=self.category)
-        get_browser_instance().deregister_example(name="G1 UROP V4", category=self.category)
-        get_browser_instance().deregister_example(name="G1 UROP V5", category=self.category)
-        get_browser_instance().deregister_example(name="G1 Loco v0", category=self.category)
-        get_browser_instance().deregister_example(name="G1 UROP V8", category=self.category)
+        get_browser_instance().deregister_example(name="G1 Practice", category=self.cat_study)
+        get_browser_instance().deregister_example(name="Go2 Running", category=self.cat_study)
+        get_browser_instance().deregister_example(name="G1 UROP V3", category=self.cat_study)
+        get_browser_instance().deregister_example(name="G1 deploy practice", category=self.cat_study)
+        get_browser_instance().deregister_example(name="G1 UROP V4", category=self.cat_study)
+        get_browser_instance().deregister_example(name="G1 UROP V5", category=self.cat_study)
+        get_browser_instance().deregister_example(name="G1 Loco v0", category=self.cat_study)
+        get_browser_instance().deregister_example(name="G1 UROP V8", category=self.cat_urop_catching)
+        get_browser_instance().deregister_example(name="G1 UROP V9", category=self.cat_urop_catching)
         return

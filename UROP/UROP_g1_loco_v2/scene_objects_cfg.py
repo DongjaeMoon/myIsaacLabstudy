@@ -1,4 +1,4 @@
-#[/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_g1_loco_v1/scene_objects_cfg.py]
+#[/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_g1_loco_v2/scene_objects_cfg.py]
 
 import isaaclab.sim as sim_utils
 from isaaclab.assets import ArticulationCfg
@@ -61,8 +61,8 @@ G1_FINGER_JOINTS = [
 ]
 
 # Your official G1 USD (the one you want to train with)
-G1_USD_PATH = "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.1/Isaac/Robots/Unitree/G1/g1.usd"
-
+#G1_USD_PATH = "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.1/Isaac/Robots/Unitree/G1/g1.usd"
+G1_USD_PATH = "/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_g1_loco_v2/g1_29dof.usd"
 # --------------------------------------------------------------------------------------
 # Key stability settings copied in spirit from IsaacLab’s working locomotion configs:
 # - rigid_props: limit depenetration velocity (prevents “explosive” contact resolution)

@@ -1,4 +1,4 @@
-#[/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_g1_loco_v1/env_cfg.py]
+#[/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_g1_loco_v3/env_cfg.py]
 import math
 import isaaclab.sim as sim_utils
 from isaaclab.utils import configclass
@@ -23,7 +23,7 @@ from . import scene_objects_cfg
 
 
 @configclass
-class dj_urop_g1_loco_v1_SceneCfg(InteractiveSceneCfg):
+class dj_urop_g1_loco_v3_SceneCfg(InteractiveSceneCfg):
     # Ground as AssetBaseCfg (safe type). We try to set friction here.
     # If your IsaacLab version errors on `physics_material=...`, see fallback note below.
     ground = AssetBaseCfg(
@@ -61,12 +61,12 @@ class CommandsCfg:
         resampling_time_range=(10.0, 10.0),
         rel_standing_envs=0.02,
         rel_heading_envs=1.0,
-        heading_command=True,
+        heading_command=False,
         heading_control_stiffness=0.5,
         debug_vis=True,
         ranges=mdp_isaac.UniformVelocityCommandCfg.Ranges(
             lin_vel_x=(0.0, 1.0),
-            lin_vel_y=(-0.5, 0.5),
+            lin_vel_y=(-0.0, 0.0),
             ang_vel_z=(-1.0, 1.0),
             heading=(-math.pi, math.pi),
         ),
@@ -225,8 +225,8 @@ class EventCfg:
 
 
 @configclass
-class dj_urop_g1_loco_v1_EnvCfg(ManagerBasedRLEnvCfg):
-    scene: dj_urop_g1_loco_v1_SceneCfg = dj_urop_g1_loco_v1_SceneCfg(num_envs=4096, env_spacing=2.5)
+class dj_urop_g1_loco_v3_EnvCfg(ManagerBasedRLEnvCfg):
+    scene: dj_urop_g1_loco_v3_SceneCfg = dj_urop_g1_loco_v3_SceneCfg(num_envs=4096, env_spacing=2.5)
     observations: ObservationsCfg = ObservationsCfg()
     actions: ActionsCfg = ActionsCfg()
     events: EventCfg = EventCfg()
@@ -241,3 +241,13 @@ class dj_urop_g1_loco_v1_EnvCfg(ManagerBasedRLEnvCfg):
         self.sim.render_interval = self.decimation
         if self.scene.contact_forces is not None:
             self.scene.contact_forces.update_period = self.sim.dt
+        
+        self.sim.physics_material = sim_utils.RigidBodyMaterialCfg(
+            static_friction=1.0,
+            dynamic_friction=1.0,
+            friction_combine_mode="multiply",
+            restitution_combine_mode="multiply",
+        )
+
+        # (선택) 조금 더 안정화
+        self.sim.physx.enable_stabilization = True
