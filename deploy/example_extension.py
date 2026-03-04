@@ -14,6 +14,7 @@ from example_h1 import H1Example
 from g1_loco_flat_example import G1LocoFlatExample
 from g1_loco_v0 import G1LocoV0
 from UROP_v8_deploy import G1DeployV8
+from g1_loco_v3 import G1LocoV3Deploy
 
 class ExampleExtension(omni.ext.IExt):
     def on_startup(self, ext_id: str):
@@ -59,16 +60,15 @@ class ExampleExtension(omni.ext.IExt):
         ui_handle_3 = BaseSampleUITemplate(
             ext_id=ext_id,
             file_path=os.path.abspath(__file__),
-            # [중요] title은 메뉴판에 보일 이름입니다. 겹치지 않게!
-            title="G1 UROP V3",      
-            overview="Testing UROP V3 Policy",
-            sample=ExampleV3()       # [중요] 위에서 임포트한 V3 클래스 실행
+            title="G1 Loco v3",      
+            overview="G1 locomotion v3 deployment",
+            sample=G1LocoV3Deploy()      
         )
         get_browser_instance().register_example(
-            name="G1 UROP V3",       # [중요] title과 똑같이 적어주세요
+            name="G1 Loco v3",       
             execute_entrypoint=ui_handle_3.build_window,
             ui_hook=ui_handle_3.build_ui,
-            category=self.cat_study
+            category=self.cat_urop_loco
         )
 
         ui_handle_4 = BaseSampleUITemplate(
@@ -160,6 +160,7 @@ class ExampleExtension(omni.ext.IExt):
             ui_hook=ui_handle_9.build_ui,
             category=self.cat_urop_catching
         )
+        
 
 
         import omni.ui as ui
@@ -171,7 +172,7 @@ class ExampleExtension(omni.ext.IExt):
         # 켜진 거 다 꺼줘야 에러가 안 납니다.
         get_browser_instance().deregister_example(name="G1 Practice", category=self.cat_study)
         get_browser_instance().deregister_example(name="Go2 Running", category=self.cat_study)
-        get_browser_instance().deregister_example(name="G1 UROP V3", category=self.cat_study)
+        get_browser_instance().deregister_example(name="G1 Loco v3", category=self.cat_urop_loco)
         get_browser_instance().deregister_example(name="G1 deploy practice", category=self.cat_study)
         get_browser_instance().deregister_example(name="G1 UROP V4", category=self.cat_study)
         get_browser_instance().deregister_example(name="G1 UROP V5", category=self.cat_study)
