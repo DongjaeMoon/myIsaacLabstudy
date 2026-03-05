@@ -154,7 +154,7 @@ class ObservationsCfg:
                 "scale": 1.0 / 300.0,
             },
         )
-
+        #policy (actor) -> contact force delete. 
         def __post_init__(self):
             self.concatenate_terms = True
             self.enable_corruption = True
@@ -164,7 +164,40 @@ class ObservationsCfg:
         def __post_init__(self):
             self.concatenate_terms = True
             self.enable_corruption = False
+    # criticCfg(ObsGroup):
+        '''# phase signals
+        toss_signal = ObsTerm(func=mdp.toss_state)
+        hold_signal = ObsTerm(func=mdp.hold_state)
+        hold_anchor_err = ObsTerm(func=mdp.hold_anchor_error, params={"scale": 1.0})
 
+        # robot proprio (gravity dir + base vel + controlled joints pos/vel/torque)
+        proprio = ObsTerm(func=mdp.robot_proprio, params={"torque_scale": 1.0 / 80.0})
+        prev_actions = ObsTerm(func=mdp.prev_actions)
+
+        # object relative pose/vel in base frame
+        obj_rel = ObsTerm(
+            func=mdp.object_rel_state,
+            params={"pos_scale": 1.0, "vel_scale": 1.0, "drop_prob": 0.0, "noise_std": 0.0},
+        )
+        # domain randomization parameters (normalized)
+        obj_params = ObsTerm(func=mdp.object_params)
+
+        # contact magnitudes from multiple sensors
+        contact = ObsTerm(
+            func=mdp.contact_forces,
+            params={
+                "sensor_names": [
+                    "contact_torso",
+                    # 왼팔 6개
+                    "contact_l_shoulder_yaw", "contact_l_elbow",
+                    "contact_l_wrist_roll", "contact_l_wrist_pitch", "contact_l_wrist_yaw", "contact_l_hand",
+                    # 오른팔 6개
+                    "contact_r_shoulder_yaw", "contact_r_elbow",
+                    "contact_r_wrist_roll", "contact_r_wrist_pitch", "contact_r_wrist_yaw", "contact_r_hand"
+                ],
+                "scale": 1.0 / 300.0,
+            },
+        )'''
     policy: PolicyCfg = PolicyCfg()
     critic: CriticCfg = CriticCfg()
 

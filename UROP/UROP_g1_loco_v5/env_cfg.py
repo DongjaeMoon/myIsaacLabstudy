@@ -151,6 +151,8 @@ class RewardsCfg:
     lin_vel_z_l2 = RewTerm(func=mdp_isaac.lin_vel_z_l2, weight=-0.2)
     ang_vel_xy_l2 = RewTerm(func=mdp_isaac.ang_vel_xy_l2, weight=-0.05)
     flat_orientation_l2 = RewTerm(func=mdp_isaac.flat_orientation_l2, weight=-1.0)
+    # this is pelvis, should be made in torso link, too.
+    #reward weight modification
     action_rate_l2 = RewTerm(func=mdp_isaac.action_rate_l2, weight=-0.005)
 
     dof_pos_limits = RewTerm(
@@ -176,7 +178,7 @@ class RewardsCfg:
     )
     joint_deviation_torso = RewTerm(
         func=mdp_isaac.joint_deviation_l1,
-        weight=-0.1,
+        weight=-0.1, 
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=["waist_.*"])},
     )
     joint_deviation_hip = RewTerm(

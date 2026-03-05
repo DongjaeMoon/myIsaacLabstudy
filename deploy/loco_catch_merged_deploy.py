@@ -70,7 +70,7 @@ THROW_REL_POS_RANGE = ((0.3, 0.5), (-0.1, 0.1), (0.30, 0.40))
 THROW_REL_VEL_RANGE = ((-2.0, -0.8), (-0.1, 0.1), (-0.20, 0.20))
 
 
-class UROP_Deploy_merged_v0(BaseSample):
+class UROP_Deploy_Merged_v0(BaseSample):
     def __init__(self) -> None:
         super().__init__()
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
