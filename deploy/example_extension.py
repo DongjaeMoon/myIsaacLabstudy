@@ -15,6 +15,7 @@ from g1_loco_flat_example import G1LocoFlatExample
 from g1_loco_v0 import G1LocoV0
 from UROP_v8_deploy import G1DeployV8
 from g1_loco_v3 import G1LocoV3Deploy
+from loco_catch_merged_deploy import UROP_Deploy_Merged_v0
 
 class ExampleExtension(omni.ext.IExt):
     def on_startup(self, ext_id: str):
@@ -29,15 +30,15 @@ class ExampleExtension(omni.ext.IExt):
         ui_handle_1 = BaseSampleUITemplate(
             ext_id=ext_id,
             file_path=os.path.abspath(__file__),
-            title="G1 Practice",       # 메뉴에 뜰 이름
-            overview="G1 Robot Loading",
-            sample=Example()           # 실행할 클래스
+            title="Deploy Merged v0",       # 메뉴에 뜰 이름
+            overview="UROP deployment locomotion and catching merged",
+            sample=UROP_Deploy_Merged_v0()           # 실행할 클래스
         )
         get_browser_instance().register_example(
-            name="G1 Practice",        # 메뉴 이름 (title과 같게)
+            name="Deploy Merged v0",        # 메뉴 이름 (title과 같게)
             execute_entrypoint=ui_handle_1.build_window,
             ui_hook=ui_handle_1.build_ui,
-            category=self.cat_study
+            category=self.cat_urop_main
         )
 
         # ---------------------------------------------------------
@@ -170,7 +171,7 @@ class ExampleExtension(omni.ext.IExt):
 
     def on_shutdown(self):
         # 켜진 거 다 꺼줘야 에러가 안 납니다.
-        get_browser_instance().deregister_example(name="G1 Practice", category=self.cat_study)
+        get_browser_instance().deregister_example(name="Deploy Merged v0", category=self.cat_urop_main)
         get_browser_instance().deregister_example(name="Go2 Running", category=self.cat_study)
         get_browser_instance().deregister_example(name="G1 Loco v3", category=self.cat_urop_loco)
         get_browser_instance().deregister_example(name="G1 deploy practice", category=self.cat_study)

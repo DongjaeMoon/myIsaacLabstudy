@@ -108,6 +108,7 @@ import UROP_g1_loco_v1
 import UROP_g1_loco_v2
 import UROP_g1_loco_v3
 import UROP_g1_loco_v4
+import UROP_g1_loco_v5
 import UROP_v0
 import UROP_v1
 import UROP_v2
