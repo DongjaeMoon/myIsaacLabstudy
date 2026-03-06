@@ -77,22 +77,22 @@ class ActionsCfg:
             "left_hip_roll_joint", "left_ankle_roll_joint",
             "right_hip_roll_joint", "right_ankle_roll_joint",
         ],
-        scale=0.15,
+        scale=0.2,
     )
     legs_yaw = mdp.JointPositionActionCfg(
         asset_name="robot",
         joint_names=["left_hip_yaw_joint", "right_hip_yaw_joint"],
-        scale=0.07,
+        scale=0.1,
     )
     waist = mdp.JointPositionActionCfg(
         asset_name="robot",
         joint_names=["waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint"],
-        scale=0.14,
+        scale=0.2,
     )
     left_arm_capture = mdp.JointPositionActionCfg(
         asset_name="robot",
         joint_names=["left_shoulder_pitch_joint", "left_elbow_joint"],
-        scale=0.60,
+        scale=0.50,
     )
     right_arm_capture = mdp.JointPositionActionCfg(
         asset_name="robot",
@@ -121,83 +121,65 @@ class ActionsCfg:
 class ObservationsCfg:
     @configclass
     class PolicyCfg(ObsGroup):
-        # phase signals
+        # [Actor가 볼 수 있는 현실적인 정보]
+        
+        # phase signals (카메라 기반으로 박스가 날아오는 것을 인지했다고 가정)
         toss_signal = ObsTerm(func=mdp.toss_state)
-        hold_signal = ObsTerm(func=mdp.hold_state)
-        hold_anchor_err = ObsTerm(func=mdp.hold_anchor_error, params={"scale": 1.0})
 
-        # robot proprio (gravity dir + base vel + controlled joints pos/vel/torque)
+        # robot proprio (자신의 관절 각도, 속도, 중력 방향 등)
         proprio = ObsTerm(func=mdp.robot_proprio, params={"torque_scale": 1.0 / 80.0})
         prev_actions = ObsTerm(func=mdp.prev_actions)
 
-        # object relative pose/vel in base frame
+        # object relative pose/vel (카메라 비전 트래킹으로 얻을 수 있는 박스의 상대 위치/속도)
         obj_rel = ObsTerm(
             func=mdp.object_rel_state,
             params={"pos_scale": 1.0, "vel_scale": 1.0, "drop_prob": 0.0, "noise_std": 0.0},
         )
-        # domain randomization parameters (normalized)
-        obj_params = ObsTerm(func=mdp.object_params)
 
-        # contact magnitudes from multiple sensors
-        contact = ObsTerm(
-            func=mdp.contact_forces,
-            params={
-                "sensor_names": [
-                    "contact_torso",
-                    # 왼팔 6개
-                    "contact_l_shoulder_yaw", "contact_l_elbow",
-                    "contact_l_wrist_roll", "contact_l_wrist_pitch", "contact_l_wrist_yaw", "contact_l_hand",
-                    # 오른팔 6개
-                    "contact_r_shoulder_yaw", "contact_r_elbow",
-                    "contact_r_wrist_roll", "contact_r_wrist_pitch", "contact_r_wrist_yaw", "contact_r_hand"
-                ],
-                "scale": 1.0 / 300.0,
-            },
-        )
-        #policy (actor) -> contact force delete. 
         def __post_init__(self):
             self.concatenate_terms = True
-            self.enable_corruption = True
+            # 나중에 Sim-to-Real 할 때 여기에 센서 노이즈를 추가하기 위해 True 유지
+            self.enable_corruption = True 
 
     @configclass
-    class CriticCfg(PolicyCfg):
-        def __post_init__(self):
-            self.concatenate_terms = True
-            self.enable_corruption = False
-    # criticCfg(ObsGroup):
-        '''# phase signals
+    class CriticCfg(ObsGroup):
+        # [Critic만 볼 수 있는 시뮬레이터 내부의 특권 정보 (Privileged Info)]
+        
         toss_signal = ObsTerm(func=mdp.toss_state)
         hold_signal = ObsTerm(func=mdp.hold_state)
         hold_anchor_err = ObsTerm(func=mdp.hold_anchor_error, params={"scale": 1.0})
 
-        # robot proprio (gravity dir + base vel + controlled joints pos/vel/torque)
         proprio = ObsTerm(func=mdp.robot_proprio, params={"torque_scale": 1.0 / 80.0})
         prev_actions = ObsTerm(func=mdp.prev_actions)
 
-        # object relative pose/vel in base frame
         obj_rel = ObsTerm(
             func=mdp.object_rel_state,
             params={"pos_scale": 1.0, "vel_scale": 1.0, "drop_prob": 0.0, "noise_std": 0.0},
         )
-        # domain randomization parameters (normalized)
+        
+        # 도메인 랜덤화 파라미터 (박스 질량, 마찰력 등 - 현실 로봇은 모름)
         obj_params = ObsTerm(func=mdp.object_params)
 
-        # contact magnitudes from multiple sensors
+        # 접촉 센서 (현실 로봇 피부에는 이런 정밀한 센서가 없음)
         contact = ObsTerm(
             func=mdp.contact_forces,
             params={
                 "sensor_names": [
                     "contact_torso",
-                    # 왼팔 6개
                     "contact_l_shoulder_yaw", "contact_l_elbow",
                     "contact_l_wrist_roll", "contact_l_wrist_pitch", "contact_l_wrist_yaw", "contact_l_hand",
-                    # 오른팔 6개
                     "contact_r_shoulder_yaw", "contact_r_elbow",
                     "contact_r_wrist_roll", "contact_r_wrist_pitch", "contact_r_wrist_yaw", "contact_r_hand"
                 ],
                 "scale": 1.0 / 300.0,
             },
-        )'''
+        )
+
+        def __post_init__(self):
+            self.concatenate_terms = True
+            # Critic은 완벽한 정답을 바탕으로 Value를 평가해야 하므로 노이즈 없이(False) 학습
+            self.enable_corruption = False
+
     policy: PolicyCfg = PolicyCfg()
     critic: CriticCfg = CriticCfg()
 
@@ -212,9 +194,9 @@ class RewardsCfg:
     height = RewTerm(func=mdp.root_height_reward, weight=1.00, params={"target_z": 0.78, "sigma": 0.12})
 
     base_vel = RewTerm(func=mdp.base_velocity_penalty, weight=-0.15, params={"w_lin": 1.0, "w_ang": 0.35})
-    joint_vel = RewTerm(func=mdp.joint_vel_l2_penalty, weight=-0.01)
-    torque = RewTerm(func=mdp.torque_l2_penalty, weight=-0.00002)
-    action_rate = RewTerm(func=mdp.action_rate_penalty, weight=-0.02)
+    joint_vel = RewTerm(func=mdp.joint_vel_l2_penalty, weight=-0.05)
+    torque = RewTerm(func=mdp.torque_l2_penalty, weight=-0.00005)
+    action_rate = RewTerm(func=mdp.action_rate_penalty, weight=-0.1)
 
     # --- [Stage 0: 박스가 날아오기 전 대기] ---
     ready_pose_wait = RewTerm(func=mdp.ready_pose_when_waiting, weight=3.0, params={"sigma": 0.18})
@@ -271,7 +253,7 @@ class RewardsCfg:
     # --- [받은 후 안정화: 도망가지 말고 제자리에 서있기] ---
     post_hold_still = RewTerm(func=mdp.post_hold_still_reward, weight=2.0, params={"lin_sigma": 0.14, "yaw_sigma": 0.45})
     post_hold_anchor = RewTerm(func=mdp.post_hold_anchor_penalty, weight=-2.0, params={"sigma": 0.12})
-    post_hold_leg_motion = RewTerm(func=mdp.post_hold_leg_motion_penalty, weight=-0.06)
+    #post_hold_leg_motion = RewTerm(func=mdp.post_hold_leg_motion_penalty, weight=-0.06)
 
 
 @configclass
@@ -330,12 +312,12 @@ class CurriculumCfg:
     stage_schedule = CurrTerm(
         func=mdp.stage_schedule, # (이 함수가 mdp/curriculum.py에 있다면 유지, 아니라면 events.py 등에서 읽는 용도의 dummy여도 됨)
         params={
-            #"stage0_iters": 5, 
-            #"stage1_iters": 5, 
-            #"stage2_iters": 5, 
-            "stage0_iters": 500,
-            "stage1_iters": 1000, 
-            "stage2_iters": 1500,
+            "stage0_iters": 5, 
+            "stage1_iters": 5, 
+            "stage2_iters": 5, 
+            #"stage0_iters": 500,
+            #"stage1_iters": 1000, 
+            #"stage2_iters": 1500,
             "num_steps_per_env": 64,
             "eval_stage": -1, # -1이면 현재 스텝에 따라 자동 난이도 조절
         },
@@ -355,9 +337,9 @@ class dj_urop_v12_EnvCfg(ManagerBasedRLEnvCfg):
 
     def __post_init__(self):
         # sim dt / decimation
-        self.decimation = 2
+        self.decimation =4
         self.episode_length_s = 6.0
-        self.sim.dt = 1 / 120
+        self.sim.dt = 1 / 200
         self.sim.render_interval = self.decimation
 
         # PhysX stability (optional; avoids noisy velocity updates warning)
