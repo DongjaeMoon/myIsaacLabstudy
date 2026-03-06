@@ -62,7 +62,8 @@ G1_FINGER_JOINTS = [
 
 # Your official G1 USD (the one you want to train with)
 #G1_USD_PATH = "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.1/Isaac/Robots/Unitree/G1/g1.usd"
-G1_USD_PATH = "/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_g1_loco_v5/g1_29dof_full_collider_flattened.usd"
+#G1_USD_PATH = "/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_g1_loco_v5/g1_29dof_full_collider_flattened.usd"
+G1_USD_PATH = "/home/idim5080-2/mdj/myIsaacLabstudy/UROP/UROP_g1_loco_v5/g1_29dof_full_collider_flattened.usd"
 # --------------------------------------------------------------------------------------
 # Key stability settings copied in spirit from IsaacLab’s working locomotion configs:
 # - rigid_props: limit depenetration velocity (prevents “explosive” contact resolution)

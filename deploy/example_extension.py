@@ -15,6 +15,7 @@ from g1_loco_flat_example import G1LocoFlatExample
 from g1_loco_v0 import G1LocoV0
 from UROP_v8_deploy import G1DeployV8
 from g1_loco_v3 import G1LocoV3Deploy
+from g1_loco_v5 import G1LocoV5Deploy
 from loco_catch_merged_deploy import UROP_Deploy_Merged_v0
 
 class ExampleExtension(omni.ext.IExt):

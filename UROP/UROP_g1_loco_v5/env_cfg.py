@@ -178,7 +178,7 @@ class RewardsCfg:
     )
     joint_deviation_torso = RewTerm(
         func=mdp_isaac.joint_deviation_l1,
-        weight=-0.1, 
+        weight=-0.5, 
         params={"asset_cfg": SceneEntityCfg("robot", joint_names=["waist_.*"])},
     )
     joint_deviation_hip = RewTerm(
@@ -253,9 +253,9 @@ class dj_urop_g1_loco_v5_EnvCfg(ManagerBasedRLEnvCfg):
     terminations: TerminationsCfg = TerminationsCfg()
 
     def __post_init__(self):
-        self.decimation = 2
+        self.decimation = 4
         self.episode_length_s = 20.0
-        self.sim.dt = 1 / 120
+        self.sim.dt = 1 / 200
         self.sim.render_interval = self.decimation
         if self.scene.contact_forces is not None:
             self.scene.contact_forces.update_period = self.sim.dt
