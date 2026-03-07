@@ -7,11 +7,11 @@ import omni.ext
 from isaacsim.examples.browser import get_instance as get_browser_instance
 from isaacsim.examples.interactive.base_sample import BaseSampleUITemplate
 
-from deploy_practice.example import Example
-from deploy_practice.go2_example import Go2Example
-from deploy_practice.example_v3 import ExampleV3
-from deploy_practice.example_v4 import ExampleV4
-from deploy_practice.example_h1 import H1Example
+from practice.example import Example
+from practice.go2_example import Go2Example
+from practice.example_v3 import ExampleV3
+from practice.example_v4 import ExampleV4
+from practice.example_h1 import H1Example
 
 class PracticeExtension(omni.ext.IExt):
     def on_startup(self, ext_id: str):

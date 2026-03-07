@@ -1,5 +1,3 @@
-# [/home/dongjae/isaaclab/myIsaacLabstudy/deploy/example_v5.py]
-
 import math
 import time
 import traceback
@@ -8,6 +6,7 @@ import torch
 import carb
 import omni.appwindow
 import omni.timeline
+import os
 
 from isaacsim.examples.interactive.base_sample import BaseSample
 from isaacsim.core.utils.stage import add_reference_to_stage
@@ -20,9 +19,9 @@ from isaacsim.sensors.physics import ContactSensor
 # --------------------------------------------------------------------------
 # [설정] 경로 (너 환경에 맞게 수정)
 # --------------------------------------------------------------------------
-POLICY_PATH = "/home/dongjae/isaaclab/myIsaacLabstudy/logs/rsl_rl/UROP_v5/2026-02-21_22-40-07/exported/policy.pt"
-# POLICY_PATH = "/home/dongjae/isaaclab/myIsaacLabstudy/logs/rsl_rl/UROP_v6/2026-02-23_23-58-09/exported/policy.pt"
-ROBOT_USD_PATH = "/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_v5/usd/G1_23DOF_UROP.usd"
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+POLICY_PATH = os.path.join(ROOT_DIR, "logs/rsl_rl/UROP_v5/2026-02-21_22-40-07/exported/policy.pt")
+ROBOT_USD_PATH = os.path.join(ROOT_DIR, "UROP/UROP_v5/usd/G1_23DOF_UROP.usd")
 ROBOT_PRIM_PATH = "/World/G1"
 
 # [MOD] physics callback name 고정
