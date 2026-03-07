@@ -1,0 +1,53 @@
+--- git status ---
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   UROP/UROP_g1_loco_v5/env_cfg.py
+	modified:   UROP/UROP_g1_loco_v5/scene_objects_cfg.py
+
+no changes added to commit (use "git add" and/or "git commit -a") 
+
+
+--- git diff ---
+diff --git a/UROP/UROP_g1_loco_v5/env_cfg.py b/UROP/UROP_g1_loco_v5/env_cfg.py
+index 669c7db5..8606bd71 100644
+--- a/UROP/UROP_g1_loco_v5/env_cfg.py
++++ b/UROP/UROP_g1_loco_v5/env_cfg.py
+@@ -178,7 +178,7 @@ class RewardsCfg:
+     )
+     joint_deviation_torso = RewTerm(
+         func=mdp_isaac.joint_deviation_l1,
+-        weight=-0.1, 
++        weight=-0.5, 
+         params={"asset_cfg": SceneEntityCfg("robot", joint_names=["waist_.*"])},
+     )
+     joint_deviation_hip = RewTerm(
+@@ -253,9 +253,9 @@ class dj_urop_g1_loco_v5_EnvCfg(ManagerBasedRLEnvCfg):
+     terminations: TerminationsCfg = TerminationsCfg()
+ 
+     def __post_init__(self):
+-        self.decimation = 2
++        self.decimation = 4
+         self.episode_length_s = 20.0
+-        self.sim.dt = 1 / 120
++        self.sim.dt = 1 / 200
+         self.sim.render_interval = self.decimation
+         if self.scene.contact_forces is not None:
+             self.scene.contact_forces.update_period = self.sim.dt
+diff --git a/UROP/UROP_g1_loco_v5/scene_objects_cfg.py b/UROP/UROP_g1_loco_v5/scene_objects_cfg.py
+index 7ac71e95..17e21bd4 100644
+--- a/UROP/UROP_g1_loco_v5/scene_objects_cfg.py
++++ b/UROP/UROP_g1_loco_v5/scene_objects_cfg.py
+@@ -62,7 +62,8 @@ G1_FINGER_JOINTS = [
+ 
+ # Your official G1 USD (the one you want to train with)
+ #G1_USD_PATH = "https://omniverse-content-production.s3-us-west-2.amazonaws.com/Assets/Isaac/5.1/Isaac/Robots/Unitree/G1/g1.usd"
+-G1_USD_PATH = "/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_g1_loco_v5/g1_29dof_full_collider_flattened.usd"
++#G1_USD_PATH = "/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_g1_loco_v5/g1_29dof_full_collider_flattened.usd"
++G1_USD_PATH = "/home/idim5080-2/mdj/myIsaacLabstudy/UROP/UROP_g1_loco_v5/g1_29dof_full_collider_flattened.usd"
+ # --------------------------------------------------------------------------------------
+ # Key stability settings copied in spirit from IsaacLab’s working locomotion configs:
+ # - rigid_props: limit depenetration velocity (prevents “explosive” contact resolution)
