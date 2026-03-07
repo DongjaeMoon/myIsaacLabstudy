@@ -18,6 +18,15 @@ icon = ""
 "isaacsim.core.api" = {}
 
 # [중요] 실행할 메인 파이썬 모듈을 지정합니다.
-# example_extension.py 파일이 있는 폴더가 모듈로 인식되게 설정합니다.
+# [deploy/extension.toml]의 맨 아랫부분 수정
 [[python.module]]
-name = "example_extension"
+name = "loco_extension"
+
+[[python.module]]
+name = "catch_extension"
+
+[[python.module]]
+name = "merged_extension"
+
+[[python.module]]
+name = "practice_extension"
