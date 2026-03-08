@@ -1,3 +1,4 @@
+#[/home/idim5080-2/mdj/myIsaacLabstudy/deploy/loco/controllers/policy_controller.py]
 import io
 from typing import Optional
 import carb
@@ -33,21 +34,57 @@ class PolicyController(BaseController):
         self.policy_env_params = parse_env_config(policy_env_path)
         self._decimation, self._dt, self.render_interval = get_physics_properties(self.policy_env_params)
 
-    def initialize(self, physics_sim_view=None, effort_modes: str = "force", control_mode: str = "position", set_gains: bool = True, set_limits: bool = True, set_articulation_props: bool = True) -> None:
+    def initialize(
+        self,
+        physics_sim_view: omni.physics.tensors.SimulationView = None,
+        effort_modes: str = "force",
+        control_mode: str = "position",
+        set_gains: bool = True,
+        set_limits: bool = True,
+        set_articulation_props: bool = True,
+    ) -> None:
         self.robot.initialize(physics_sim_view=physics_sim_view)
         self.robot.get_articulation_controller().set_effort_modes(effort_modes)
+
         get_physx_simulation_interface().flush_changes()
+
         self.robot.get_articulation_controller().switch_control_mode(control_mode)
         
-        max_effort, max_vel, stiffness, damping, self.default_pos, self.default_vel = get_robot_joint_properties(
+        # 🚨 [수정된 부분] 7개의 값을 전부 받고, 외부에서 쓸 수 있게 self 변수로 저장합니다.
+        (
+            self.max_effort, 
+            self.max_vel, 
+            self.stiffness, 
+            self.damping, 
+            self.armature,       # config_loader.py에서 추가한 7번째 리턴값
+            self.default_pos, 
+            self.default_vel
+        ) = get_robot_joint_properties(
             self.policy_env_params, self.robot.dof_names
         )
-        if set_gains: self.robot._articulation_view.set_gains(stiffness, damping)
+
+        if set_gains:
+            # 지역 변수가 아닌 self 변수를 사용하도록 변경
+            self.robot._articulation_view.set_gains(self.stiffness, self.damping)
+            
         if set_limits:
-            self.robot._articulation_view.set_max_efforts(max_effort)
+            self.robot._articulation_view.set_max_efforts(self.max_effort)
+
             get_physx_simulation_interface().flush_changes()
-            self.robot._articulation_view.set_max_joint_velocities(max_vel)
-        if set_articulation_props: self._set_articulation_props()
+
+            self.robot._articulation_view.set_max_joint_velocities(self.max_vel)
+            
+        if set_articulation_props:
+            self._set_articulation_props()
+        
+        # [디버깅 추가] 파싱된 주요 관절의 Gain과 Default Position 확인
+        print("\n" + "="*50)
+        print("[DEBUG] 물리 속성 로드 결과 (일부 관절 확인)")
+        for name, stiff, damp, d_pos in zip(self.robot.dof_names, self.stiffness, self.damping, self.default_pos):
+            # 너무 기니까 다리 관절 몇 개만 필터링해서 확인
+            if "left_hip" in name or "left_knee" in name or "waist" in name:
+                print(f"{name:25s} | Kp(stiff): {stiff:6.1f} | Kd(damp): {damp:5.1f} | D_Pos: {d_pos:6.2f}")
+        print("="*50 + "\n")
 
     def _set_articulation_props(self) -> None:
         articulation_prop = get_articulation_props(self.policy_env_params)
