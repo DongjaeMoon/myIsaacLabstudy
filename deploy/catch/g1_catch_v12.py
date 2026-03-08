@@ -1,4 +1,4 @@
-#[/home/idim5080-2/mdj/myIsaacLabstudy/deploy/loco/g1_loco_v5.py]
+#[/home/idim5080-2/mdj/myIsaacLabstudy/deploy/catch/g1_catch_v12.py]
 import os
 import carb
 import numpy as np
