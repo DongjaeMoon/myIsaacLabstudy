@@ -11,7 +11,7 @@ from isaacsim.core.prims import SingleArticulation
 from isaacsim.core.utils.prims import define_prim, get_prim_at_path
 from omni.physx import get_physx_simulation_interface
 
-from loco.controllers.config_loader import get_articulation_props, get_physics_properties, get_robot_joint_properties, parse_env_config
+from catch.controllers.config_loader import get_articulation_props, get_physics_properties, get_robot_joint_properties, parse_env_config
 
 class PolicyController(BaseController):
     def __init__(self, name: str, prim_path: str, root_path: Optional[str] = None, usd_path: Optional[str] = None, position: Optional[np.ndarray] = None, orientation: Optional[np.ndarray] = None) -> None:
@@ -89,6 +89,9 @@ class PolicyController(BaseController):
 
     def _set_articulation_props(self) -> None:
         articulation_prop = get_articulation_props(self.policy_env_params)
+        # 🚨 [방어 코드 추가] env.yaml에 articulation_props가 null일 경우 빈 딕셔너리로 대체
+        if articulation_prop is None:
+            articulation_prop = {}
         solver_position_iteration_count = articulation_prop.get("solver_position_iteration_count")
         solver_velocity_iteration_count = articulation_prop.get("solver_velocity_iteration_count")
         stabilization_threshold = articulation_prop.get("stabilization_threshold")
