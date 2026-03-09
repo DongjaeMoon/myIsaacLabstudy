@@ -1,4 +1,5 @@
 #[/home/idim5080-2/mdj/myIsaacLabstudy/deploy/catch/g1_catch_v12.py]
+#[/home/dongjae/isaaclab/myIsaacLabstudy/deploy/catch/g1_catch_v12.py]
 import os
 import carb
 import numpy as np
@@ -6,10 +7,10 @@ import omni
 import omni.appwindow
 
 from isaacsim.examples.interactive.base_sample import BaseSample
-from loco.g1_loco_policy import G1FlatTerrainPolicy
+from loco.g1_catch_policy import G1CatchPolicy
 
 
-class G1LocoV5Deploy(BaseSample):
+class G1CatchV12Deploy(BaseSample):
     def __init__(self) -> None:
         super().__init__()
         self._world_settings["stage_units_in_meters"] = 1.0
@@ -37,11 +38,12 @@ class G1LocoV5Deploy(BaseSample):
             restitution=0.0
         )
 
-        ROOT_DIR = "/home/idim5080-2/mdj/myIsaacLabstudy"
-        ROBOT_USD_PATH = os.path.join(ROOT_DIR, "UROP/UROP_g1_loco_v5/g1_29dof_full_collider_flattened.usd")
-        POLICY_DIR = os.path.join(ROOT_DIR, "logs/rsl_rl/UROP_g1_loco_v5/2026-03-06_16-10-35/exported")
+        #ROOT_DIR = "/home/idim5080-2/mdj/myIsaacLabstudy"
+        ROOT_DIR = "/home/dongjae/isaaclab/myIsaacLabstudy"
+        ROBOT_USD_PATH = os.path.join(ROOT_DIR, "UROP/UROP_v12/usd/g1_29dof_full_collider_flattened.usd")
+        POLICY_DIR = os.path.join(ROOT_DIR, "logs/rsl_rl/UROP_v12/2026-03-06_16-10-35/exported")
 
-        self.g1 = G1FlatTerrainPolicy(
+        self.g1 = G1CatchPolicy(
             prim_path="/World/G1",
             name="G1",
             usd_path=ROBOT_USD_PATH,

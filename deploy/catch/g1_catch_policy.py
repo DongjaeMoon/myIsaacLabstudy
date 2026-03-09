@@ -1,4 +1,5 @@
 #[/home/idim5080-2/mdj/myIsaacLabstudy/deploy/catch/g1_catch_policy.py]
+#[/home/dongjae/isaaclab/myIsaacLabstudy/deploy/catch/g1_catch_policy.py]
 import os
 from typing import Optional
 import numpy as np
@@ -15,7 +16,7 @@ G1_29_JOINTS = [
     "right_shoulder_pitch_joint", "right_shoulder_roll_joint", "right_shoulder_yaw_joint", "right_elbow_joint", "right_wrist_roll_joint", "right_wrist_pitch_joint", "right_wrist_yaw_joint"
 ]
 
-class G1FlatTerrainPolicy(PolicyController):
+class G1CatchPolicy(PolicyController):
     def __init__(
         self,
         prim_path: str,

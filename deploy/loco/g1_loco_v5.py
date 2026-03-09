@@ -1,4 +1,5 @@
 #[/home/idim5080-2/mdj/myIsaacLabstudy/deploy/loco/g1_loco_v5.py]
+#[/home/dongjae/isaaclab/myIsaacLabstudy/deploy/loco/g1_loco_v5.py]
 import os
 import carb
 import numpy as np
@@ -37,7 +38,8 @@ class G1LocoV5Deploy(BaseSample):
             restitution=0.0
         )
 
-        ROOT_DIR = "/home/idim5080-2/mdj/myIsaacLabstudy"
+        #ROOT_DIR = "/home/idim5080-2/mdj/myIsaacLabstudy"
+        ROOT_DIR = "/home/dongjae/isaaclab/myIsaacLabstudy"
         ROBOT_USD_PATH = os.path.join(ROOT_DIR, "UROP/UROP_g1_loco_v5/g1_29dof_full_collider_flattened.usd")
         POLICY_DIR = os.path.join(ROOT_DIR, "logs/rsl_rl/UROP_g1_loco_v5/2026-03-06_16-10-35/exported")
 
