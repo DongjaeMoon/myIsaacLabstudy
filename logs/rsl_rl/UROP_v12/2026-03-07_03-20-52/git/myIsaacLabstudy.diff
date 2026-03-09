@@ -1,0 +1,48 @@
+--- git status ---
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   UROP/UROP_v12/env_cfg.py
+
+no changes added to commit (use "git add" and/or "git commit -a") 
+
+
+--- git diff ---
+diff --git a/UROP/UROP_v12/env_cfg.py b/UROP/UROP_v12/env_cfg.py
+index 0f84b420..344dd0a1 100644
+--- a/UROP/UROP_v12/env_cfg.py
++++ b/UROP/UROP_v12/env_cfg.py
+@@ -312,12 +312,12 @@ class CurriculumCfg:
+     stage_schedule = CurrTerm(
+         func=mdp.stage_schedule, # (이 함수가 mdp/curriculum.py에 있다면 유지, 아니라면 events.py 등에서 읽는 용도의 dummy여도 됨)
+         params={
+-            "stage0_iters": 5, 
+-            "stage1_iters": 5, 
+-            "stage2_iters": 5, 
+-            #"stage0_iters": 500,
+-            #"stage1_iters": 1000, 
+-            #"stage2_iters": 1500,
++            #"stage0_iters": 5, 
++            #"stage1_iters": 5, 
++            #"stage2_iters": 5, 
++            "stage0_iters": 500,
++            "stage1_iters": 1000, 
++            "stage2_iters": 1500,
+             "num_steps_per_env": 64,
+             "eval_stage": -1, # -1이면 현재 스텝에 따라 자동 난이도 조절
+         },
+@@ -337,9 +337,9 @@ class dj_urop_v12_EnvCfg(ManagerBasedRLEnvCfg):
+ 
+     def __post_init__(self):
+         # sim dt / decimation
+-        self.decimation =4
++        self.decimation =2
+         self.episode_length_s = 6.0
+-        self.sim.dt = 1 / 200
++        self.sim.dt = 1 / 100
+         self.sim.render_interval = self.decimation
+ 
+         # PhysX stability (optional; avoids noisy velocity updates warning)
