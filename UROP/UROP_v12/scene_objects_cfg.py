@@ -14,9 +14,10 @@ from isaaclab.sim import RigidBodyMaterialCfg
 #     We lock them with a stiff actuator to avoid flapping.
 # =============================================================================
 
+
 _THIS_DIR = os.path.dirname(__file__)
-#G1_USD_PATH = "/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_v11/usd/g1_29dof_full_collider_flattened.usd"
-G1_USD_PATH = "/home/idim5080-2/mdj/myIsaacLabstudy/UROP/UROP_v12/usd/g1_29dof_full_collider_flattened.usd"
+G1_USD_PATH = "/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_v12/usd/g1_29dof_full_collider_flattened.usd"
+#G1_USD_PATH = "/home/idim5080-2/mdj/myIsaacLabstudy/UROP/UROP_v12/usd/g1_29dof_full_collider_flattened.usd"
 dj_robot_cfg = ArticulationCfg(
     prim_path="{ENV_REGEX_NS}/Robot",
     spawn=sim_utils.UsdFileCfg(
