@@ -1,0 +1,42 @@
+--- git status ---
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   UROP/play_rsl_rl.py
+	modified:   UROP/train_rsl_rl.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	UROP/UROP_g1_loco_v6/
+
+no changes added to commit (use "git add" and/or "git commit -a") 
+
+
+--- git diff ---
+diff --git a/UROP/play_rsl_rl.py b/UROP/play_rsl_rl.py
+index d5ef2854..31bd17ff 100644
+--- a/UROP/play_rsl_rl.py
++++ b/UROP/play_rsl_rl.py
+@@ -85,6 +85,7 @@ import UROP_g1_loco_v2
+ import UROP_g1_loco_v3
+ import UROP_g1_loco_v4
+ import UROP_g1_loco_v5
++import UROP_g1_loco_v6
+ import UROP_v0
+ import UROP_v1
+ import UROP_v2
+diff --git a/UROP/train_rsl_rl.py b/UROP/train_rsl_rl.py
+index 0f96c19a..0fcb7fc0 100644
+--- a/UROP/train_rsl_rl.py
++++ b/UROP/train_rsl_rl.py
+@@ -109,6 +109,7 @@ import UROP_g1_loco_v2
+ import UROP_g1_loco_v3
+ import UROP_g1_loco_v4
+ import UROP_g1_loco_v5
++import UROP_g1_loco_v6
+ import UROP_v0
+ import UROP_v1
+ import UROP_v2
