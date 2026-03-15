@@ -17,7 +17,8 @@ from . import scene_objects_cfg
 from . import mdp as mdp
 
 
-STATE_BANK_PATH = "/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_carry_v2/carry_state_bank.pt"
+#STATE_BANK_PATH = "/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_carry_v2/carry_state_bank.pt"
+STATE_BANK_PATH = "/home/idim5080-2/mdj/myIsaacLabstudy/UROP/UROP_carry_v2/carry_state_bank.pt"
 
 
 @configclass
