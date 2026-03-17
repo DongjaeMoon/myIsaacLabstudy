@@ -305,6 +305,18 @@ class EventCfg:
             },
         },
     )
+    export_bank = EventTerm(
+        func=mdp.export_catch_success_bank,
+        mode="interval",
+        interval_range_s=(0.10, 0.10),
+        params={
+            "bank_path": "/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_carry_v3/tools/catch_success_bank.pt",
+            "min_hold_steps": 12,
+            "min_gap_steps": 20,
+            "max_total_states": 30000,
+            "flush_every": 256,
+        },
+    )
 
 
 @configclass

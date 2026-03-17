@@ -4,7 +4,8 @@ from __future__ import annotations
 import torch
 from typing import TYPE_CHECKING
 
-from .observations import quat_apply
+from .observations import quat_apply, quat_conj
+from .rewards import _update_hold_latch
 
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
@@ -296,3 +297,258 @@ def toss_object_relative_curriculum(
 
     env._urop_toss_done[ids_throw] += 1
     env._urop_toss_active[ids_throw] = True
+
+
+# =========================
+# Catch success bank export
+# =========================
+import os
+from pathlib import Path
+
+
+def _ensure_bank_export_buffers(env: "ManagerBasedRLEnv") -> None:
+    n = env.num_envs
+    d = env.device
+
+    if not hasattr(env, "_urop_bank_last_save_step"):
+        env._urop_bank_last_save_step = torch.full((n,), -10_000_000, dtype=torch.int64, device=d)
+
+    if not hasattr(env, "_urop_bank_saved_count"):
+        env._urop_bank_saved_count = torch.zeros(n, dtype=torch.int32, device=d)
+
+    if not hasattr(env, "_urop_bank_total_saved"):
+        env._urop_bank_total_saved = 0
+
+    if not hasattr(env, "_urop_bank_mem"):
+        env._urop_bank_mem = []
+
+
+def _body_name_to_idx_from_robot(robot):
+    names = list(robot.data.body_names)
+    return {name: i for i, name in enumerate(names)}
+
+
+def _sensor_force_mag(env: "ManagerBasedRLEnv", sensor_name: str) -> torch.Tensor:
+    s = env.scene[sensor_name]
+    f = s.data.net_forces_w.reshape(env.num_envs, -1)
+    return torch.norm(f, dim=-1)
+
+
+def _max_force(env: "ManagerBasedRLEnv", sensor_names: list[str]) -> torch.Tensor:
+    vals = [_sensor_force_mag(env, n) for n in sensor_names]
+    return torch.stack(vals, dim=-1).max(dim=-1).values
+
+
+def _catch_success_export_mask(
+    env: "ManagerBasedRLEnv",
+    min_hold_steps: int = 12,
+    min_obj_z: float = 0.42,
+    max_torso_obj_dist: float = 0.55,
+    max_rel_speed: float = 0.55,
+    min_left_force: float = 3.0,
+    min_right_force: float = 3.0,
+    max_anchor_drift: float = 0.18,
+    max_upright_tilt_deg: float = 35.0,
+) -> torch.Tensor:
+    _ensure_urop_buffers(env)
+    _update_hold_latch(env)
+
+    robot = env.scene["robot"]
+    obj = env.scene["object"]
+
+    body_map = _body_name_to_idx_from_robot(robot)
+    torso_idx = body_map["torso_link"]
+
+    torso_pos = robot.data.body_pos_w[:, torso_idx, :]
+    torso_vel = robot.data.body_lin_vel_w[:, torso_idx, :]
+
+    obj_pos = obj.data.root_pos_w
+    obj_vel = obj.data.root_lin_vel_w
+
+    dist = torch.norm(obj_pos - torso_pos, dim=-1)
+    rel_speed = torch.norm(obj_vel - torso_vel, dim=-1)
+
+    left_sensors = [
+        "contact_l_shoulder_yaw", "contact_l_elbow",
+        "contact_l_wrist_roll", "contact_l_wrist_pitch", "contact_l_wrist_yaw", "contact_l_hand"
+    ]
+    right_sensors = [
+        "contact_r_shoulder_yaw", "contact_r_elbow",
+        "contact_r_wrist_roll", "contact_r_wrist_pitch", "contact_r_wrist_yaw", "contact_r_hand"
+    ]
+    lf = _max_force(env, left_sensors)
+    rf = _max_force(env, right_sensors)
+
+    drift = torch.norm(robot.data.root_pos_w[:, 0:2] - env._urop_hold_anchor_xy, dim=-1)
+
+    q = robot.data.root_quat_w
+    g_world = torch.tensor([0.0, 0.0, -1.0], device=env.device).unsqueeze(0).repeat(env.num_envs, 1)
+    g_b = quat_apply(quat_conj(q), g_world)
+    upright_cos = -g_b[:, 2]
+    min_upright_cos = torch.cos(torch.tensor(max_upright_tilt_deg * 3.14159265 / 180.0, device=env.device))
+
+    mask = (
+        env._urop_hold_latched
+        & (env._urop_hold_steps >= int(min_hold_steps))
+        & (obj_pos[:, 2] > min_obj_z)
+        & (dist < max_torso_obj_dist)
+        & (rel_speed < max_rel_speed)
+        & (lf > min_left_force)
+        & (rf > min_right_force)
+        & (drift < max_anchor_drift)
+        & (upright_cos > min_upright_cos)
+    )
+    return mask
+
+
+def export_catch_success_bank(
+    env: "ManagerBasedRLEnv",
+    env_ids: torch.Tensor,
+    bank_path: str,
+    min_hold_steps: int = 12,
+    min_gap_steps: int = 20,
+    max_total_states: int = 30000,
+    flush_every: int = 256,
+) -> None:
+    """Collect stable post-catch states into a .pt bank file.
+
+    Recommended usage:
+      - register as an interval event in UROP_v12/env_cfg.py
+      - run catch policy in eval/play
+      - states will be appended in memory and flushed to disk periodically
+    """
+    _ensure_urop_buffers(env)
+    _ensure_bank_export_buffers(env)
+
+    if int(env_ids.numel()) == 0:
+        return
+
+    mask_all = _catch_success_export_mask(
+        env,
+        min_hold_steps=min_hold_steps,
+    )
+
+    if not torch.any(mask_all[env_ids]):
+        return
+
+    step_now = torch.full((env.num_envs,), int(env.common_step_counter), dtype=torch.int64, device=env.device)
+    gap_ok = (step_now - env._urop_bank_last_save_step) >= int(min_gap_steps)
+
+    final_mask = mask_all & gap_ok
+    final_mask = final_mask & torch.isin(torch.arange(env.num_envs, device=env.device), env_ids)
+
+    chosen = torch.nonzero(final_mask, as_tuple=False).squeeze(-1)
+    if chosen.numel() == 0:
+        return
+
+    robot = env.scene["robot"]
+    obj = env.scene["object"]
+
+    env_origins = env.scene.env_origins[chosen]
+    root_pos_local = robot.data.root_pos_w[chosen] - env_origins
+    obj_pos_local = obj.data.root_pos_w[chosen] - env_origins
+
+    root_pose = torch.cat([root_pos_local, robot.data.root_quat_w[chosen]], dim=-1)
+    root_vel = torch.cat([robot.data.root_lin_vel_w[chosen], robot.data.root_ang_vel_w[chosen]], dim=-1)
+
+    obj_pose = torch.cat([obj_pos_local, obj.data.root_quat_w[chosen]], dim=-1)
+    obj_vel = torch.cat([obj.data.root_lin_vel_w[chosen], obj.data.root_ang_vel_w[chosen]], dim=-1)
+
+    joint_pos = robot.data.joint_pos[chosen].clone()
+    joint_vel = robot.data.joint_vel[chosen].clone()
+    
+
+    meta = {
+        "hold_steps": env._urop_hold_steps[chosen].clone().cpu(),
+        "saved_step": step_now[chosen].clone().cpu(),
+        "source_env_id": chosen.clone().cpu(),
+        "env_origin": env_origins.clone().cpu(),
+    }
+
+    batch = {
+        "root_pose": root_pose.detach().cpu(),
+        "root_vel": root_vel.detach().cpu(),
+        "joint_pos": joint_pos.detach().cpu(),
+        "joint_vel": joint_vel.detach().cpu(),
+        "object_pose": obj_pose.detach().cpu(),
+        "object_vel": obj_vel.detach().cpu(),
+        "meta": meta,
+    }
+
+    env._urop_bank_mem.append(batch)
+    env._urop_bank_last_save_step[chosen] = step_now[chosen]
+    env._urop_bank_saved_count[chosen] += 1
+    env._urop_bank_total_saved += int(chosen.numel())
+
+    if (len(env._urop_bank_mem) >= int(flush_every)) or (env._urop_bank_total_saved >= int(max_total_states)):
+        bank_path = str(bank_path)
+        Path(os.path.dirname(bank_path)).mkdir(parents=True, exist_ok=True)
+
+        # 1) current in-memory batch -> packed tensors
+        new_pack = {
+            "root_pose": torch.cat([x["root_pose"] for x in env._urop_bank_mem], dim=0)
+            if len(env._urop_bank_mem) > 0 else torch.empty(0, 7),
+            "root_vel": torch.cat([x["root_vel"] for x in env._urop_bank_mem], dim=0)
+            if len(env._urop_bank_mem) > 0 else torch.empty(0, 6),
+            "joint_pos": torch.cat([x["joint_pos"] for x in env._urop_bank_mem], dim=0)
+            if len(env._urop_bank_mem) > 0 else torch.empty(0, robot.data.joint_pos.shape[1]),
+            "joint_vel": torch.cat([x["joint_vel"] for x in env._urop_bank_mem], dim=0)
+            if len(env._urop_bank_mem) > 0 else torch.empty(0, robot.data.joint_vel.shape[1]),
+            "object_pose": torch.cat([x["object_pose"] for x in env._urop_bank_mem], dim=0)
+            if len(env._urop_bank_mem) > 0 else torch.empty(0, 7),
+            "object_vel": torch.cat([x["object_vel"] for x in env._urop_bank_mem], dim=0)
+            if len(env._urop_bank_mem) > 0 else torch.empty(0, 6),
+            "meta": {
+                "hold_steps": torch.cat([x["meta"]["hold_steps"] for x in env._urop_bank_mem], dim=0)
+                if len(env._urop_bank_mem) > 0 else torch.empty(0),
+                "saved_step": torch.cat([x["meta"]["saved_step"] for x in env._urop_bank_mem], dim=0)
+                if len(env._urop_bank_mem) > 0 else torch.empty(0),
+            },
+        }
+
+        # 2) merge with existing packed file (if any)
+        if os.path.exists(bank_path):
+            old = torch.load(bank_path, map_location="cpu")
+
+            # backward-compatible: if someone saved lists, pack them first
+            def _to_tensor(v, empty_shape):
+                if isinstance(v, list):
+                    return torch.cat(v, dim=0) if len(v) > 0 else torch.empty(*empty_shape)
+                return v
+
+            old_root_pose = _to_tensor(old["root_pose"], (0, 7))
+            old_root_vel = _to_tensor(old["root_vel"], (0, 6))
+            old_joint_pos = _to_tensor(old["joint_pos"], (0, robot.data.joint_pos.shape[1]))
+            old_joint_vel = _to_tensor(old["joint_vel"], (0, robot.data.joint_vel.shape[1]))
+            old_object_pose = _to_tensor(old["object_pose"], (0, 7))
+            old_object_vel = _to_tensor(old["object_vel"], (0, 6))
+
+            old_hold_steps = _to_tensor(old["meta"]["hold_steps"], (0,))
+            old_saved_step = _to_tensor(old["meta"]["saved_step"], (0,))
+
+            packed = {
+                "root_pose": torch.cat([old_root_pose, new_pack["root_pose"]], dim=0),
+                "root_vel": torch.cat([old_root_vel, new_pack["root_vel"]], dim=0),
+                "joint_pos": torch.cat([old_joint_pos, new_pack["joint_pos"]], dim=0),
+                "joint_vel": torch.cat([old_joint_vel, new_pack["joint_vel"]], dim=0),
+                "object_pose": torch.cat([old_object_pose, new_pack["object_pose"]], dim=0),
+                "object_vel": torch.cat([old_object_vel, new_pack["object_vel"]], dim=0),
+                "meta": {
+                    "hold_steps": torch.cat([old_hold_steps, new_pack["meta"]["hold_steps"]], dim=0),
+                    "saved_step": torch.cat([old_saved_step, new_pack["meta"]["saved_step"]], dim=0),
+                },
+            }
+        else:
+            packed = new_pack
+
+        # 3) truncate to max_total_states
+        if packed["root_pose"].shape[0] > int(max_total_states):
+            keep = int(max_total_states)
+            for k in ["root_pose", "root_vel", "joint_pos", "joint_vel", "object_pose", "object_vel"]:
+                packed[k] = packed[k][-keep:]
+            for k in ["hold_steps", "saved_step"]:
+                packed["meta"][k] = packed["meta"][k][-keep:]
+
+        # 4) save and clear memory
+        torch.save(packed, bank_path)
+        env._urop_bank_mem.clear()
