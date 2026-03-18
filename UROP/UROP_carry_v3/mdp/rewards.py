@@ -16,6 +16,31 @@ from .observations import (
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
 
+ARM_REF_JOINT_NAMES = [
+    "left_shoulder_pitch_joint",
+    "left_shoulder_roll_joint",
+    "left_shoulder_yaw_joint",
+    "left_elbow_joint",
+    "left_wrist_roll_joint",
+    "left_wrist_pitch_joint",
+    "left_wrist_yaw_joint",
+    "right_shoulder_pitch_joint",
+    "right_shoulder_roll_joint",
+    "right_shoulder_yaw_joint",
+    "right_elbow_joint",
+    "right_wrist_roll_joint",
+    "right_wrist_pitch_joint",
+    "right_wrist_yaw_joint",
+]
+
+WRIST_REF_JOINT_NAMES = [
+    "left_wrist_roll_joint",
+    "left_wrist_pitch_joint",
+    "left_wrist_yaw_joint",
+    "right_wrist_roll_joint",
+    "right_wrist_pitch_joint",
+    "right_wrist_yaw_joint",
+]
 
 # =============================================================================
 # Small helpers
@@ -165,6 +190,26 @@ def _object_upright_cos(env: "ManagerBasedRLEnv") -> torch.Tensor:
     z_world = quat_apply(obj.data.root_quat_w, local_z)
     return z_world[:, 2]
 
+def _get_joint_name_indices(env: "ManagerBasedRLEnv", joint_names: list[str], cache_attr: str) -> torch.Tensor:
+    if hasattr(env, cache_attr):
+        return getattr(env, cache_attr)
+
+    robot = env.scene["robot"]
+    name_to_idx = {n: i for i, n in enumerate(robot.data.joint_names)}
+
+    missing = [n for n in joint_names if n not in name_to_idx]
+    if len(missing) > 0:
+        raise RuntimeError(f"Missing joints for reward regularizer: {missing}")
+
+    idx = torch.tensor([name_to_idx[n] for n in joint_names], device=env.device, dtype=torch.long)
+    setattr(env, cache_attr, idx)
+    return idx
+
+
+def _deadzone_l2(x: torch.Tensor, deadzone: float) -> torch.Tensor:
+    y = torch.abs(x) - deadzone
+    y = torch.clamp(y, min=0.0)
+    return y * y
 
 # =============================================================================
 # Locomotion-style command tracking rewards
@@ -279,6 +324,48 @@ def feet_slide(
 
     return left_slide + right_slide
 
+def single_support_bonus(
+    env: "ManagerBasedRLEnv",
+    force_threshold: float = 5.0,
+) -> torch.Tensor:
+    """Positive stepping incentive: reward exactly-one-foot contact."""
+    left_contact, right_contact = _foot_contact_mask(env, force_threshold=force_threshold)
+    xor_mask = torch.logical_xor(left_contact, right_contact)
+    return xor_mask.float()
+
+
+def arm_ref_deviation_l2(
+    env: "ManagerBasedRLEnv",
+    deadzone: float = 0.10,
+) -> torch.Tensor:
+    """Soft penalty for drifting too far from THIS episode's reset arm pose."""
+    if not hasattr(env, "_carry_ref_arm_joint_pos"):
+        return torch.zeros(env.num_envs, device=env.device)
+
+    robot = env.scene["robot"]
+    idx = _get_joint_name_indices(env, ARM_REF_JOINT_NAMES, "_carry_ref_arm_joint_indices_reward")
+    q = robot.data.joint_pos[:, idx]
+    q_ref = env._carry_ref_arm_joint_pos
+
+    err = q - q_ref
+    return torch.sum(_deadzone_l2(err, deadzone=deadzone), dim=-1)
+
+
+def wrist_ref_deviation_l2(
+    env: "ManagerBasedRLEnv",
+    deadzone: float = 0.06,
+) -> torch.Tensor:
+    """Stronger soft penalty for weird wrist twisting away from reset pose."""
+    if not hasattr(env, "_carry_ref_wrist_joint_pos"):
+        return torch.zeros(env.num_envs, device=env.device)
+
+    robot = env.scene["robot"]
+    idx = _get_joint_name_indices(env, WRIST_REF_JOINT_NAMES, "_carry_ref_wrist_joint_indices_reward")
+    q = robot.data.joint_pos[:, idx]
+    q_ref = env._carry_ref_wrist_joint_pos
+
+    err = q - q_ref
+    return torch.sum(_deadzone_l2(err, deadzone=deadzone), dim=-1)
 
 # =============================================================================
 # Carry-specific object stabilization rewards

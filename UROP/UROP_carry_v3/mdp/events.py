@@ -12,6 +12,46 @@ if TYPE_CHECKING:
 
 DEFAULT_BOX_SIZE = (0.32, 0.24, 0.24)
 
+ARM_REF_JOINT_NAMES = [
+    "left_shoulder_pitch_joint",
+    "left_shoulder_roll_joint",
+    "left_shoulder_yaw_joint",
+    "left_elbow_joint",
+    "left_wrist_roll_joint",
+    "left_wrist_pitch_joint",
+    "left_wrist_yaw_joint",
+    "right_shoulder_pitch_joint",
+    "right_shoulder_roll_joint",
+    "right_shoulder_yaw_joint",
+    "right_elbow_joint",
+    "right_wrist_roll_joint",
+    "right_wrist_pitch_joint",
+    "right_wrist_yaw_joint",
+]
+
+WRIST_REF_JOINT_NAMES = [
+    "left_wrist_roll_joint",
+    "left_wrist_pitch_joint",
+    "left_wrist_yaw_joint",
+    "right_wrist_roll_joint",
+    "right_wrist_pitch_joint",
+    "right_wrist_yaw_joint",
+]
+
+def _get_joint_name_indices(env: "ManagerBasedRLEnv", joint_names: list[str], cache_attr: str) -> torch.Tensor:
+    if hasattr(env, cache_attr):
+        return getattr(env, cache_attr)
+
+    robot = env.scene["robot"]
+    name_to_idx = {n: i for i, n in enumerate(robot.data.joint_names)}
+
+    missing = [n for n in joint_names if n not in name_to_idx]
+    if len(missing) > 0:
+        raise RuntimeError(f"Missing joints for carry reference buffer: {missing}")
+
+    idx = torch.tensor([name_to_idx[n] for n in joint_names], device=env.device, dtype=torch.long)
+    setattr(env, cache_attr, idx)
+    return idx
 
 def _ensure_carry_buffers(env: "ManagerBasedRLEnv") -> None:
     n = env.num_envs
@@ -41,6 +81,11 @@ def _ensure_carry_buffers(env: "ManagerBasedRLEnv") -> None:
     # optional target relative pose buffer for reward shaping
     if not hasattr(env, "_carry_target_obj_rel"):
         env._carry_target_obj_rel = torch.tensor([0.42, 0.0, 0.22], device=d).unsqueeze(0).repeat(n, 1)
+    if not hasattr(env, "_carry_ref_arm_joint_pos"):
+        env._carry_ref_arm_joint_pos = torch.zeros((n, len(ARM_REF_JOINT_NAMES)), device=d)
+
+    if not hasattr(env, "_carry_ref_wrist_joint_pos"):
+        env._carry_ref_wrist_joint_pos = torch.zeros((n, len(WRIST_REF_JOINT_NAMES)), device=d)
 
 
 def _load_carry_bank(env: "ManagerBasedRLEnv", bank_path: str) -> None:
@@ -152,9 +197,9 @@ def reset_from_catch_success_bank(
     env: "ManagerBasedRLEnv",
     env_ids: torch.Tensor,
     bank_path: str,
-    pos_noise_xy: float = 0.01,
-    yaw_noise_rad: float = 0.05,
-    vel_noise_scale: float = 0.05,
+    pos_noise_xy: float = 0.005,
+    yaw_noise_rad: float = 0.03,
+    vel_noise_scale: float = 0.02,
     grace_steps: int = 8,
     randomize_object: bool = True,
 ) -> None:
@@ -186,6 +231,8 @@ def reset_from_catch_success_bank(
     joint_vel = bank["joint_vel"][bank_ids_cpu].to(d).clone()           # [n, 43]
     object_pose_local = bank["object_pose"][bank_ids_cpu].to(d).clone() # [n, 7]
     object_vel = bank["object_vel"][bank_ids_cpu].to(d).clone()         # [n, 6]
+    arm_ref_idx = _get_joint_name_indices(env, ARM_REF_JOINT_NAMES, "_carry_ref_arm_joint_indices")
+    wrist_ref_idx = _get_joint_name_indices(env, WRIST_REF_JOINT_NAMES, "_carry_ref_wrist_joint_indices")
 
     env_origins = env.scene.env_origins[env_ids]
 
@@ -212,6 +259,9 @@ def reset_from_catch_success_bank(
     robot.write_root_pose_to_sim(root_pose_world, env_ids=env_ids)
     robot.write_root_velocity_to_sim(root_vel, env_ids=env_ids)
     robot.write_joint_state_to_sim(joint_pos, joint_vel, env_ids=env_ids)
+
+    env._carry_ref_arm_joint_pos[env_ids] = joint_pos[:, arm_ref_idx]
+    env._carry_ref_wrist_joint_pos[env_ids] = joint_pos[:, wrist_ref_idx]
 
     # write object
     obj.write_root_pose_to_sim(object_pose_world, env_ids=env_ids)

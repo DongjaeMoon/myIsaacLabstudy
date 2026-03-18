@@ -1,5 +1,4 @@
-# [/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_carry_v3/env_cfg.py]
-
+#[/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_carry_v3/env_cfg.py]
 from __future__ import annotations
 
 import isaaclab.sim as sim_utils
@@ -52,10 +51,8 @@ class dj_urop_carry_v3_SceneCfg(InteractiveSceneCfg):
     robot = scene_objects_cfg.dj_robot_cfg
     object = scene_objects_cfg.bulky_object_cfg
 
-    # Full-body contact sensor for locomotion-style penalties/terminations
     contact_forces = scene_objects_cfg.full_body_contact_forces_cfg
 
-    # Object-contact sensors for carry rewards / critic obs
     contact_torso = scene_objects_cfg.contact_torso_cfg
 
     contact_l_shoulder_yaw = scene_objects_cfg.contact_l_shoulder_yaw_cfg
@@ -79,19 +76,19 @@ class dj_urop_carry_v3_SceneCfg(InteractiveSceneCfg):
 
 @configclass
 class CommandsCfg:
-    # Start conservative. This is intentionally NOT the final wide deploy range.
-    # First goal is stable loaded locomotion from catch-success resets.
+    # This version is NOT the final keyboard-conditioned carry policy.
+    # It is a forward-carry walking policy to force locomotion first.
     base_velocity = mdp_isaac.UniformVelocityCommandCfg(
         asset_name="robot",
-        resampling_time_range=(6.0, 10.0),
-        rel_standing_envs=0.10,
+        resampling_time_range=(4.0, 6.0),
+        rel_standing_envs=0.0,
         rel_heading_envs=0.0,
         heading_command=False,
-        debug_vis=True,
+        debug_vis=False,
         ranges=mdp_isaac.UniformVelocityCommandCfg.Ranges(
-            lin_vel_x=(0.0, 0.25),
-            lin_vel_y=(-0.05, 0.05),
-            ang_vel_z=(-0.30, 0.30),
+            lin_vel_x=(0.12, 0.35),
+            lin_vel_y=(0.0, 0.0),
+            ang_vel_z=(0.0, 0.0),
             heading=(0.0, 0.0),
         ),
     )
@@ -103,10 +100,68 @@ class CommandsCfg:
 
 @configclass
 class ActionsCfg:
-    joint_pos = mdp_isaac.JointPositionActionCfg(
+    # Keep legs dominant.
+    legs = mdp_isaac.JointPositionActionCfg(
         asset_name="robot",
-        joint_names=scene_objects_cfg.G1_29_JOINTS,
-        scale=0.5,
+        joint_names=[
+            "left_hip_yaw_joint",
+            "left_hip_roll_joint",
+            "left_hip_pitch_joint",
+            "left_knee_joint",
+            "left_ankle_pitch_joint",
+            "left_ankle_roll_joint",
+            "right_hip_yaw_joint",
+            "right_hip_roll_joint",
+            "right_hip_pitch_joint",
+            "right_knee_joint",
+            "right_ankle_pitch_joint",
+            "right_ankle_roll_joint",
+        ],
+        scale=0.45,
+        use_default_offset=True,
+        preserve_order=True,
+    )
+
+    waist = mdp_isaac.JointPositionActionCfg(
+        asset_name="robot",
+        joint_names=[
+            "waist_yaw_joint",
+            "waist_roll_joint",
+            "waist_pitch_joint",
+        ],
+        scale=0.15,
+        use_default_offset=True,
+        preserve_order=True,
+    )
+
+    arms_core = mdp_isaac.JointPositionActionCfg(
+        asset_name="robot",
+        joint_names=[
+            "left_shoulder_pitch_joint",
+            "left_shoulder_roll_joint",
+            "left_shoulder_yaw_joint",
+            "left_elbow_joint",
+            "right_shoulder_pitch_joint",
+            "right_shoulder_roll_joint",
+            "right_shoulder_yaw_joint",
+            "right_elbow_joint",
+        ],
+        scale=0.10,
+        use_default_offset=True,
+        preserve_order=True,
+    )
+
+    wrists = mdp_isaac.JointPositionActionCfg(
+        asset_name="robot",
+        joint_names=[
+            "left_wrist_roll_joint",
+            "left_wrist_pitch_joint",
+            "left_wrist_yaw_joint",
+            "right_wrist_roll_joint",
+            "right_wrist_pitch_joint",
+            "right_wrist_yaw_joint",
+        ],
+        scale=0.04,
         use_default_offset=True,
         preserve_order=True,
     )
@@ -148,7 +203,6 @@ class ObservationsCfg:
             params={"pos_scale": 1.0, "vel_scale": 1.0, "noise_std": 0.0, "clip": 5.0},
         )
 
-        # privileged / critic-only
         object_params = ObsTerm(func=custom_mdp.object_params)
         contact = ObsTerm(func=custom_mdp.contact_features)
         reset_grace = ObsTerm(func=custom_mdp.reset_grace_feature)
@@ -170,17 +224,17 @@ class ObservationsCfg:
 class RewardsCfg:
     termination_penalty = RewTerm(func=mdp_isaac.is_terminated, weight=-50.0)
 
-    # ---- locomotion backbone ----
     alive = RewTerm(func=custom_mdp.alive_bonus, weight=0.2)
 
+    # Make walking matter more.
     track_lin_vel_xy = RewTerm(
         func=custom_mdp.track_lin_vel_xy_exp,
-        weight=1.2,
+        weight=2.0,
         params={"std": 0.35},
     )
     track_ang_vel_z = RewTerm(
         func=custom_mdp.track_ang_vel_z_exp,
-        weight=0.8,
+        weight=0.2,
         params={"std": 0.35},
     )
 
@@ -207,38 +261,56 @@ class RewardsCfg:
         params={"contact_force_threshold": 5.0},
     )
 
-    # ---- object stabilization ----
+    # Positive stepping incentive
+    single_support = RewTerm(
+        func=custom_mdp.single_support_bonus,
+        weight=0.20,
+        params={"force_threshold": 5.0},
+    )
+
+    # Object stabilization still matters, but not enough to justify bizarre upper-body twisting.
     object_center = RewTerm(
         func=custom_mdp.object_center_reward,
-        weight=1.4,
+        weight=0.9,
         params={"std": 0.12},
     )
     object_upright = RewTerm(
         func=custom_mdp.object_upright_reward,
-        weight=1.0,
+        weight=0.7,
         params={"std": 0.35},
     )
     hold_object_vel = RewTerm(
         func=custom_mdp.hold_object_vel_reward,
-        weight=0.8,
+        weight=0.5,
         params={"lin_std": 0.6, "ang_std": 1.5},
     )
 
-    # ---- whole-body support ----
     hug_contact = RewTerm(
         func=custom_mdp.hug_contact_bonus,
-        weight=0.6,
+        weight=0.25,
         params={"torso_force_scale": 25.0, "limb_force_scale": 20.0},
     )
     bilateral_contact = RewTerm(
         func=custom_mdp.bilateral_contact_bonus,
-        weight=0.3,
+        weight=0.10,
         params={"force_scale": 20.0},
     )
     not_drop = RewTerm(
         func=custom_mdp.not_drop_bonus,
-        weight=0.5,
+        weight=0.4,
         params={"min_height": 0.18},
+    )
+
+    # New regularizers to stop weird arm/wrist contortions.
+    arm_ref_deviation = RewTerm(
+        func=custom_mdp.arm_ref_deviation_l2,
+        weight=-0.05,
+        params={"deadzone": 0.10},
+    )
+    wrist_ref_deviation = RewTerm(
+        func=custom_mdp.wrist_ref_deviation_l2,
+        weight=-0.10,
+        params={"deadzone": 0.06},
     )
 
 
@@ -276,10 +348,10 @@ class EventCfg:
         mode="reset",
         params={
             "bank_path": "/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_carry_v3/tools/catch_success_bank.pt",
-            "pos_noise_xy": 0.01,
-            "yaw_noise_rad": 0.05,
-            "vel_noise_scale": 0.05,
-            "grace_steps": 8,
+            "pos_noise_xy": 0.005,
+            "yaw_noise_rad": 0.03,
+            "vel_noise_scale": 0.02,
+            "grace_steps": 10,
             "randomize_object": True,
         },
     )
@@ -315,7 +387,6 @@ class dj_urop_carry_v3_EnvCfg(ManagerBasedRLEnvCfg):
         self.sim.dt = 1.0 / 200.0
         self.sim.render_interval = self.decimation
 
-        # keep this explicit for stability
         if hasattr(self.sim, "disable_contact_processing"):
             self.sim.disable_contact_processing = False
 
@@ -328,12 +399,11 @@ class dj_urop_carry_v3_EnvCfg_PLAY(dj_urop_carry_v3_EnvCfg):
         self.scene.num_envs = 64
         self.scene.env_spacing = 2.5
 
-        # play/eval should be easier to inspect
         self.observations.policy.enable_corruption = False
         self.observations.critic.enable_corruption = False
 
-        # slightly calmer commands for first debugging
-        self.commands.base_velocity.ranges.lin_vel_x = (0.0, 0.20)
-        self.commands.base_velocity.ranges.lin_vel_y = (-0.03, 0.03)
-        self.commands.base_velocity.ranges.ang_vel_z = (-0.20, 0.20)
-        self.commands.base_velocity.rel_standing_envs = 0.20
+        # Same forward-carry setting for now.
+        self.commands.base_velocity.ranges.lin_vel_x = (0.12, 0.28)
+        self.commands.base_velocity.ranges.lin_vel_y = (0.0, 0.0)
+        self.commands.base_velocity.ranges.ang_vel_z = (0.0, 0.0)
+        self.commands.base_velocity.rel_standing_envs = 0.0
