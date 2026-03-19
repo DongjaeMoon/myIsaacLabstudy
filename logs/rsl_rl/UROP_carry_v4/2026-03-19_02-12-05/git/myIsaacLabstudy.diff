@@ -1,0 +1,56 @@
+--- git status ---
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   UROP/UROP_carry_v3/env_cfg.py
+	modified:   UROP/play_rsl_rl.py
+	modified:   UROP/train_rsl_rl.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	UROP/UROP_carry_v4/
+
+no changes added to commit (use "git add" and/or "git commit -a") 
+
+
+--- git diff ---
+diff --git a/UROP/UROP_carry_v3/env_cfg.py b/UROP/UROP_carry_v3/env_cfg.py
+index fea115bd..6a1bc6f8 100644
+--- a/UROP/UROP_carry_v3/env_cfg.py
++++ b/UROP/UROP_carry_v3/env_cfg.py
+@@ -84,7 +84,7 @@ class CommandsCfg:
+         rel_standing_envs=0.0,
+         rel_heading_envs=0.0,
+         heading_command=False,
+-        debug_vis=False,
++        debug_vis=True,
+         ranges=mdp_isaac.UniformVelocityCommandCfg.Ranges(
+             lin_vel_x=(0.12, 0.35),
+             lin_vel_y=(0.0, 0.0),
+diff --git a/UROP/play_rsl_rl.py b/UROP/play_rsl_rl.py
+index d623caf5..266471f4 100644
+--- a/UROP/play_rsl_rl.py
++++ b/UROP/play_rsl_rl.py
+@@ -102,6 +102,7 @@ import UROP_v12
+ import UROP_carry_v0
+ import UROP_carry_v2
+ import UROP_carry_v3
++import UROP_carry_v4
+ 
+ @hydra_task_config(args_cli.task, args_cli.agent)
+ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: RslRlBaseRunnerCfg):
+diff --git a/UROP/train_rsl_rl.py b/UROP/train_rsl_rl.py
+index 74d5a0bd..6ff60820 100644
+--- a/UROP/train_rsl_rl.py
++++ b/UROP/train_rsl_rl.py
+@@ -126,6 +126,7 @@ import UROP_v12
+ import UROP_carry_v0
+ import UROP_carry_v2
+ import UROP_carry_v3
++import UROP_carry_v4
+ 
+ @hydra_task_config(args_cli.task, args_cli.agent)
+ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agent_cfg: RslRlBaseRunnerCfg):
