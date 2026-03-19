@@ -84,7 +84,7 @@ class CommandsCfg:
         rel_standing_envs=0.0,
         rel_heading_envs=0.0,
         heading_command=False,
-        debug_vis=False,
+        debug_vis=True,
         ranges=mdp_isaac.UniformVelocityCommandCfg.Ranges(
             lin_vel_x=(0.12, 0.35),
             lin_vel_y=(0.0, 0.0),
