@@ -308,7 +308,8 @@ class EventCfg:
         func=custom_mdp.reset_from_catch_success_bank,
         mode="reset",
         params={
-            "bank_path": "/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_carry_v4/tools/catch_success_bank.pt",
+#            "bank_path": "/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_carry_v4/tools/catch_success_bank.pt",
+            "bank_path": "/home/idim5080-2/mdj/myIsaacLabstudy/UROP/UROP_carry_v4/tools/catch_success_bank.pt",
             "pos_noise_xy": 0.002,
             "yaw_noise_rad": 0.0,
             "vel_noise_scale": 0.0,

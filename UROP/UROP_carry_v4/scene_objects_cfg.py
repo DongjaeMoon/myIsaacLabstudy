@@ -65,8 +65,8 @@ G1_FINGER_JOINTS = [
     "right_hand_index_1_joint",
 ]
 
-G1_USD_PATH = "/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_carry_v4/g1_29dof_full_collider_flattened.usd"
-#G1_USD_PATH = "/home/idim5080-2/mdj/myIsaacLabstudy/UROP/UROP_carry_v3/g1_29dof_full_collider_flattened.usd"
+#G1_USD_PATH = "/home/dongjae/isaaclab/myIsaacLabstudy/UROP/UROP_carry_v4/g1_29dof_full_collider_flattened.usd"
+G1_USD_PATH = "/home/idim5080-2/mdj/myIsaacLabstudy/UROP/UROP_carry_v4/g1_29dof_full_collider_flattened.usd"
 
 # --------------------------------------------------------------------------------------
 # Robot config
