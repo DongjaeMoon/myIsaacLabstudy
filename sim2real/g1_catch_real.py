@@ -371,6 +371,23 @@ class G1CatchRealController:
 
         self._printed_dims = False
         self._state_print_counter = 0
+        self.action_lpf_alpha = 0.10
+        self.smoothed_policy_action = np.zeros(POLICY_ACT_DIM, dtype=np.float64)
+
+        # Safe debugging gains in POLICY_ACTION_ORDER
+        # legs/waist almost frozen, arms only move a little
+        self.action_gain_vec = np.array([
+        0.00, 0.00, 0.00, 0.00, 0.00, 0.00,   # legs_sagittal (6)
+        0.00, 0.00, 0.00, 0.00,               # legs_frontal (4)
+        0.00, 0.00,                           # legs_yaw (2)
+        0.00, 0.00, 0.00,                     # waist (3)
+
+        0.12, 0.12,                           # left_arm_capture (2)
+        0.12, 0.12,                           # right_arm_capture (2)
+
+        0.08, 0.08, 0.06, 0.06, 0.06,         # left_arm_wrap (5)
+        0.08, 0.08, 0.06, 0.06, 0.06,         # right_arm_wrap (5)
+        ], dtype=np.float64)
 
     # ------------------------------------------------------------------
     # Initialization
@@ -608,7 +625,23 @@ class G1CatchRealController:
             self._printed_dims = True
             print(f"[policy] first obs/action shapes: {obs.shape} -> {act.shape}")
 
-        self.current_policy_action = clamp(act, -ACTION_CLIP, ACTION_CLIP)
+        raw_action = clamp(act, -ACTION_CLIP, ACTION_CLIP)
+
+        # Low-pass filter on policy action
+        self.smoothed_policy_action = (
+        (1.0 - self.action_lpf_alpha) * self.smoothed_policy_action
+        + self.action_lpf_alpha * raw_action
+        )
+
+        # Per-action safe scaling
+        self.current_policy_action = self.action_gain_vec * self.smoothed_policy_action
+
+        # Debug prints
+        print(
+        f"[policy] raw_max={np.max(np.abs(raw_action)):.4f} "
+        f"scaled_max={np.max(np.abs(self.current_policy_action)):.4f}"
+       )
+
         self.current_target_q = self._policy_action_to_motor_targets(self.current_policy_action)
         self.current_target_dq[:] = 0.0
 

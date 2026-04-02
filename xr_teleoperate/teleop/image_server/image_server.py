@@ -6,7 +6,7 @@ from collections import deque
 import numpy as np
 import pyrealsense2 as rs
 import logging_mp
-logger_mp = logging_mp.get_logger(__name__, level=logging_mp.DEBUG)
+logger_mp = logging_mp.getLogger(__name__, level=logging_mp.DEBUG)
 
 
 class RealSenseCamera(object):

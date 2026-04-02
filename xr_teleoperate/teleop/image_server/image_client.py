@@ -6,7 +6,7 @@ import struct
 from collections import deque
 from multiprocessing import shared_memory
 import logging_mp
-logger_mp = logging_mp.get_logger(__name__)
+logger_mp = logging_mp.getLogger(__name__)
 
 class ImageClient:
     def __init__(self, tv_img_shape = None, tv_img_shm_name = None, wrist_img_shape = None, wrist_img_shm_name = None, 
