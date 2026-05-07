@@ -276,10 +276,11 @@ class G1SplineActionController:
         self.msc.Init()
 
         status, result = self.msc.CheckMode()
-        while result["name"]:
-            self.msc.ReleaseMode()
-            status, result = self.msc.CheckMode()
-            time.sleep(1)
+        if result is not None:
+            while result and result.get("name"):
+                self.msc.ReleaseMode()
+                status, result = self.msc.CheckMode()
+                time.sleep(1)
 
         self.lowcmd_publisher = ChannelPublisher("rt/lowcmd", LowCmd_)
         self.lowcmd_publisher.Init()
