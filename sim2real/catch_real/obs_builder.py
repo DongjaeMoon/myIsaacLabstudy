@@ -18,6 +18,9 @@ class ObservationBuilder:
         base_ang_vel: np.ndarray,
         reference_pose_q: np.ndarray,
         prev_action: np.ndarray,
+        object_rel_pos: np.ndarray,
+        object_rel_lin_vel: np.ndarray,
+        tag_visible: np.ndarray,
         current_mode_value: str,
     ) -> np.ndarray:
         mode_one_hot = np.zeros(len(self.cfg.modes.names), dtype=np.float64)
@@ -30,9 +33,9 @@ class ObservationBuilder:
             "joint_pos_rel": q - reference_pose_q,
             "joint_vel": dq,
             "previous_action": prev_action,
-            "object_rel_pos": np.zeros(3, dtype=np.float64),
-            "object_rel_lin_vel": np.zeros(3, dtype=np.float64),
-            "tag_visible": np.zeros(1, dtype=np.float64),
+            "object_rel_pos": object_rel_pos,
+            "object_rel_lin_vel": object_rel_lin_vel,
+            "tag_visible": tag_visible,
             "mode_one_hot": mode_one_hot,
         }
 

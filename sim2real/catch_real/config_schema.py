@@ -74,6 +74,17 @@ class PolicyConfig:
 
 
 @dataclass(frozen=True)
+class PolicyRuntimeConfig:
+    autonomous_key: str
+    manual_debug_key: str
+    policy_mode_name: str
+    default_policy_reference_pose: str
+    auto_start_after_ready: bool
+    object_source: str
+    fake_object_debug: bool
+
+
+@dataclass(frozen=True)
 class ObservationTermConfig:
     name: str
     dim: int
@@ -144,6 +155,7 @@ class CatchRealConfig:
     control: ControlConfig
     poses: dict[str, np.ndarray]
     policy: PolicyConfig
+    policy_runtime: PolicyRuntimeConfig
     observation: ObservationConfig
     modes: ModesConfig
     camera: CameraConfig

@@ -17,6 +17,7 @@ from .config_schema import (
     ObservationTermConfig,
     PolicyActionEntry,
     PolicyConfig,
+    PolicyRuntimeConfig,
     RobotConfig,
     RuntimeConfig,
     SafetyConfig,
@@ -157,6 +158,7 @@ def load_catch_real_config(config_path: str | Path, policy_override: str | None 
     control_raw = _ensure_mapping(raw.get("control", {}), "control")
     poses_raw = _ensure_mapping(raw.get("poses", {}), "poses")
     policy_raw = _ensure_mapping(raw.get("policy", {}), "policy")
+    policy_runtime_raw = _ensure_mapping(raw.get("policy_runtime", {}), "policy_runtime")
     observation_raw = _ensure_mapping(raw.get("observation", {}), "observation")
     modes_raw = _ensure_mapping(raw.get("modes", {}), "modes")
     camera_raw = _ensure_mapping(raw.get("camera", {}), "camera")
@@ -263,6 +265,26 @@ def load_catch_real_config(config_path: str | Path, policy_override: str | None 
     keyboard_raw = _ensure_mapping(modes_raw.get("keyboard", {}), "modes.keyboard")
     transitions_raw = _ensure_mapping(modes_raw.get("transitions", {}), "modes.transitions")
 
+    policy_mode_name = str(policy_runtime_raw.get("policy_mode_name", "catch")).lower()
+    if policy_mode_name not in mode_names:
+        raise ValueError(
+            f"policy_runtime.policy_mode_name='{policy_mode_name}' must be one of modes.names={mode_names}"
+        )
+    if policy_mode_name not in {"safe_stand", "catch_ready", "catch", "hold"}:
+        raise ValueError(
+            "policy_runtime.policy_mode_name must map to an existing controller mode value: "
+            "safe_stand, catch_ready, catch, or hold"
+        )
+
+    default_policy_reference_pose = str(
+        policy_runtime_raw.get("default_policy_reference_pose", "catch_ready")
+    )
+    if default_policy_reference_pose not in poses:
+        raise ValueError(
+            "policy_runtime.default_policy_reference_pose="
+            f"'{default_policy_reference_pose}' must be one of {sorted(poses.keys())}"
+        )
+
     policy_path_raw = policy_override if policy_override is not None else policy_raw.get("path")
     policy_path = _resolve_existing_path(policy_path_raw, config_path) if policy_path_raw not in (None, "") else None
 
@@ -315,6 +337,17 @@ def load_catch_real_config(config_path: str | Path, policy_override: str | None 
         action_joint_names=action_joint_names,
         action_scales=action_scale_array,
         action_slot_indices=action_slot_indices,
+    )
+    policy_runtime = PolicyRuntimeConfig(
+        autonomous_key=str(policy_runtime_raw.get("autonomous_key", "a")).lower(),
+        manual_debug_key=str(
+            policy_runtime_raw.get("manual_debug_key", keyboard_raw.get("catch", "k"))
+        ).lower(),
+        policy_mode_name=policy_mode_name,
+        default_policy_reference_pose=default_policy_reference_pose,
+        auto_start_after_ready=bool(policy_runtime_raw.get("auto_start_after_ready", False)),
+        object_source=str(policy_runtime_raw.get("object_source", "zeros")).lower(),
+        fake_object_debug=bool(policy_runtime_raw.get("fake_object_debug", False)),
     )
     observation = ObservationConfig(
         contract_name=str(observation_raw.get("contract_name", "real_catch_v1")),
@@ -384,6 +417,7 @@ def load_catch_real_config(config_path: str | Path, policy_override: str | None 
         control=control,
         poses=poses,
         policy=policy,
+        policy_runtime=policy_runtime,
         observation=observation,
         modes=modes,
         camera=camera,

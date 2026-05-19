@@ -1,0 +1,786 @@
+# G1 Humanoid Catching Project — Real/MuJoCo/IsaacLab Configuration Contract
+# Last updated: 2026-05-19
+# Purpose:
+#   This file freezes the system configuration and I/O contract for the Unitree G1
+#   AprilTag box catching project.
+#
+#   It is intended to be given to Codex/AI before writing IsaacLab training code.
+#   The training environment MUST match this contract so that the exported policy.pt
+#   can be inserted into sim2real/configs/g1_catch_real.yaml and run immediately
+#   through sim2real/g1_catch_real.py.
+
+================================================================================
+0. PROJECT GOAL
+================================================================================
+
+Final real-world experiment:
+
+    A real Unitree G1 humanoid stands in a catch-ready posture.
+    A human lightly tosses an AprilTag-attached delivery box toward the robot.
+    The robot detects the box using camera/AprilTag tracking and catches/holds it
+    using a learned whole-body policy.
+
+Important design philosophy:
+
+    We design the real/MuJoCo deploy system FIRST.
+    Then IsaacLab training must be designed backward from that deploy contract.
+
+Execution chain:
+
+    IsaacLab training
+        -> export TorchScript policy.pt
+        -> insert policy path into sim2real/configs/g1_catch_real.yaml
+        -> run the SAME sim2real/g1_catch_real.py in MuJoCo via DDS loopback
+        -> run the SAME sim2real/g1_catch_real.py on the real G1
+
+There should be no separate MuJoCo-only controller.
+
+================================================================================
+1. TOP-LEVEL SYSTEM ARCHITECTURE
+================================================================================
+
+Main deploy entrypoint:
+
+    sim2real/g1_catch_real.py
+
+Main configuration file:
+
+    sim2real/configs/g1_catch_real.yaml
+
+Important modular files:
+
+    sim2real/config.py
+        Compatibility wrapper that re-exports config loader/schema.
+
+    sim2real/catch_real/controller.py
+        High-level controller orchestration:
+        - mode switching
+        - scripted pose transitions
+        - autonomous policy running
+        - status logging
+        - safe shutdown
+
+    sim2real/catch_real/policy_runner.py
+        Loads TorchScript policy and converts policy action to target q:
+        - clipped_action
+        - q_target_raw = q_ref + action_scale * clipped_action
+        - optional policy-step target delta clamp
+        - LPF:
+              q_target_filtered =
+                  (1 - alpha) * previous_policy_target
+                  + alpha * q_target_raw
+
+    sim2real/catch_real/obs_builder.py
+        Builds the deploy observation vector.
+
+    sim2real/catch_real/object_observation.py
+        Current object observation provider/stub:
+        - zeros by default
+        - optional fake object debug toggle
+        - later replaced/extended by AprilTag estimator
+
+    sim2real/catch_real/motor_command.py
+        Writes LowCmd q/dq/kp/kd/tau/crc.
+
+    sim2real/catch_real/state_reader.py
+        Reads motor q/dq and IMU state from LowState.
+
+    sim2real/catch_real/dds_io.py
+        DDS publisher/subscriber initialization and LowState callback.
+
+    sim2real/catch_real/modes.py
+        Mode enum.
+
+    sim2real/catch_real/keyboard.py
+        Terminal keyboard input.
+
+    sim2real/catch_real/safety.py
+        Target clamping, stale state checks, damping behavior, etc.
+
+Debug/demo entrypoint:
+
+    sim2real/g1_catch_config_demo.py
+
+    This is only for simple pose/mode verification using the same config/controller
+    structure. The real deploy file is still sim2real/g1_catch_real.py.
+
+================================================================================
+2. DDS / LOW-LEVEL COMMUNICATION
+================================================================================
+
+Communication backend:
+
+    Unitree DDS
+
+MuJoCo:
+
+    Use the SAME deploy code with DDS loopback:
+
+        --net-iface lo
+
+Real G1:
+
+    Use the SAME deploy code with the real network interface:
+
+        --net-iface <REAL_INTERFACE_NAME>
+
+DDS topics:
+
+    LowState input topic:
+        rt/lowstate
+
+    LowCmd output topic:
+        rt/lowcmd
+
+Message type:
+
+    hg
+
+Low-level control frequency:
+
+    control_dt = 0.002 s
+    low-level command loop = 500 Hz
+
+Policy frequency:
+
+    policy_dt = 0.020 s
+    policy inference loop = 50 Hz
+
+Motion command type:
+
+    Joint position PD command through LowCmd.
+
+For each controlled motor:
+
+    q      = q_des
+    dq     = dq_des, usually 0
+    kp     = YAML-defined per-joint kp
+    kd     = YAML-defined per-joint kd
+    tau    = 0
+    mode   = 1
+
+The policy NEVER outputs torque directly.
+
+================================================================================
+3. CONTROLLED JOINTS / MOTOR ORDER
+================================================================================
+
+Number of controlled DOF:
+
+    29
+
+Controlled joint order:
+
+    00 left_hip_pitch_joint
+    01 left_hip_roll_joint
+    02 left_hip_yaw_joint
+    03 left_knee_joint
+    04 left_ankle_pitch_joint
+    05 left_ankle_roll_joint
+
+    06 right_hip_pitch_joint
+    07 right_hip_roll_joint
+    08 right_hip_yaw_joint
+    09 right_knee_joint
+    10 right_ankle_pitch_joint
+    11 right_ankle_roll_joint
+
+    12 waist_yaw_joint
+    13 waist_roll_joint
+    14 waist_pitch_joint
+
+    15 left_shoulder_pitch_joint
+    16 left_shoulder_roll_joint
+    17 left_shoulder_yaw_joint
+    18 left_elbow_joint
+    19 left_wrist_roll_joint
+    20 left_wrist_pitch_joint
+    21 left_wrist_yaw_joint
+
+    22 right_shoulder_pitch_joint
+    23 right_shoulder_roll_joint
+    24 right_shoulder_yaw_joint
+    25 right_elbow_joint
+    26 right_wrist_roll_joint
+    27 right_wrist_pitch_joint
+    28 right_wrist_yaw_joint
+
+Motor indices:
+
+    [0, 1, 2, ..., 28]
+
+Important:
+
+    IsaacLab action order MUST match this exact order.
+    IsaacLab observation joint order MUST match this exact order.
+    Exported policy action[slot] must correspond to the same joint slot above.
+
+================================================================================
+4. POLICY INPUT / OUTPUT CONTRACT
+================================================================================
+
+Policy file format:
+
+    TorchScript policy.pt
+    Loaded with torch.jit.load(...)
+
+Required policy input/output:
+
+    input:
+        obs shape = [batch, 104]
+
+    output:
+        action shape = [batch, 29]
+
+Policy action meaning:
+
+    action is residual joint position target, not torque.
+
+Control law:
+
+    clipped_action = clip(action, -action_clip, +action_clip)
+
+    q_target_raw = q_ref + action_scale * clipped_action
+
+    q_target_filtered =
+        (1 - target_lowpass_alpha) * previous_policy_target
+        + target_lowpass_alpha * q_target_raw
+
+    q_des = q_target_filtered
+
+    dq_des = 0
+    tau_ff = 0
+
+Current LPF setting:
+
+    runtime.target_lowpass_alpha = 0.2
+
+Interpretation:
+
+    alpha = 1.0  -> no low-pass filtering
+    alpha = 0.2  -> moderate smoothing
+    alpha = 0.1  -> stronger smoothing, slower reaction
+
+Important:
+
+    LPF is applied only to policy-generated targets.
+    Scripted pose transitions are not filtered by policy LPF.
+    previous_policy_target is reset when entering autonomous policy mode.
+
+================================================================================
+5. ACTOR OBSERVATION CONTRACT
+================================================================================
+
+Total actor observation dimension:
+
+    obs_dim = 104
+
+Observation order MUST be exactly:
+
+    1. projected_gravity
+        dim = 3
+        source = IMU orientation
+        frame = policy body frame
+
+    2. base_ang_vel
+        dim = 3
+        source = IMU gyro
+        frame = policy body frame
+
+    3. joint_pos_rel
+        dim = 29
+        value = q - q_ref
+        joint order = controlled joint order in Section 3
+
+    4. joint_vel
+        dim = 29
+        value = dq
+        joint order = controlled joint order in Section 3
+
+    5. previous_action
+        dim = 29
+        value = previous policy action
+        order = action order in Section 3
+
+    6. object_rel_pos
+        dim = 3
+        value = box position relative to robot body/base/policy frame
+        source = AprilTag estimator in real system
+        source = simulator-derived but AprilTag-like signal in IsaacLab
+
+    7. object_rel_lin_vel
+        dim = 3
+        value = box linear velocity relative to robot body/base/policy frame
+        source = AprilTag estimator in real system
+        source = simulator-derived but AprilTag-like signal in IsaacLab
+
+    8. tag_visible
+        dim = 1
+        value = 0 or 1
+
+    9. mode_one_hot
+        dim = 4
+        mode names = safe_stand, catch_ready, catch, hold
+        total mode_one_hot dim MUST remain 4
+
+Total:
+
+    3 + 3 + 29 + 29 + 29 + 3 + 3 + 1 + 4 = 104
+
+Do NOT include in actor obs:
+
+    - true world-frame object state
+    - privileged object mass/friction/restitution
+    - contact forces
+    - simulator-only contact history
+    - exact base linear velocity unless later proven real-estimable
+    - torque obs, unless the deploy shell is also changed
+
+Current deploy convention when no object is visible:
+
+    object_rel_pos     = [0, 0, 0]
+    object_rel_lin_vel = [0, 0, 0]
+    tag_visible        = 0
+
+When fake object debug is toggled:
+
+    tag_visible        = 1
+    object_rel_pos     = [0.8, 0.0, 0.4]
+    object_rel_lin_vel = implementation-defined fake incoming velocity
+                          if configured in object_observation.py
+
+================================================================================
+6. MODES / POLICY RUNTIME
+================================================================================
+
+Runtime modes:
+
+    DAMPING
+        Sends damping commands.
+
+    SAFE_STAND
+        Scripted safe standing pose.
+
+    CATCH_READY
+        Scripted catch-ready pose.
+        This is the posture from which autonomous policy operation begins.
+
+    CATCH
+        Reinterpreted as AUTONOMOUS POLICY RUNNING mode.
+        This is NOT a one-time manual catch trigger anymore.
+        The policy runs continuously at 50 Hz in this mode.
+
+    HOLD
+        Scripted hold pose.
+
+Important final experiment behavior:
+
+    The real experiment should NOT depend on pressing K at the exact toss time.
+
+Correct scenario:
+
+    1. Robot moves to catch_ready.
+    2. Robot enters autonomous policy running mode.
+    3. Policy runs continuously.
+    4. If no box is visible:
+           tag_visible = 0
+           object_rel_pos = 0
+           object_rel_lin_vel = 0
+           policy should learn to maintain ready/balance.
+    5. When AprilTag box appears and approaches:
+           tag_visible = 1
+           object_rel_pos/object_rel_lin_vel become nonzero
+           same running policy reacts and catches.
+    6. After catch, policy or scripted logic should result in stable holding.
+
+Keyboard controls:
+
+    S:
+        safe_stand scripted pose
+
+    P or C:
+        catch_ready scripted pose
+
+    A:
+        autonomous policy running mode
+        internally uses catch mode
+
+    K:
+        manual/debug policy running mode
+        same internal behavior as A, but used only for debugging
+
+    O:
+        toggle fake object observation for debugging
+
+    H:
+        hold scripted pose
+
+    D:
+        damping
+
+    Q or ESC:
+        safe shutdown / damping exit
+
+Potential future setting:
+
+    policy_runtime.auto_start_after_ready = false currently.
+    Later it may be set true so that the robot automatically enters autonomous
+    policy mode after reaching catch_ready.
+
+================================================================================
+7. YAML SINGLE SOURCE OF TRUTH
+================================================================================
+
+Main YAML:
+
+    sim2real/configs/g1_catch_real.yaml
+
+This YAML is the source of truth for deploy and should be mirrored in IsaacLab.
+
+Important YAML sections:
+
+    runtime:
+        control_dt: 0.002
+        policy_dt: 0.020
+        target_lowpass_alpha: 0.2
+
+    communication:
+        backend: unitree_dds
+        msg_type: hg
+        lowcmd_topic: rt/lowcmd
+        lowstate_topic: rt/lowstate
+
+    robot:
+        controlled_joint_names: exactly Section 3
+        motor_indices: [0, ..., 28]
+        imu: quaternion/frame settings
+
+    control:
+        command_type: joint_position_pd
+        q_des_source: q_ref_plus_residual_action
+        kp/kd definitions or default + overrides
+
+    poses:
+        safe_stand
+        catch_ready
+        hold
+
+    policy:
+        path: path/to/policy.pt
+        num_actions: 29
+        action_clip: usually 1.0
+        action_order: exactly Section 3
+        action_scale: exact YAML values must be copied into IsaacLab
+
+    observation:
+        contract_name: real_catch_v1
+        num_obs: 104
+        terms: exactly Section 5 order
+
+    policy_runtime:
+        autonomous_key: a
+        manual_debug_key: k
+        policy_mode_name: catch
+        default_policy_reference_pose: catch_ready
+        auto_start_after_ready: false
+        object_source: zeros
+        fake_object_debug: false
+
+    safety:
+        damping_on_exit: true
+        damping_kd: YAML-defined
+        clamp_action: true
+        clamp_joint_targets_to_limits: YAML-defined
+        max_target_delta_per_policy_step: YAML-defined or null
+        max_target_delta_per_control_step: YAML-defined or null
+        lowstate_timeout_s: YAML-defined
+
+Important:
+
+    IsaacLab must not invent different action_scale values.
+    IsaacLab must copy action_scale exactly from YAML or generate both YAML and
+    IsaacLab config from one common source.
+
+================================================================================
+8. ISAACLAB TRAINING REQUIREMENTS
+================================================================================
+
+Training must match deploy.
+
+Training policy type:
+
+    Continuous autonomous waiting-and-catching policy.
+
+Not event-triggered:
+
+    Do NOT train a policy that only runs after an external "catch" button.
+    The policy must run continuously after ready.
+
+Episode structure:
+
+    1. Reset robot near catch_ready pose.
+    2. During waiting phase:
+           no box visible or tag_visible = 0
+           object_rel_pos = 0
+           object_rel_lin_vel = 0
+           policy must keep stable ready posture.
+    3. At random toss time:
+           box appears / is tossed toward robot
+           tag_visible becomes 1
+           object_rel_pos/object_rel_lin_vel are provided.
+    4. Policy reacts to catch.
+    5. Reward holding/stability after impact.
+
+Randomization required:
+
+    - random waiting time before toss
+    - random toss position
+    - random toss velocity
+    - random box mass/size/friction/restitution if desired
+    - AprilTag-like visibility dropout/noise
+    - object relative position/velocity noise
+    - mild robot state noise/domain randomization
+
+Actor observation in IsaacLab:
+
+    Must be exactly Section 5.
+    Must be 104 dim.
+    Must be ordered exactly as deploy.
+
+Critic observation:
+
+    Can include privileged simulator information.
+    Actor must not.
+
+Action in IsaacLab:
+
+    Must be exactly 29 dim.
+    Must be residual joint position action.
+    Must use same joint order as Section 3.
+    Must use same action_scale as YAML.
+
+Control in IsaacLab:
+
+    The action-to-target conversion used during training must match deploy:
+
+        q_target = q_ref + action_scale * action
+
+    q_ref should be catch_ready reference pose during autonomous policy mode.
+
+Policy frequency:
+
+    50 Hz equivalent.
+    IsaacLab env dt and decimation must produce policy_dt = 0.020 s.
+
+Recommended reward components:
+
+    Waiting/stability:
+        - maintain upright posture
+        - maintain catch_ready reference
+        - small joint velocity
+        - small action magnitude
+        - small action rate
+        - foot stability / no foot slip if free-standing
+
+    Catching:
+        - object close to torso/arms catch zone
+        - reduce object relative velocity after contact
+        - keep object from falling
+        - successful hold duration
+
+    Safety:
+        - penalize large lower-body actions
+        - penalize excessive waist/ankle movement
+        - penalize falling
+        - penalize unstable base orientation
+
+Important real-world simplification:
+
+    The first successful real experiment should be:
+        ready posture -> light toss -> catch -> hold for a few seconds
+
+    Walking/carrying is later.
+    Locomotion is currently out of scope for this deploy shell.
+
+================================================================================
+9. POLICY EXPORT / INJECTION PROCEDURE
+================================================================================
+
+After IsaacLab training:
+
+    Export TorchScript policy.pt with:
+
+        input  = [1, 104]
+        output = [1, 29]
+
+Before putting it into YAML:
+
+    Test shape locally:
+
+        python - <<'PY'
+        import torch
+        path = "/absolute/path/to/policy.pt"
+        policy = torch.jit.load(path, map_location="cpu")
+        policy.eval()
+        x = torch.zeros(1, 104)
+        with torch.no_grad():
+            y = policy(x)
+        print(y.shape)
+        assert tuple(y.shape) == (1, 29)
+        PY
+
+Put policy path into YAML:
+
+    policy:
+        path: /absolute/path/to/policy.pt
+
+or run with CLI override:
+
+    python sim2real/g1_catch_real.py \
+        --config sim2real/configs/g1_catch_real.yaml \
+        --net-iface lo \
+        --use-policy \
+        --policy /absolute/path/to/policy.pt \
+        --start-pose catch_ready
+
+MuJoCo test command:
+
+    python sim2real/g1_catch_real.py \
+        --config sim2real/configs/g1_catch_real.yaml \
+        --net-iface lo \
+        --use-policy \
+        --start-pose catch_ready
+
+Then:
+
+    A -> autonomous policy running
+    O -> fake object observation toggle for debug
+    D -> damping
+    Q -> exit
+
+Real G1 command:
+
+    python sim2real/g1_catch_real.py \
+        --config sim2real/configs/g1_catch_real.yaml \
+        --net-iface <REAL_INTERFACE> \
+        --use-policy \
+        --start-pose catch_ready
+
+Do not try the real G1 first.
+Always run the same policy in MuJoCo through DDS loopback first.
+
+================================================================================
+10. DEPLOY VERIFICATION CHECKLIST
+================================================================================
+
+Before IsaacLab:
+
+    [x] DDS loopback works.
+    [x] scripted safe_stand/catch_ready/hold pose transitions work.
+    [x] g1_catch_real.py loads dummy policy.
+    [x] dummy policy 104 -> 29 runs.
+    [x] A enters autonomous policy running mode.
+    [x] fake object observation O toggles tag_visible/object_rel_pos.
+    [x] LPF target_lowpass_alpha = 0.2 is applied to policy target path.
+    [x] obs_dim remains 104.
+    [x] action_dim remains 29.
+
+Before real robot test with learned policy:
+
+    [ ] policy.pt shape test: 104 -> 29
+    [ ] MuJoCo no-policy scripted pose test
+    [ ] MuJoCo zero-policy test
+    [ ] MuJoCo learned policy test with tag_visible=0 waiting
+    [ ] MuJoCo learned policy test with fake object observation
+    [ ] MuJoCo learned policy test with simulated AprilTag/object stream if available
+    [ ] action scale conservative
+    [ ] target LPF enabled
+    [ ] max target delta clamps enabled or reviewed
+    [ ] emergency damping key tested
+    [ ] real G1 area clear and safety operator ready
+
+================================================================================
+11. COMMON FAILURE MODES
+================================================================================
+
+If policy.pt fails with matrix shape error:
+
+    The policy was probably trained with wrong obs_dim.
+    Old policies may be obs_dim=141.
+    Current deploy contract requires obs_dim=104.
+
+If robot moves wrong joints:
+
+    motor_indices/action_order/joint_order mismatch.
+    Check Section 3 and YAML action_order.
+
+If policy works in IsaacLab but not in MuJoCo/real:
+
+    Usually one of:
+        - obs order mismatch
+        - joint order mismatch
+        - action_scale mismatch
+        - q_ref mismatch
+        - policy_dt mismatch
+        - body frame mismatch for gravity/object rel state
+        - old privileged observation leaked into actor
+
+If robot jitters:
+
+    Check:
+        - zero policy jitter
+        - kp/kd too high
+        - target_lowpass_alpha too high
+        - action_scale too large
+        - action rate too high
+        - policy output saturation
+
+Current small jitter with zero/dummy policy is considered acceptable for now,
+but learned policy must still be tested conservatively.
+
+================================================================================
+12. NON-NEGOTIABLE CONTRACT FOR ISAACLAB CODING
+================================================================================
+
+When writing IsaacLab training code, do NOT violate:
+
+    obs_dim = 104
+
+    action_dim = 29
+
+    obs order:
+        projected_gravity,
+        base_ang_vel,
+        joint_pos_rel,
+        joint_vel,
+        previous_action,
+        object_rel_pos,
+        object_rel_lin_vel,
+        tag_visible,
+        mode_one_hot
+
+    action order:
+        exactly the 29 joints in Section 3
+
+    action meaning:
+        residual joint position target
+
+    control law:
+        q_target = q_ref + action_scale * action
+
+    policy runtime:
+        continuous autonomous policy after catch_ready
+
+    waiting condition:
+        tag_visible = 0 and object obs zero
+
+    toss condition:
+        random timing, tag_visible = 1, object rel pos/vel provided
+
+    real deploy:
+        exported policy.pt must run in sim2real/g1_catch_real.py
+        without modifying the policy code path.
+
+================================================================================
+END OF CONFIGURATION CONTRACT
+================================================================================
