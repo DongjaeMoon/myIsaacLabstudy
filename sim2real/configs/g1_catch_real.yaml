@@ -232,38 +232,38 @@ policy:
   - name: left_hip_pitch_joint
     scale: 0.3
     group: leg
-  - name: right_hip_pitch_joint
-    scale: 0.3
-    group: leg
-  - name: left_knee_joint
-    scale: 0.3
-    group: leg
-  - name: right_knee_joint
-    scale: 0.3
-    group: leg
-  - name: left_ankle_pitch_joint
-    scale: 0.3
-    group: leg
-  - name: right_ankle_pitch_joint
-    scale: 0.3
-    group: leg
   - name: left_hip_roll_joint
-    scale: 0.2
-    group: leg
-  - name: right_hip_roll_joint
-    scale: 0.2
-    group: leg
-  - name: left_ankle_roll_joint
-    scale: 0.2
-    group: leg
-  - name: right_ankle_roll_joint
     scale: 0.2
     group: leg
   - name: left_hip_yaw_joint
     scale: 0.1
     group: leg
+  - name: left_knee_joint
+    scale: 0.3
+    group: leg
+  - name: left_ankle_pitch_joint
+    scale: 0.3
+    group: leg
+  - name: left_ankle_roll_joint
+    scale: 0.2
+    group: leg
+  - name: right_hip_pitch_joint
+    scale: 0.3
+    group: leg
+  - name: right_hip_roll_joint
+    scale: 0.2
+    group: leg
   - name: right_hip_yaw_joint
     scale: 0.1
+    group: leg
+  - name: right_knee_joint
+    scale: 0.3
+    group: leg
+  - name: right_ankle_pitch_joint
+    scale: 0.3
+    group: leg
+  - name: right_ankle_roll_joint
+    scale: 0.2
     group: leg
   - name: waist_yaw_joint
     scale: 0.2
@@ -277,20 +277,14 @@ policy:
   - name: left_shoulder_pitch_joint
     scale: 0.5
     group: arm
-  - name: left_elbow_joint
-    scale: 0.5
-    group: arm
-  - name: right_shoulder_pitch_joint
-    scale: 0.5
-    group: arm
-  - name: right_elbow_joint
-    scale: 0.5
-    group: arm
   - name: left_shoulder_roll_joint
     scale: 0.3
     group: arm
   - name: left_shoulder_yaw_joint
     scale: 0.3
+    group: arm
+  - name: left_elbow_joint
+    scale: 0.5
     group: arm
   - name: left_wrist_roll_joint
     scale: 0.3
@@ -301,11 +295,17 @@ policy:
   - name: left_wrist_yaw_joint
     scale: 0.3
     group: arm
+  - name: right_shoulder_pitch_joint
+    scale: 0.5
+    group: arm
   - name: right_shoulder_roll_joint
     scale: 0.3
     group: arm
   - name: right_shoulder_yaw_joint
     scale: 0.3
+    group: arm
+  - name: right_elbow_joint
+    scale: 0.5
     group: arm
   - name: right_wrist_roll_joint
     scale: 0.3
