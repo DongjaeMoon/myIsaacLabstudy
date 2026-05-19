@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 from typing import TYPE_CHECKING
 
 import torch
@@ -104,6 +103,18 @@ def _ensure_hold_buffers(env: "ManagerBasedRLEnv") -> None:
         env._urop_hold_steps = torch.zeros(n, dtype=torch.int32, device=d)
     if not hasattr(env, "_urop_hold_anchor_xy"):
         env._urop_hold_anchor_xy = torch.zeros((n, 2), device=d)
+    if not hasattr(env, "_urop_hold_cache_global_step"):
+        env._urop_hold_cache_global_step = -1
+    if not hasattr(env, "_urop_hold_cache_episode_len"):
+        env._urop_hold_cache_episode_len = torch.full((n,), -1, device=d, dtype=torch.long)
+
+
+def _hold_cache_is_fresh(env: "ManagerBasedRLEnv") -> bool:
+    if not hasattr(env, "_urop_hold_cache_global_step"):
+        return False
+    if env._urop_hold_cache_global_step != int(env.common_step_counter):
+        return False
+    return torch.equal(env._urop_hold_cache_episode_len, env.episode_length_buf)
 
 
 def _ready_joint_target(env: "ManagerBasedRLEnv") -> torch.Tensor:
@@ -122,69 +133,87 @@ def _chest_hold_target(env: "ManagerBasedRLEnv", target_offset=(0.18, 0.0, 0.12)
 
 def _update_hold_latch(env: "ManagerBasedRLEnv") -> torch.Tensor:
     _ensure_hold_buffers(env)
-
-    active = _toss_active(env) > 0.5
-    if not torch.any(active):
-        env._urop_hold_latched[:] = False
-        env._urop_hold_steps[:] = 0
+    if _hold_cache_is_fresh(env):
         return env._urop_hold_latched.float()
 
-    robot = env.scene["robot"]
-    obj = env.scene["object"]
+    active = _toss_active(env) > 0.5
+    inactive = ~active
+    env._urop_hold_latched[inactive] = False
+    env._urop_hold_steps[inactive] = 0
 
-    torso_pos = _body_pos(env, "torso_link")
-    torso_vel = _body_vel(env, "torso_link")
-    chest_target = _chest_hold_target(env)
+    if torch.any(active):
+        robot = env.scene["robot"]
+        obj = env.scene["object"]
 
-    obj_pos = obj.data.root_pos_w
-    obj_vel = obj.data.root_lin_vel_w
+        torso_pos = _body_pos(env, "torso_link")
+        torso_vel = _body_vel(env, "torso_link")
+        chest_target = _chest_hold_target(env)
 
-    torso_dist = torch.norm(obj_pos - torso_pos, dim=-1)
-    hold_region_err = torch.norm(obj_pos - chest_target, dim=-1)
-    rel_speed = torch.norm(obj_vel - torso_vel, dim=-1)
+        obj_pos = obj.data.root_pos_w
+        obj_vel = obj.data.root_lin_vel_w
 
-    left_force = _max_force(env, LEFT_ARM_STRUCTURAL_SENSORS)
-    right_force = _max_force(env, RIGHT_ARM_STRUCTURAL_SENSORS)
-    torso_force = _sensor_force_mag(env, "contact_torso")
+        torso_dist = torch.norm(obj_pos - torso_pos, dim=-1)
+        hold_region_err = torch.norm(obj_pos - chest_target, dim=-1)
+        rel_speed = torch.norm(obj_vel - torso_vel, dim=-1)
 
-    structural_contact = (left_force > 2.0) & (right_force > 2.0)
-    torso_contact = torso_force > 2.0
-    contact_gate = structural_contact & torso_contact
+        left_force = _max_force(env, LEFT_ARM_STRUCTURAL_SENSORS)
+        right_force = _max_force(env, RIGHT_ARM_STRUCTURAL_SENSORS)
+        torso_force = _sensor_force_mag(env, "contact_torso")
 
-    stable = (
-        active
-        & (_upright_cos(env) > 0.70)
-        & (obj_pos[:, 2] > 0.45)
-        & (torso_dist < 0.58)
-        & (hold_region_err < 0.30)
-        & (rel_speed < 0.95)
-        & contact_gate
-    )
+        structural_contact = (left_force > 1.5) & (right_force > 1.5)
+        torso_contact = torso_force > 1.5
+        contact_gate = structural_contact & torso_contact
 
-    new_latch = stable & (~env._urop_hold_latched)
-    if torch.any(new_latch):
-        env._urop_hold_latched[new_latch] = True
-        env._urop_hold_anchor_xy[new_latch] = robot.data.root_pos_w[new_latch, 0:2]
-        env._urop_hold_steps[new_latch] = 0
+        stable = (
+            active
+            & (_upright_cos(env) > 0.72)
+            & (obj_pos[:, 2] > 0.45)
+            & (torso_dist < 0.55)
+            & (hold_region_err < 0.26)
+            & (rel_speed < 0.70)
+            & contact_gate
+        )
 
-    env._urop_hold_steps[env._urop_hold_latched] += 1
-    env._urop_hold_steps[~env._urop_hold_latched] = 0
+        new_latch = stable & (~env._urop_hold_latched)
+        if torch.any(new_latch):
+            env._urop_hold_latched[new_latch] = True
+            env._urop_hold_anchor_xy[new_latch] = robot.data.root_pos_w[new_latch, 0:2]
 
-    unlatch = env._urop_hold_latched & (
-        (obj_pos[:, 2] < 0.24)
-        | (torso_dist > 1.10)
-        | ((_upright_cos(env) < 0.45) & active)
-    )
-    if torch.any(unlatch):
-        env._urop_hold_latched[unlatch] = False
-        env._urop_hold_steps[unlatch] = 0
+        critical_failure = env._urop_hold_latched & active & (
+            (obj_pos[:, 2] < 0.24)
+            | (torso_dist > 1.00)
+            | (_upright_cos(env) < 0.45)
+        )
+        if torch.any(critical_failure):
+            env._urop_hold_latched[critical_failure] = False
+            env._urop_hold_steps[critical_failure] = 0
 
+        stable_latched = env._urop_hold_latched & stable
+        env._urop_hold_steps[stable_latched] += 1
+        env._urop_hold_steps[env._urop_hold_latched & (~stable)] = 0
+        env._urop_hold_steps[~env._urop_hold_latched] = 0
+
+    env._urop_hold_cache_global_step = int(env.common_step_counter)
+    env._urop_hold_cache_episode_len = env.episode_length_buf.clone()
     return env._urop_hold_latched.float()
 
 
 def _hold_ramp(env: "ManagerBasedRLEnv", warmup_steps: int = 18) -> torch.Tensor:
     _update_hold_latch(env)
     return torch.clamp(env._urop_hold_steps.float() / float(max(warmup_steps, 1)), 0.0, 1.0)
+
+
+def _wait_gate(env: "ManagerBasedRLEnv") -> torch.Tensor:
+    return 1.0 - _toss_active(env)
+
+
+def _hold_gate(env: "ManagerBasedRLEnv") -> torch.Tensor:
+    return _update_hold_latch(env)
+
+
+def _catch_gate(env: "ManagerBasedRLEnv") -> torch.Tensor:
+    hold = _hold_gate(env)
+    return _toss_active(env) * (1.0 - hold)
 
 
 def alive_bonus(env: "ManagerBasedRLEnv") -> torch.Tensor:
@@ -227,6 +256,10 @@ def torque_l2_penalty(env: "ManagerBasedRLEnv") -> torch.Tensor:
     return torch.sum(tau * tau, dim=-1)
 
 
+def action_magnitude_penalty(env: "ManagerBasedRLEnv") -> torch.Tensor:
+    return torch.sum(env.action_manager.action ** 2, dim=-1)
+
+
 def action_rate_penalty(env: "ManagerBasedRLEnv") -> torch.Tensor:
     action = env.action_manager.action
     prev_action = env.action_manager.prev_action
@@ -249,23 +282,30 @@ def foot_slip_penalty(env: "ManagerBasedRLEnv", ground_height_thr: float = 0.16)
     return left_slip + right_slip
 
 
-def wait_base_drift_penalty(env: "ManagerBasedRLEnv", sigma: float = 0.16) -> torch.Tensor:
+def wait_base_drift_penalty(env: "ManagerBasedRLEnv", sigma: float = 0.14) -> torch.Tensor:
     if not hasattr(env, "_urop_spawn_xy"):
         return torch.zeros(env.num_envs, device=env.device)
     robot = env.scene["robot"]
     drift = torch.norm(robot.data.root_pos_w[:, 0:2] - env._urop_spawn_xy, dim=-1)
-    return ((drift / sigma) ** 2) * (1.0 - _toss_active(env))
+    return ((drift / sigma) ** 2) * _wait_gate(env)
 
 
-def ready_pose_when_waiting(env: "ManagerBasedRLEnv", sigma: float = 0.28) -> torch.Tensor:
+def ready_pose_when_waiting(env: "ManagerBasedRLEnv", sigma: float = 0.22) -> torch.Tensor:
     idx = get_controlled_joint_indices(env)
     current = env.scene["robot"].data.joint_pos[:, idx]
     target = _ready_joint_target(env)[:, idx]
     diff = torch.norm(current - target, dim=-1)
-    return torch.exp(-((diff / sigma) ** 2)) * (1.0 - _toss_active(env))
+    return torch.exp(-((diff / sigma) ** 2)) * _wait_gate(env)
 
 
-def lower_body_ready_reward(env: "ManagerBasedRLEnv", sigma_wait: float = 0.18, sigma_active: float = 0.28) -> torch.Tensor:
+def waiting_joint_stillness_reward(env: "ManagerBasedRLEnv", sigma: float = 1.4) -> torch.Tensor:
+    idx = get_controlled_joint_indices(env)
+    jv = env.scene["robot"].data.joint_vel[:, idx]
+    speed = torch.norm(jv, dim=-1)
+    return torch.exp(-((speed / sigma) ** 2)) * _wait_gate(env)
+
+
+def lower_body_ready_reward(env: "ManagerBasedRLEnv", sigma_wait: float = 0.16, sigma_active: float = 0.26) -> torch.Tensor:
     idx = get_lower_body_joint_indices(env)
     current = env.scene["robot"].data.joint_pos[:, idx]
     target = _ready_joint_target(env)[:, idx]
@@ -275,13 +315,13 @@ def lower_body_ready_reward(env: "ManagerBasedRLEnv", sigma_wait: float = 0.18, 
     return torch.exp(-((diff / sigma) ** 2))
 
 
-def chest_receive_region_reward(env: "ManagerBasedRLEnv", sigma: float = 0.35) -> torch.Tensor:
+def catch_target_region_reward(env: "ManagerBasedRLEnv", sigma: float = 0.28) -> torch.Tensor:
     obj = env.scene["object"]
-    d = torch.norm(obj.data.root_pos_w - _chest_hold_target(env), dim=-1)
-    return torch.exp(-((d / sigma) ** 2)) * _toss_active(env)
+    dist = torch.norm(obj.data.root_pos_w - _chest_hold_target(env), dim=-1)
+    return torch.exp(-((dist / sigma) ** 2)) * _catch_gate(env)
 
 
-def upper_body_receive_reward(env: "ManagerBasedRLEnv", sigma: float = 0.30) -> torch.Tensor:
+def upper_body_receive_reward(env: "ManagerBasedRLEnv", sigma: float = 0.26) -> torch.Tensor:
     obj = env.scene["object"]
     left_elbow = _body_pos(env, "left_elbow_link")
     right_elbow = _body_pos(env, "right_elbow_link")
@@ -296,7 +336,14 @@ def upper_body_receive_reward(env: "ManagerBasedRLEnv", sigma: float = 0.30) -> 
         torch.norm(obj.data.root_pos_w - right_elbow, dim=-1),
         torch.norm(obj.data.root_pos_w - right_wrist, dim=-1),
     )
-    return torch.exp(-((d_left / sigma) ** 2)) * torch.exp(-((d_right / sigma) ** 2)) * _toss_active(env)
+    return torch.exp(-((d_left / sigma) ** 2)) * torch.exp(-((d_right / sigma) ** 2)) * _catch_gate(env)
+
+
+def catch_velocity_match_reward(env: "ManagerBasedRLEnv", torso_body_name: str = "torso_link", sigma: float = 0.75) -> torch.Tensor:
+    obj = env.scene["object"]
+    torso_vel = _body_vel(env, torso_body_name)
+    rel_speed = torch.norm(obj.data.root_lin_vel_w - torso_vel, dim=-1)
+    return torch.exp(-((rel_speed / sigma) ** 2)) * _catch_gate(env)
 
 
 def hug_contact_bonus(
@@ -312,39 +359,38 @@ def hug_contact_bonus(
     bilateral_gate = (left_hits > 0.0) & (right_hits > 0.0)
     max_possible = float(len(sensor_names_left) + len(sensor_names_right)) + 2.0
     contact_score = (left_hits + right_hits + torso_hit) / max_possible
-    return bilateral_gate.float() * (contact_score ** 2.0) * _toss_active(env)
+    return bilateral_gate.float() * (contact_score ** 2.0) * _catch_gate(env)
 
 
-def hold_object_vel_reward(env: "ManagerBasedRLEnv", torso_body_name: str = "torso_link", sigma: float = 0.55) -> torch.Tensor:
+def hold_object_vel_reward(env: "ManagerBasedRLEnv", torso_body_name: str = "torso_link", sigma: float = 0.45) -> torch.Tensor:
     obj = env.scene["object"]
     torso_vel = _body_vel(env, torso_body_name)
     rel_speed = torch.norm(obj.data.root_lin_vel_w - torso_vel, dim=-1)
-    return torch.exp(-((rel_speed / sigma) ** 2)) * _toss_active(env)
+    return torch.exp(-((rel_speed / sigma) ** 2)) * _hold_gate(env)
 
 
-def hold_pose_reward(env: "ManagerBasedRLEnv", sigma: float = 0.22) -> torch.Tensor:
+def hold_pose_reward(env: "ManagerBasedRLEnv", sigma: float = 0.18) -> torch.Tensor:
     obj = env.scene["object"]
-    d = torch.norm(obj.data.root_pos_w - _chest_hold_target(env), dim=-1)
-    return torch.exp(-((d / sigma) ** 2)) * _toss_active(env)
+    dist = torch.norm(obj.data.root_pos_w - _chest_hold_target(env), dim=-1)
+    return torch.exp(-((dist / sigma) ** 2)) * _hold_gate(env)
 
 
 def hold_latched_bonus(env: "ManagerBasedRLEnv") -> torch.Tensor:
-    _update_hold_latch(env)
-    return env._urop_hold_latched.float()
+    return _hold_gate(env)
 
 
-def hold_sustain_bonus(env: "ManagerBasedRLEnv", min_steps: int = 24) -> torch.Tensor:
+def hold_sustain_bonus(env: "ManagerBasedRLEnv", min_steps: int = 20) -> torch.Tensor:
     _update_hold_latch(env)
     sustain = torch.clamp((env._urop_hold_steps.float() - float(min_steps)) / float(max(min_steps, 1)), 0.0, 1.0)
     return sustain * env._urop_hold_latched.float()
 
 
-def object_not_dropped_bonus(env: "ManagerBasedRLEnv", min_z: float = 0.42, max_dist: float = 2.0) -> torch.Tensor:
+def object_not_dropped_bonus(env: "ManagerBasedRLEnv", min_z: float = 0.42, max_dist: float = 1.8) -> torch.Tensor:
     robot = env.scene["robot"]
     obj = env.scene["object"]
     z_ok = (obj.data.root_pos_w[:, 2] > min_z).float()
     dist_ok = (torch.norm(obj.data.root_pos_w - robot.data.root_pos_w, dim=-1) < max_dist).float()
-    return z_ok * dist_ok * (_upright_cos(env) ** 2.0) * _toss_active(env)
+    return z_ok * dist_ok * _hold_gate(env)
 
 
 def impact_peak_penalty(env: "ManagerBasedRLEnv", sensor_names: list[str], force_thr: float = 220.0) -> torch.Tensor:
@@ -353,7 +399,7 @@ def impact_peak_penalty(env: "ManagerBasedRLEnv", sensor_names: list[str], force
     return torch.relu(peak - force_thr) / force_thr * _toss_active(env)
 
 
-def post_hold_still_reward(env: "ManagerBasedRLEnv", lin_sigma: float = 0.12, yaw_sigma: float = 0.35) -> torch.Tensor:
+def post_hold_still_reward(env: "ManagerBasedRLEnv", lin_sigma: float = 0.10, yaw_sigma: float = 0.30) -> torch.Tensor:
     gate = _hold_ramp(env)
     robot = env.scene["robot"]
     v_b = quat_rotate_inverse(robot.data.root_quat_w, robot.data.root_lin_vel_w)

@@ -18,8 +18,8 @@ def time_out(env: "ManagerBasedRLEnv") -> torch.Tensor:
 
 def robot_fallen_degree(
     env: "ManagerBasedRLEnv",
-    min_root_z: float = 0.47,
-    max_tilt_deg: float = 55.0,
+    min_root_z: float = 0.50,
+    max_tilt_deg: float = 45.0,
 ) -> torch.Tensor:
     robot = env.scene["robot"]
     z = robot.data.root_pos_w[:, 2]
@@ -30,7 +30,7 @@ def robot_fallen_degree(
     return (z < min_root_z) | (upright < upright_min)
 
 
-def object_dropped(env: "ManagerBasedRLEnv", min_z: float = 0.30, max_dist: float = 2.1) -> torch.Tensor:
+def object_dropped(env: "ManagerBasedRLEnv", min_z: float = 0.30, max_dist: float = 2.0) -> torch.Tensor:
     active = _toss_active(env) > 0.5
     if not torch.any(active):
         return torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
@@ -52,7 +52,7 @@ def successful_hold_complete(env: "ManagerBasedRLEnv", min_steps: int = 40) -> t
     return env._urop_hold_latched & (env._urop_hold_steps >= int(min_steps))
 
 
-def post_hold_runaway(env: "ManagerBasedRLEnv", max_anchor_drift: float = 0.32) -> torch.Tensor:
+def post_hold_runaway(env: "ManagerBasedRLEnv", max_anchor_drift: float = 0.28) -> torch.Tensor:
     _update_hold_latch(env)
     if not hasattr(env, "_urop_hold_anchor_xy"):
         return torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
@@ -61,7 +61,7 @@ def post_hold_runaway(env: "ManagerBasedRLEnv", max_anchor_drift: float = 0.32) 
     return env._urop_hold_latched & (drift > max_anchor_drift)
 
 
-def unsafe_lower_body_deviation(env: "ManagerBasedRLEnv", max_abs_dev: float = 1.0) -> torch.Tensor:
+def unsafe_lower_body_deviation(env: "ManagerBasedRLEnv", max_abs_dev: float = 0.85) -> torch.Tensor:
     idx = get_lower_body_joint_indices(env)
     robot = env.scene["robot"]
     if hasattr(env, "_urop_ready_joint_pos"):

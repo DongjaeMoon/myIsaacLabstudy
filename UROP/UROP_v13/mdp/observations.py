@@ -4,8 +4,17 @@ from typing import TYPE_CHECKING
 
 import torch
 
+from .. import scene_objects_cfg
+
 if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedRLEnv
+
+
+CONTROLLED_JOINT_NAMES = list(scene_objects_cfg.CONTROLLED_JOINT_NAMES)
+LOWER_BODY_JOINT_NAMES = list(scene_objects_cfg.LOWER_BODY_JOINT_NAMES)
+ACTION_SCALE = list(scene_objects_cfg.ACTION_SCALE)
+EXPECTED_POLICY_OBS_DIM = scene_objects_cfg.EXPECTED_POLICY_OBS_DIM
+EXPECTED_ACTION_DIM = scene_objects_cfg.EXPECTED_ACTION_DIM
 
 
 def quat_conj(q: torch.Tensor) -> torch.Tensor:
@@ -50,57 +59,6 @@ def quat_to_rot6d(q: torch.Tensor) -> torch.Tensor:
     return torch.stack([r00, r10, r20, r01, r11, r21], dim=-1)
 
 
-CONTROLLED_JOINT_NAMES = [
-    "left_hip_pitch_joint",
-    "left_hip_roll_joint",
-    "left_hip_yaw_joint",
-    "left_knee_joint",
-    "left_ankle_pitch_joint",
-    "left_ankle_roll_joint",
-    "right_hip_pitch_joint",
-    "right_hip_roll_joint",
-    "right_hip_yaw_joint",
-    "right_knee_joint",
-    "right_ankle_pitch_joint",
-    "right_ankle_roll_joint",
-    "waist_yaw_joint",
-    "waist_roll_joint",
-    "waist_pitch_joint",
-    "left_shoulder_pitch_joint",
-    "left_shoulder_roll_joint",
-    "left_shoulder_yaw_joint",
-    "left_elbow_joint",
-    "left_wrist_roll_joint",
-    "left_wrist_pitch_joint",
-    "left_wrist_yaw_joint",
-    "right_shoulder_pitch_joint",
-    "right_shoulder_roll_joint",
-    "right_shoulder_yaw_joint",
-    "right_elbow_joint",
-    "right_wrist_roll_joint",
-    "right_wrist_pitch_joint",
-    "right_wrist_yaw_joint",
-]
-
-LOWER_BODY_JOINT_NAMES = [
-    "left_hip_pitch_joint",
-    "left_hip_roll_joint",
-    "left_hip_yaw_joint",
-    "left_knee_joint",
-    "left_ankle_pitch_joint",
-    "left_ankle_roll_joint",
-    "right_hip_pitch_joint",
-    "right_hip_roll_joint",
-    "right_hip_yaw_joint",
-    "right_knee_joint",
-    "right_ankle_pitch_joint",
-    "right_ankle_roll_joint",
-    "waist_yaw_joint",
-    "waist_roll_joint",
-    "waist_pitch_joint",
-]
-
-
 def _get_joint_indices(env: "ManagerBasedRLEnv", cache_attr: str, joint_names: list[str]) -> torch.Tensor:
     if hasattr(env, cache_attr):
         return getattr(env, cache_attr)
@@ -124,21 +82,50 @@ def get_lower_body_joint_indices(env: "ManagerBasedRLEnv") -> torch.Tensor:
     return _get_joint_indices(env, "_urop_lower_body_joint_indices", LOWER_BODY_JOINT_NAMES)
 
 
+def _ensure_ready_reference(env: "ManagerBasedRLEnv") -> None:
+    if hasattr(env, "_urop_ready_ref_controlled"):
+        return
+    ready = torch.tensor(
+        [scene_objects_cfg.READY_POSE[name] for name in CONTROLLED_JOINT_NAMES],
+        device=env.device,
+        dtype=env.scene["robot"].data.joint_pos.dtype,
+    )
+    env._urop_ready_ref_controlled = ready.unsqueeze(0).repeat(env.num_envs, 1)
+
+
 def _ensure_object_obs_buffers(env: "ManagerBasedRLEnv") -> None:
+    _ensure_ready_reference(env)
+
     n = env.num_envs
     d = env.device
+    dtype = env.scene["robot"].data.root_pos_w.dtype
+
+    if not hasattr(env, "_urop_policy_mode_one_hot"):
+        base = torch.tensor([0.0, 0.0, 1.0, 0.0], device=d, dtype=dtype)
+        env._urop_policy_mode_one_hot = base.unsqueeze(0).repeat(n, 1)
+
+    if not hasattr(env, "_urop_obj_filter_pos"):
+        env._urop_obj_filter_pos = torch.zeros((n, 3), device=d, dtype=dtype)
+    if not hasattr(env, "_urop_obj_filter_vel"):
+        env._urop_obj_filter_vel = torch.zeros((n, 3), device=d, dtype=dtype)
     if not hasattr(env, "_urop_obj_obs_pos"):
-        env._urop_obj_obs_pos = torch.zeros((n, 3), device=d)
+        env._urop_obj_obs_pos = torch.zeros((n, 3), device=d, dtype=dtype)
     if not hasattr(env, "_urop_obj_obs_vel"):
-        env._urop_obj_obs_vel = torch.zeros((n, 3), device=d)
+        env._urop_obj_obs_vel = torch.zeros((n, 3), device=d, dtype=dtype)
+    if not hasattr(env, "_urop_obj_visible"):
+        env._urop_obj_visible = torch.zeros((n, 1), device=d, dtype=torch.bool)
     if not hasattr(env, "_urop_obj_obs_alpha"):
-        env._urop_obj_obs_alpha = torch.ones((n, 1), device=d)
+        env._urop_obj_obs_alpha = torch.full((n, 1), 0.65, device=d, dtype=dtype)
     if not hasattr(env, "_urop_obj_obs_drop_prob"):
-        env._urop_obj_obs_drop_prob = torch.zeros((n, 1), device=d)
+        env._urop_obj_obs_drop_prob = torch.zeros((n, 1), device=d, dtype=dtype)
     if not hasattr(env, "_urop_obj_obs_pos_noise_std"):
-        env._urop_obj_obs_pos_noise_std = torch.full((n, 1), 0.01, device=d)
+        env._urop_obj_obs_pos_noise_std = torch.full((n, 1), 0.01, device=d, dtype=dtype)
     if not hasattr(env, "_urop_obj_obs_vel_noise_std"):
-        env._urop_obj_obs_vel_noise_std = torch.full((n, 1), 0.05, device=d)
+        env._urop_obj_obs_vel_noise_std = torch.full((n, 1), 0.05, device=d, dtype=dtype)
+    if not hasattr(env, "_urop_obj_obs_cache_global_step"):
+        env._urop_obj_obs_cache_global_step = -1
+    if not hasattr(env, "_urop_obj_obs_cache_episode_len"):
+        env._urop_obj_obs_cache_episode_len = torch.full((n,), -1, device=d, dtype=torch.long)
 
 
 def toss_state(env: "ManagerBasedRLEnv") -> torch.Tensor:
@@ -174,45 +161,6 @@ def hold_anchor_error(env: "ManagerBasedRLEnv", scale: float = 1.0) -> torch.Ten
     return err
 
 
-def projected_gravity(env: "ManagerBasedRLEnv") -> torch.Tensor:
-    q = env.scene["robot"].data.root_quat_w
-    g_world = torch.tensor([0.0, 0.0, -1.0], device=env.device).unsqueeze(0).repeat(env.num_envs, 1)
-    return quat_rotate_inverse(q, g_world)
-
-
-def base_angular_velocity(env: "ManagerBasedRLEnv", scale: float = 1.0) -> torch.Tensor:
-    robot = env.scene["robot"]
-    ang_b = quat_rotate_inverse(robot.data.root_quat_w, robot.data.root_ang_vel_w)
-    return ang_b * scale
-
-
-def controlled_joint_positions(env: "ManagerBasedRLEnv") -> torch.Tensor:
-    idx = get_controlled_joint_indices(env)
-    return env.scene["robot"].data.joint_pos[:, idx]
-
-
-def controlled_joint_velocities(env: "ManagerBasedRLEnv", scale: float = 1.0) -> torch.Tensor:
-    idx = get_controlled_joint_indices(env)
-    return env.scene["robot"].data.joint_vel[:, idx] * scale
-
-
-def joint_torques(env: "ManagerBasedRLEnv", torque_scale: float = 1.0 / 80.0) -> torch.Tensor:
-    robot = env.scene["robot"]
-    idx = get_controlled_joint_indices(env)
-    tau = getattr(robot.data, "applied_torque", None)
-    if tau is None:
-        tau = getattr(robot.data, "joint_effort", None)
-    if tau is None:
-        tau = torch.zeros((env.num_envs, idx.shape[0]), device=env.device)
-    else:
-        tau = tau[:, idx]
-    return torch.clamp(tau * torque_scale, -1.0, 1.0)
-
-
-def prev_actions(env: "ManagerBasedRLEnv") -> torch.Tensor:
-    return env.action_manager.prev_action
-
-
 def _object_rel_true(env: "ManagerBasedRLEnv") -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     robot = env.scene["robot"]
     obj = env.scene["object"]
@@ -232,40 +180,114 @@ def _object_rel_true(env: "ManagerBasedRLEnv") -> tuple[torch.Tensor, torch.Tens
     return rel_p_b, rel_v_b, rel_w_b, rel_q
 
 
-def object_rel_pos_vel(
-    env: "ManagerBasedRLEnv",
-    pos_scale: float = 1.0,
-    vel_scale: float = 1.0,
-    apply_noise: bool = True,
-) -> torch.Tensor:
+def _object_obs_cache_is_fresh(env: "ManagerBasedRLEnv") -> bool:
+    if not hasattr(env, "_urop_obj_obs_cache_global_step"):
+        return False
+    if env._urop_obj_obs_cache_global_step != int(env.common_step_counter):
+        return False
+    if not hasattr(env, "_urop_obj_obs_cache_episode_len"):
+        return False
+    return torch.equal(env._urop_obj_obs_cache_episode_len, env.episode_length_buf)
+
+
+def _refresh_object_measurement(env: "ManagerBasedRLEnv") -> None:
     _ensure_object_obs_buffers(env)
+    if _object_obs_cache_is_fresh(env):
+        return
 
     rel_p_b, rel_v_b, _, _ = _object_rel_true(env)
     active = toss_state(env) > 0.5
 
-    prev_pos = env._urop_obj_obs_pos
-    prev_vel = env._urop_obj_obs_vel
-
-    meas_pos = rel_p_b * pos_scale
-    meas_vel = rel_v_b * vel_scale
-
-    if apply_noise:
-        meas_pos = meas_pos + torch.randn_like(meas_pos) * env._urop_obj_obs_pos_noise_std
-        meas_vel = meas_vel + torch.randn_like(meas_vel) * env._urop_obj_obs_vel_noise_std
+    meas_pos = rel_p_b + torch.randn_like(rel_p_b) * env._urop_obj_obs_pos_noise_std
+    meas_vel = rel_v_b + torch.randn_like(rel_v_b) * env._urop_obj_obs_vel_noise_std
 
     alpha = torch.clamp(env._urop_obj_obs_alpha, 0.05, 1.0)
-    filt_pos = alpha * meas_pos + (1.0 - alpha) * prev_pos
-    filt_vel = alpha * meas_vel + (1.0 - alpha) * prev_vel
+    filt_pos = alpha * meas_pos + (1.0 - alpha) * env._urop_obj_filter_pos
+    filt_vel = alpha * meas_vel + (1.0 - alpha) * env._urop_obj_filter_vel
 
-    if apply_noise:
-        dropout = torch.rand((env.num_envs, 1), device=env.device) < env._urop_obj_obs_drop_prob
-        filt_pos = torch.where(dropout, prev_pos, filt_pos)
-        filt_vel = torch.where(dropout, prev_vel, filt_vel)
+    env._urop_obj_filter_pos = torch.where(active, filt_pos, torch.zeros_like(filt_pos))
+    env._urop_obj_filter_vel = torch.where(active, filt_vel, torch.zeros_like(filt_vel))
 
-    active_f = active.float()
-    env._urop_obj_obs_pos = filt_pos * active_f
-    env._urop_obj_obs_vel = filt_vel * active_f
-    return torch.cat([env._urop_obj_obs_pos, env._urop_obj_obs_vel], dim=-1)
+    dropout = torch.rand((env.num_envs, 1), device=env.device) < env._urop_obj_obs_drop_prob
+    visible = active & (~dropout)
+
+    env._urop_obj_visible = visible
+    env._urop_obj_obs_pos = torch.where(visible, env._urop_obj_filter_pos, torch.zeros_like(env._urop_obj_filter_pos))
+    env._urop_obj_obs_vel = torch.where(visible, env._urop_obj_filter_vel, torch.zeros_like(env._urop_obj_filter_vel))
+
+    env._urop_obj_obs_cache_global_step = int(env.common_step_counter)
+    env._urop_obj_obs_cache_episode_len = env.episode_length_buf.clone()
+
+
+def projected_gravity(env: "ManagerBasedRLEnv") -> torch.Tensor:
+    # Actor obs dims: 3
+    q = env.scene["robot"].data.root_quat_w
+    g_world = torch.tensor([0.0, 0.0, -1.0], device=env.device).unsqueeze(0).repeat(env.num_envs, 1)
+    return quat_rotate_inverse(q, g_world)
+
+
+def base_angular_velocity(env: "ManagerBasedRLEnv", scale: float = 1.0) -> torch.Tensor:
+    # Actor obs dims: 3
+    robot = env.scene["robot"]
+    ang_b = quat_rotate_inverse(robot.data.root_quat_w, robot.data.root_ang_vel_w)
+    return ang_b * scale
+
+
+def controlled_joint_pos_rel(env: "ManagerBasedRLEnv") -> torch.Tensor:
+    # Actor obs dims: 29
+    _ensure_ready_reference(env)
+    idx = get_controlled_joint_indices(env)
+    return env.scene["robot"].data.joint_pos[:, idx] - env._urop_ready_ref_controlled
+
+
+def controlled_joint_velocities(env: "ManagerBasedRLEnv", scale: float = 1.0) -> torch.Tensor:
+    # Actor obs dims: 29
+    idx = get_controlled_joint_indices(env)
+    return env.scene["robot"].data.joint_vel[:, idx] * scale
+
+
+def joint_torques(env: "ManagerBasedRLEnv", torque_scale: float = 1.0 / 80.0) -> torch.Tensor:
+    robot = env.scene["robot"]
+    idx = get_controlled_joint_indices(env)
+    tau = getattr(robot.data, "applied_torque", None)
+    if tau is None:
+        tau = getattr(robot.data, "joint_effort", None)
+    if tau is None:
+        tau = torch.zeros((env.num_envs, idx.shape[0]), device=env.device)
+    else:
+        tau = tau[:, idx]
+    return torch.clamp(tau * torque_scale, -1.0, 1.0)
+
+
+def prev_actions(env: "ManagerBasedRLEnv") -> torch.Tensor:
+    # Actor obs dims: 29
+    if hasattr(env, "action_manager") and hasattr(env.action_manager, "prev_action"):
+        return env.action_manager.prev_action
+    return torch.zeros((env.num_envs, EXPECTED_ACTION_DIM), device=env.device)
+
+
+def object_rel_pos(env: "ManagerBasedRLEnv", scale: float = 1.0) -> torch.Tensor:
+    # Actor obs dims: 3. Before toss or when tag is hidden: exact zeros.
+    _refresh_object_measurement(env)
+    return env._urop_obj_obs_pos * scale
+
+
+def object_rel_lin_vel(env: "ManagerBasedRLEnv", scale: float = 1.0) -> torch.Tensor:
+    # Actor obs dims: 3. Before toss or when tag is hidden: exact zeros.
+    _refresh_object_measurement(env)
+    return env._urop_obj_obs_vel * scale
+
+
+def tag_visible(env: "ManagerBasedRLEnv") -> torch.Tensor:
+    # Actor obs dims: 1
+    _refresh_object_measurement(env)
+    return env._urop_obj_visible.float()
+
+
+def mode_one_hot(env: "ManagerBasedRLEnv") -> torch.Tensor:
+    # Actor obs dims: 4. Training keeps the policy in deploy-equivalent autonomous catch mode.
+    _ensure_object_obs_buffers(env)
+    return env._urop_policy_mode_one_hot
 
 
 def critic_robot_state(env: "ManagerBasedRLEnv", torque_scale: float = 1.0 / 80.0) -> torch.Tensor:
@@ -275,10 +297,10 @@ def critic_robot_state(env: "ManagerBasedRLEnv", torque_scale: float = 1.0 / 80.
     g_b = quat_rotate_inverse(q, g_world)
     lin_b = quat_rotate_inverse(q, robot.data.root_lin_vel_w)
     ang_b = quat_rotate_inverse(q, robot.data.root_ang_vel_w)
-    jp = controlled_joint_positions(env)
+    jp_rel = controlled_joint_pos_rel(env)
     jv = controlled_joint_velocities(env)
     jt = joint_torques(env, torque_scale=torque_scale)
-    return torch.cat([g_b, lin_b, ang_b, jp, jv, jt], dim=-1)
+    return torch.cat([g_b, lin_b, ang_b, jp_rel, jv, jt], dim=-1)
 
 
 def root_state_privileged(env: "ManagerBasedRLEnv") -> torch.Tensor:
@@ -299,10 +321,10 @@ def root_state_privileged(env: "ManagerBasedRLEnv") -> torch.Tensor:
 def object_rel_full_state(env: "ManagerBasedRLEnv") -> torch.Tensor:
     rel_p_b, rel_v_b, rel_w_b, rel_q = _object_rel_true(env)
     rel_r6 = quat_to_rot6d(rel_q)
-    x = torch.cat([rel_p_b, rel_r6, rel_v_b, rel_w_b], dim=-1)
+    state = torch.cat([rel_p_b, rel_r6, rel_v_b, rel_w_b], dim=-1)
     if hasattr(env, "_urop_toss_active"):
-        x = x * env._urop_toss_active.float().unsqueeze(-1)
-    return x
+        state = state * env._urop_toss_active.float().unsqueeze(-1)
+    return state
 
 
 def object_truth_state(env: "ManagerBasedRLEnv") -> torch.Tensor:
@@ -311,7 +333,7 @@ def object_truth_state(env: "ManagerBasedRLEnv") -> torch.Tensor:
     rel_p_b, rel_v_b, rel_w_b, rel_q = _object_rel_true(env)
     obj_pos_local = obj.data.root_pos_w - env_origins
     rel_r6 = quat_to_rot6d(rel_q)
-    x = torch.cat(
+    state = torch.cat(
         [
             obj_pos_local,
             obj.data.root_quat_w,
@@ -325,29 +347,33 @@ def object_truth_state(env: "ManagerBasedRLEnv") -> torch.Tensor:
         dim=-1,
     )
     if hasattr(env, "_urop_toss_active"):
-        x = x * env._urop_toss_active.float().unsqueeze(-1)
-    return x
+        state = state * env._urop_toss_active.float().unsqueeze(-1)
+    return state
 
 
 def object_params(env: "ManagerBasedRLEnv") -> torch.Tensor:
     dev = env.device
     n = env.num_envs
-    size = getattr(env, "_urop_box_size", torch.tensor([0.34, 0.26, 0.24], device=dev).repeat(n, 1))
-    mass = getattr(env, "_urop_box_mass", torch.full((n, 1), 3.2, device=dev))
+    size = getattr(
+        env,
+        "_urop_box_size",
+        torch.tensor(scene_objects_cfg.OBJECT_BASE_SIZE, device=dev).unsqueeze(0).repeat(n, 1),
+    )
+    mass = getattr(env, "_urop_box_mass", torch.full((n, 1), scene_objects_cfg.OBJECT_DEFAULT_MASS, device=dev))
     fric = getattr(env, "_urop_box_friction", torch.full((n, 1), 0.8, device=dev))
     rest = getattr(env, "_urop_box_restitution", torch.full((n, 1), 0.02, device=dev))
 
     size_n = torch.stack(
         [
-            (size[:, 0] - 0.34) / 0.06,
-            (size[:, 1] - 0.26) / 0.05,
-            (size[:, 2] - 0.24) / 0.05,
+            (size[:, 0] - scene_objects_cfg.OBJECT_BASE_SIZE[0]) / 0.06,
+            (size[:, 1] - scene_objects_cfg.OBJECT_BASE_SIZE[1]) / 0.05,
+            (size[:, 2] - scene_objects_cfg.OBJECT_BASE_SIZE[2]) / 0.05,
         ],
         dim=-1,
     )
-    mass_n = (mass - 3.2) / 1.6
-    fric_n = (fric - 0.8) / 0.2
-    rest_n = (rest - 0.02) / 0.03
+    mass_n = (mass - scene_objects_cfg.OBJECT_DEFAULT_MASS) / 1.6
+    fric_n = (fric - 0.8) / 0.25
+    rest_n = (rest - 0.02) / 0.05
     return torch.cat([size_n, mass_n, fric_n, rest_n], dim=-1)
 
 
@@ -358,3 +384,7 @@ def contact_forces(env: "ManagerBasedRLEnv", sensor_names: list[str], scale: flo
         forces = sensor.data.net_forces_w.reshape(env.num_envs, -1)
         mags.append(torch.norm(forces, dim=-1, keepdim=True) * scale)
     return torch.cat(mags, dim=-1)
+
+
+assert EXPECTED_POLICY_OBS_DIM == 104
+assert EXPECTED_ACTION_DIM == 29
