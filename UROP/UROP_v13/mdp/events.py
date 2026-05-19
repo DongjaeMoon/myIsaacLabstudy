@@ -60,6 +60,11 @@ def _quat_from_euler_xyz(roll: torch.Tensor, pitch: torch.Tensor, yaw: torch.Ten
     )
 
 
+def _gravity_world(env: "ManagerBasedRLEnv", num_samples: int, device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+    gravity = getattr(env.sim.cfg, "gravity", (0.0, 0.0, -9.81))
+    return torch.tensor(gravity, device=device, dtype=dtype).unsqueeze(0).repeat(num_samples, 1)
+
+
 def _ensure_urop_buffers(env: "ManagerBasedRLEnv") -> None:
     n = env.num_envs
     d = env.device
@@ -71,6 +76,12 @@ def _ensure_urop_buffers(env: "ManagerBasedRLEnv") -> None:
         env._urop_toss_active = torch.zeros(n, dtype=torch.bool, device=d)
     if not hasattr(env, "_urop_toss_wait_s"):
         env._urop_toss_wait_s = torch.full((n, 1), 999.0, device=d, dtype=dtype)
+    if not hasattr(env, "_urop_last_toss_spawn_rel"):
+        env._urop_last_toss_spawn_rel = torch.zeros((n, 3), device=d, dtype=dtype)
+    if not hasattr(env, "_urop_last_toss_target_rel"):
+        env._urop_last_toss_target_rel = torch.zeros((n, 3), device=d, dtype=dtype)
+    if not hasattr(env, "_urop_last_toss_flight_time"):
+        env._urop_last_toss_flight_time = torch.zeros((n, 1), device=d, dtype=dtype)
     if not hasattr(env, "_urop_spawn_xy"):
         env._urop_spawn_xy = torch.zeros((n, 2), device=d, dtype=dtype)
     if not hasattr(env, "_urop_ready_joint_pos"):
@@ -327,6 +338,9 @@ def reset_autonomous_episode(
     env._urop_toss_done[env_ids] = 0
     env._urop_toss_active[env_ids] = False
     env._urop_toss_wait_s[env_ids] = _sample_wait_times(env, n, stage, wait_time_ranges)
+    env._urop_last_toss_spawn_rel[env_ids] = 0.0
+    env._urop_last_toss_target_rel[env_ids] = 0.0
+    env._urop_last_toss_flight_time[env_ids] = 0.0
     env._urop_hold_latched[env_ids] = False
     env._urop_hold_steps[env_ids] = 0
     env._urop_hold_anchor_xy[env_ids] = 0.0
@@ -414,6 +428,93 @@ def _select_toss_cfg(stage: int, stage1: dict, stage2: dict, stage3: dict, prob_
     return stage3, float(prob_stage3)
 
 
+def _sample_uniform_triplet(
+    cfg: dict,
+    prefix: str,
+    num_samples: int,
+    device: torch.device,
+    dtype: torch.dtype,
+) -> torch.Tensor:
+    return torch.stack(
+        [
+            torch.empty(num_samples, device=device, dtype=dtype).uniform_(*cfg[f"{prefix}_x"]),
+            torch.empty(num_samples, device=device, dtype=dtype).uniform_(*cfg[f"{prefix}_y"]),
+            torch.empty(num_samples, device=device, dtype=dtype).uniform_(*cfg[f"{prefix}_z"]),
+        ],
+        dim=-1,
+    )
+
+
+def _sample_independent_velocity(
+    cfg: dict,
+    num_samples: int,
+    device: torch.device,
+    dtype: torch.dtype,
+) -> torch.Tensor:
+    return torch.stack(
+        [
+            torch.empty(num_samples, device=device, dtype=dtype).uniform_(*cfg["vel_x"]),
+            torch.empty(num_samples, device=device, dtype=dtype).uniform_(*cfg["vel_y"]),
+            torch.empty(num_samples, device=device, dtype=dtype).uniform_(*cfg["vel_z"]),
+        ],
+        dim=-1,
+    )
+
+
+def _sample_targeted_ballistic_velocity(
+    env: "ManagerBasedRLEnv",
+    cfg: dict,
+    spawn_rel: torch.Tensor,
+    num_samples: int,
+    device: torch.device,
+    dtype: torch.dtype,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    target_rel = _sample_uniform_triplet(cfg, "target", num_samples, device, dtype)
+    flight_time = torch.empty((num_samples, 1), device=device, dtype=dtype).uniform_(*cfg["flight_time"])
+    gravity = _gravity_world(env, num_samples, device, dtype)
+    rel_vel = (target_rel - spawn_rel - 0.5 * gravity * torch.square(flight_time)) / flight_time
+
+    # Best-effort velocity safety clamp for admissible close human tosses.
+    # These limits are configured per stage in env_cfg.py.
+    max_speed = cfg.get("max_speed", None)
+    if max_speed is not None:
+        speed = torch.norm(rel_vel, dim=-1, keepdim=True).clamp_min(1.0e-6)
+        scale = torch.clamp(float(max_speed) / speed, max=1.0)
+        rel_vel = rel_vel * scale
+
+    max_vy_abs = cfg.get("max_vy_abs", None)
+    if max_vy_abs is not None:
+        rel_vel[:, 1] = torch.clamp(rel_vel[:, 1], -float(max_vy_abs), float(max_vy_abs))
+
+    max_vz_abs = cfg.get("max_vz_abs", None)
+    if max_vz_abs is not None:
+        rel_vel[:, 2] = torch.clamp(rel_vel[:, 2], -float(max_vz_abs), float(max_vz_abs))
+
+    return rel_vel, target_rel, flight_time
+
+
+def _sample_toss_state(
+    env: "ManagerBasedRLEnv",
+    cfg: dict,
+    num_samples: int,
+    device: torch.device,
+    dtype: torch.dtype,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    spawn_rel = _sample_uniform_triplet(cfg, "spawn", num_samples, device, dtype)
+
+    sampler = str(cfg.get("sampler", "targeted_ballistic")).lower()
+    if sampler == "independent":
+        rel_vel = _sample_independent_velocity(cfg, num_samples, device, dtype)
+        target_rel = torch.zeros_like(spawn_rel)
+        flight_time = torch.zeros((num_samples, 1), device=device, dtype=dtype)
+    else:
+        rel_vel, target_rel, flight_time = _sample_targeted_ballistic_velocity(
+            env, cfg, spawn_rel, num_samples, device, dtype
+        )
+
+    return spawn_rel, rel_vel, target_rel, flight_time
+
+
 def toss_object_relative_curriculum(
     env: "ManagerBasedRLEnv",
     env_ids: torch.Tensor,
@@ -472,26 +573,12 @@ def toss_object_relative_curriculum(
     obj = env.scene["object"]
     d = env.device
     n = int(ids_throw.shape[0])
+    dtype = obj.data.root_pos_w.dtype
 
     root_pos = robot.data.root_pos_w[ids_throw]
     root_yaw = _yaw_quat(robot.data.root_quat_w[ids_throw])
 
-    rel_p = torch.stack(
-        [
-            torch.empty(n, device=d).uniform_(*cfg["pos_x"]),
-            torch.empty(n, device=d).uniform_(*cfg["pos_y"]),
-            torch.empty(n, device=d).uniform_(*cfg["pos_z"]),
-        ],
-        dim=-1,
-    )
-    rel_v = torch.stack(
-        [
-            torch.empty(n, device=d).uniform_(*cfg["vel_x"]),
-            torch.empty(n, device=d).uniform_(*cfg["vel_y"]),
-            torch.empty(n, device=d).uniform_(*cfg["vel_z"]),
-        ],
-        dim=-1,
-    )
+    rel_p, rel_v, target_rel, flight_time = _sample_toss_state(env, cfg, n, d, dtype)
 
     roll = torch.empty(n, device=d).uniform_(*cfg.get("roll", (-0.03, 0.03)))
     pitch = torch.empty(n, device=d).uniform_(*cfg.get("pitch", (-0.04, 0.04)))
@@ -520,3 +607,6 @@ def toss_object_relative_curriculum(
     env._urop_toss_active[ids_throw] = True
     env._urop_obj_obs_cache_global_step = -1
     env._urop_obj_obs_cache_episode_len[ids_throw] = -1
+    env._urop_last_toss_spawn_rel[ids_throw] = rel_p
+    env._urop_last_toss_target_rel[ids_throw] = target_rel
+    env._urop_last_toss_flight_time[ids_throw] = flight_time

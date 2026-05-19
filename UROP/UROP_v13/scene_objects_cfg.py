@@ -177,21 +177,27 @@ HOLD_POSE = {
     "right_wrist_yaw_joint": 0.0,
 }
 
+# Fingers are intentionally folded and locked to prevent finger-cheating during catching.
+# If the visual sign is reversed for this USD, flip this single sign to -1.0.
+FINGER_FOLD_SIGN = -1.0
 LOCKED_FINGER_POSE = {
-    "left_hand_index_0_joint": 0.0,
-    "left_hand_index_1_joint": 0.0,
-    "left_hand_middle_0_joint": 0.0,
-    "left_hand_middle_1_joint": 0.0,
+    # Fingers are intentionally folded/locked to prevent finger-cheating.
+    # NOTE: G1 USD has different joint-limit signs for left/right fingers.
+    "left_hand_index_0_joint": -0.75,
+    "left_hand_index_1_joint": -0.90,
+    "left_hand_middle_0_joint": -0.75,
+    "left_hand_middle_1_joint": -0.90,
     "left_hand_thumb_0_joint": 0.0,
     "left_hand_thumb_1_joint": 0.0,
-    "left_hand_thumb_2_joint": 0.0,
-    "right_hand_index_0_joint": 0.0,
-    "right_hand_index_1_joint": 0.0,
-    "right_hand_middle_0_joint": 0.0,
-    "right_hand_middle_1_joint": 0.0,
+    "left_hand_thumb_2_joint": 0.55,
+
+    "right_hand_index_0_joint": 0.75,
+    "right_hand_index_1_joint": 0.90,
+    "right_hand_middle_0_joint": 0.75,
+    "right_hand_middle_1_joint": 0.90,
     "right_hand_thumb_0_joint": 0.0,
     "right_hand_thumb_1_joint": 0.0,
-    "right_hand_thumb_2_joint": 0.0,
+    "right_hand_thumb_2_joint": -0.55,
 }
 
 POLICY_OBS_COMPONENT_DIMS = {
