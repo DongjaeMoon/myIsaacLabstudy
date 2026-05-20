@@ -1,0 +1,24 @@
+cd ~/isaaclab/myIsaacLabstudy
+
+./isaaclab.sh -p UROP/train_rsl_rl.py \
+  --task Isaac-Urop-v13 \
+  --num_envs 1 \
+  --max_iterations 20 \
+  "env.curriculum.stage_schedule.params.eval_stage=1" \
+  "env.events.reset_autonomous_episode.params.wait_time_ranges.stage1=[0.05,0.05]"
+  
+  
+  ./isaaclab.sh -p UROP/train_rsl_rl.py \
+  --task Isaac-Urop-v13 \
+  --num_envs 1 \
+  --max_iterations 20 \
+  "env.curriculum.stage_schedule.params.eval_stage=2" \
+  "env.events.reset_autonomous_episode.params.wait_time_ranges.stage2=[0.05,0.05]"
+  
+  
+  ./isaaclab.sh -p UROP/train_rsl_rl.py \
+  --task Isaac-Urop-v13 \
+  --num_envs 1 \
+  --max_iterations 20 \
+  "env.curriculum.stage_schedule.params.eval_stage=3" \
+  "env.events.reset_autonomous_episode.params.wait_time_ranges.stage3=[0.05,0.05]"
