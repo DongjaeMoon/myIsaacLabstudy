@@ -380,6 +380,7 @@ class dj_urop_v13_EnvCfg_Play(dj_urop_v13_EnvCfg):
         self.scene.env_spacing = 3.2
         self.episode_length_s = 7.0
 
+        # Play defaults to gentle stage-1 close toss.
         self.curriculum.stage_schedule.params["eval_stage"] = 1
 
         self.events.reset_autonomous_episode.params["wait_time_ranges"] = {
@@ -409,54 +410,67 @@ class dj_urop_v13_EnvCfg_Play(dj_urop_v13_EnvCfg):
             "alpha_range": (0.75, 0.95),
         }
 
+        self.events.toss.params["max_throws_per_episode"] = 1
         self.events.toss.params["throw_prob_stage1"] = 1.0
         self.events.toss.params["throw_prob_stage2"] = 1.0
         self.events.toss.params["throw_prob_stage3"] = 1.0
+
         self.events.toss.params["stage1"] = {
-            "sampler": "targeted_ballistic",
-            "spawn_x": (0.76, 0.80),
-            "spawn_y": (-0.03, 0.03),
-            "spawn_z": (0.36, 0.42),
-            "target_x": (0.26, 0.30),
-            "target_y": (-0.03, 0.03),
-            "target_z": (0.63, 0.69),
-            "flight_time": (0.95, 1.05),
-            "roll": (0.0, 0.0),
-            "pitch": (0.0, 0.0),
-            "yaw": (0.0, 0.0),
-            "ang_vel_x": (0.0, 0.0),
-            "ang_vel_y": (0.0, 0.0),
-            "ang_vel_z": (0.0, 0.0),
-        }
-        self.events.toss.params["stage2"] = {
-            "sampler": "targeted_ballistic",
-            "spawn_x": (0.82, 0.90),
-            "spawn_y": (-0.05, 0.05),
-            "spawn_z": (0.34, 0.44),
-            "target_x": (0.24, 0.32),
+            "sampler": "target_ballistic",
+            "spawn_x": (0.32, 0.44),
+            "spawn_y": (-0.04, 0.04),
+            "spawn_z": (0.18, 0.32),
+            "target_x": (0.08, 0.18),
             "target_y": (-0.04, 0.04),
-            "target_z": (0.60, 0.72),
-            "flight_time": (0.82, 0.95),
+            "target_z": (0.08, 0.22),
+            "flight_time": (0.22, 0.34),
+            "max_speed": 1.45,
+            "max_vy_abs": 0.25,
+            "max_vz_abs": 1.80,
             "roll": (-0.02, 0.02),
-            "pitch": (-0.02, 0.02),
-            "yaw": (-0.04, 0.04),
+            "pitch": (-0.03, 0.03),
+            "yaw": (-0.05, 0.05),
+            "ang_vel_x": (-0.05, 0.05),
+            "ang_vel_y": (-0.05, 0.05),
+            "ang_vel_z": (-0.08, 0.08),
+        }
+
+        self.events.toss.params["stage2"] = {
+            "sampler": "target_ballistic",
+            "spawn_x": (0.34, 0.55),
+            "spawn_y": (-0.08, 0.08),
+            "spawn_z": (0.16, 0.38),
+            "target_x": (0.06, 0.22),
+            "target_y": (-0.06, 0.06),
+            "target_z": (0.06, 0.26),
+            "flight_time": (0.22, 0.38),
+            "max_speed": 1.75,
+            "max_vy_abs": 0.35,
+            "max_vz_abs": 2.00,
+            "roll": (-0.03, 0.03),
+            "pitch": (-0.04, 0.04),
+            "yaw": (-0.08, 0.08),
             "ang_vel_x": (-0.08, 0.08),
             "ang_vel_y": (-0.08, 0.08),
             "ang_vel_z": (-0.12, 0.12),
         }
+
         self.events.toss.params["stage3"] = {
-            "sampler": "targeted_ballistic",
-            "spawn_x": (0.88, 0.98),
-            "spawn_y": (-0.08, 0.08),
-            "spawn_z": (0.30, 0.46),
-            "target_x": (0.22, 0.34),
-            "target_y": (-0.06, 0.06),
-            "target_z": (0.56, 0.76),
-            "flight_time": (0.72, 0.88),
-            "roll": (-0.03, 0.03),
-            "pitch": (-0.03, 0.03),
-            "yaw": (-0.05, 0.05),
+            "sampler": "target_ballistic",
+            "spawn_x": (0.36, 0.65),
+            "spawn_y": (-0.14, 0.14),
+            "spawn_z": (0.12, 0.44),
+            "target_x": (0.04, 0.26),
+            "target_y": (-0.10, 0.10),
+            "target_z": (0.04, 0.30),
+            "flight_time": (0.24, 0.42),
+            "max_speed": 2.05,
+            "max_vy_abs": 0.50,
+            "max_vz_abs": 2.20,
+            "roll": (-0.04, 0.04),
+            "pitch": (-0.05, 0.05),
+            "yaw": (-0.12, 0.12),
             "ang_vel_x": (-0.12, 0.12),
             "ang_vel_y": (-0.12, 0.12),
-            "ang_vel_z": (-0.16, 0.16),
+            "ang_vel_z": (-0.18, 0.18),
         }
