@@ -148,6 +148,7 @@ class RewardsCfg:
     wait_ready_pose = RewTerm(func=mdp.ready_pose_when_waiting, weight=2.8, params={"sigma": 0.22})
     wait_joint_still = RewTerm(func=mdp.waiting_joint_stillness_reward, weight=0.8, params={"sigma": 1.4})
     wait_base_drift = RewTerm(func=mdp.wait_base_drift_penalty, weight=-1.6, params={"sigma": 0.14})
+    wait_yaw_drift = RewTerm(func=mdp.wait_yaw_drift_penalty, weight=-0.9, params={"sigma": 0.20})
     lower_body_ready = RewTerm(
         func=mdp.lower_body_ready_reward,
         weight=1.6,
@@ -218,6 +219,12 @@ class EventCfg:
                 "stage1": (1.20, 2.00),
                 "stage2": (1.00, 2.80),
                 "stage3": (0.80, 3.50),
+            },
+            "toss_probability_by_stage": {
+                "stage0": 0.0,
+                "stage1": 0.50,
+                "stage2": 0.60,
+                "stage3": 0.70,
             },
             "joint_noise": {
                 "lower_body_pos": (-0.025, 0.025),

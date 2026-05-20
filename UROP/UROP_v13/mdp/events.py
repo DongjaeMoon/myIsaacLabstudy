@@ -74,8 +74,12 @@ def _ensure_urop_buffers(env: "ManagerBasedRLEnv") -> None:
         env._urop_toss_done = torch.zeros(n, dtype=torch.int32, device=d)
     if not hasattr(env, "_urop_toss_active"):
         env._urop_toss_active = torch.zeros(n, dtype=torch.bool, device=d)
+    if not hasattr(env, "_urop_should_toss"):
+        env._urop_should_toss = torch.zeros(n, dtype=torch.bool, device=d)
     if not hasattr(env, "_urop_toss_wait_s"):
         env._urop_toss_wait_s = torch.full((n, 1), 999.0, device=d, dtype=dtype)
+    if not hasattr(env, "_urop_toss_probability"):
+        env._urop_toss_probability = torch.zeros((n, 1), dtype=dtype, device=d)
     if not hasattr(env, "_urop_last_toss_spawn_rel"):
         env._urop_last_toss_spawn_rel = torch.zeros((n, 3), device=d, dtype=dtype)
     if not hasattr(env, "_urop_last_toss_target_rel"):
@@ -84,6 +88,8 @@ def _ensure_urop_buffers(env: "ManagerBasedRLEnv") -> None:
         env._urop_last_toss_flight_time = torch.zeros((n, 1), device=d, dtype=dtype)
     if not hasattr(env, "_urop_spawn_xy"):
         env._urop_spawn_xy = torch.zeros((n, 2), device=d, dtype=dtype)
+    if not hasattr(env, "_urop_spawn_yaw"):
+        env._urop_spawn_yaw = torch.zeros((n, 1), device=d, dtype=dtype)
     if not hasattr(env, "_urop_ready_joint_pos"):
         robot = env.scene["robot"]
         env._urop_ready_joint_pos = robot.data.default_joint_pos.clone()
@@ -93,6 +99,10 @@ def _ensure_urop_buffers(env: "ManagerBasedRLEnv") -> None:
         env._urop_hold_steps = torch.zeros(n, dtype=torch.int32, device=d)
     if not hasattr(env, "_urop_hold_anchor_xy"):
         env._urop_hold_anchor_xy = torch.zeros((n, 2), device=d, dtype=dtype)
+    if not hasattr(env, "_urop_no_toss_episode_count"):
+        env._urop_no_toss_episode_count = torch.zeros((), dtype=torch.int64, device=d)
+    if not hasattr(env, "_urop_toss_episode_count"):
+        env._urop_toss_episode_count = torch.zeros((), dtype=torch.int64, device=d)
 
     if not hasattr(env, "_urop_box_size"):
         env._urop_box_size = torch.tensor(DEFAULT_BOX_SIZE, device=d, dtype=dtype).unsqueeze(0).repeat(n, 1)
@@ -272,6 +282,24 @@ def _sample_wait_times(env: "ManagerBasedRLEnv", num_envs: int, stage: int, wait
     return torch.empty((num_envs, 1), device=d, dtype=env.scene["robot"].data.root_pos_w.dtype).uniform_(low, high)
 
 
+def _sample_should_toss(
+    env: "ManagerBasedRLEnv",
+    num_envs: int,
+    stage: int,
+    toss_probability_by_stage: dict | None,
+) -> tuple[torch.Tensor, float]:
+    toss_probability_by_stage = toss_probability_by_stage or {}
+    prob = float(toss_probability_by_stage.get(f"stage{stage}", 0.0))
+    prob = max(0.0, min(1.0, prob))
+
+    should_toss = torch.rand(num_envs, device=env.device) < prob
+    if prob <= 0.0:
+        should_toss.zero_()
+    elif prob >= 1.0:
+        should_toss.fill_(True)
+    return should_toss, prob
+
+
 def _sample_joint_noise(
     env: "ManagerBasedRLEnv",
     env_ids: torch.Tensor,
@@ -313,6 +341,7 @@ def reset_autonomous_episode(
     env_ids: torch.Tensor,
     park: dict,
     wait_time_ranges: dict,
+    toss_probability_by_stage: dict | None = None,
     joint_noise: dict | None = None,
     root_xy_range=(-0.02, 0.02),
     root_yaw_range=(-0.05, 0.05),
@@ -334,10 +363,16 @@ def reset_autonomous_episode(
     n = int(env_ids.shape[0])
 
     stage = _get_stage(env)
+    should_toss, toss_probability = _sample_should_toss(env, n, stage, toss_probability_by_stage)
+    wait_times = _sample_wait_times(env, n, stage, wait_time_ranges)
+    no_toss_wait = torch.full_like(wait_times, 999.0)
+    wait_times = torch.where(should_toss.unsqueeze(-1), wait_times, no_toss_wait)
 
     env._urop_toss_done[env_ids] = 0
     env._urop_toss_active[env_ids] = False
-    env._urop_toss_wait_s[env_ids] = _sample_wait_times(env, n, stage, wait_time_ranges)
+    env._urop_should_toss[env_ids] = should_toss
+    env._urop_toss_wait_s[env_ids] = wait_times
+    env._urop_toss_probability[env_ids] = toss_probability
     env._urop_last_toss_spawn_rel[env_ids] = 0.0
     env._urop_last_toss_target_rel[env_ids] = 0.0
     env._urop_last_toss_flight_time[env_ids] = 0.0
@@ -393,6 +428,12 @@ def reset_autonomous_episode(
     robot.set_joint_position_target(joint_pos, env_ids=env_ids)
     robot.set_joint_velocity_target(torch.zeros_like(joint_vel), env_ids=env_ids)
     env._urop_spawn_xy[env_ids] = root_pos[:, 0:2]
+    env._urop_spawn_yaw[env_ids, 0] = torch.atan2(
+        2.0 * (root_quat[:, 0] * root_quat[:, 3] + root_quat[:, 1] * root_quat[:, 2]),
+        1.0 - 2.0 * (root_quat[:, 2] ** 2 + root_quat[:, 3] ** 2),
+    )
+    env._urop_toss_episode_count += should_toss.to(dtype=torch.int64).sum()
+    env._urop_no_toss_episode_count += (~should_toss).to(dtype=torch.int64).sum()
 
     randomize_receive_object(env, env_ids, **object_randomization)
     randomize_robot_contact_material(
@@ -540,6 +581,7 @@ def toss_object_relative_curriculum(
 
     episode_time_s = env.episode_length_buf[env_ids].float().unsqueeze(-1) * float(env.step_dt)
     due = episode_time_s >= env._urop_toss_wait_s[env_ids]
+    due &= env._urop_should_toss[env_ids].unsqueeze(-1)
     due &= (~env._urop_toss_active[env_ids]).unsqueeze(-1)
     due &= (env._urop_toss_done[env_ids] < int(max_throws_per_episode)).unsqueeze(-1)
 

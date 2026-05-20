@@ -39,6 +39,10 @@ def _toss_active(env: "ManagerBasedRLEnv") -> torch.Tensor:
     return torch.zeros(env.num_envs, device=env.device)
 
 
+def _wrap_to_pi(angle: torch.Tensor) -> torch.Tensor:
+    return torch.atan2(torch.sin(angle), torch.cos(angle))
+
+
 def _body_name_to_idx(env: "ManagerBasedRLEnv") -> dict[str, int]:
     if hasattr(env, "_urop_body_name_to_id"):
         return env._urop_body_name_to_id
@@ -288,6 +292,15 @@ def wait_base_drift_penalty(env: "ManagerBasedRLEnv", sigma: float = 0.14) -> to
     robot = env.scene["robot"]
     drift = torch.norm(robot.data.root_pos_w[:, 0:2] - env._urop_spawn_xy, dim=-1)
     return ((drift / sigma) ** 2) * _wait_gate(env)
+
+
+def wait_yaw_drift_penalty(env: "ManagerBasedRLEnv", sigma: float = 0.20) -> torch.Tensor:
+    if not hasattr(env, "_urop_spawn_yaw"):
+        return torch.zeros(env.num_envs, device=env.device)
+    q = env.scene["robot"].data.root_quat_w
+    yaw = torch.atan2(2.0 * (q[:, 0] * q[:, 3] + q[:, 1] * q[:, 2]), 1.0 - 2.0 * (q[:, 2] ** 2 + q[:, 3] ** 2))
+    yaw_err = _wrap_to_pi(yaw - env._urop_spawn_yaw[:, 0])
+    return ((yaw_err / sigma) ** 2) * _wait_gate(env)
 
 
 def ready_pose_when_waiting(env: "ManagerBasedRLEnv", sigma: float = 0.22) -> torch.Tensor:
