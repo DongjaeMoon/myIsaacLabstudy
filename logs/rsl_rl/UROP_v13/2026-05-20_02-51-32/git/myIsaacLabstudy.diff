@@ -1,0 +1,42 @@
+--- git status ---
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+  (commit or discard the untracked or modified content in submodules)
+	modified:   logs/rsl_rl/UROP_g1_loco_v6/2026-03-13_01-18-22/exported/policy.pt
+	modified:   unitree_mujoco (modified content, untracked content)
+	modified:   unitree_sdk2_python/example/g1/low_level/unitree_sdk_test.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	sim2real.zip
+	unitree_sdk2_python/unitree_sdk2py/utils/lib/
+	urop_v13_diff.txt
+
+no changes added to commit (use "git add" and/or "git commit -a") 
+
+
+--- git diff ---
+diff --git a/logs/rsl_rl/UROP_g1_loco_v6/2026-03-13_01-18-22/exported/policy.pt b/logs/rsl_rl/UROP_g1_loco_v6/2026-03-13_01-18-22/exported/policy.pt
+index 963863d4..c4affc17 100644
+Binary files a/logs/rsl_rl/UROP_g1_loco_v6/2026-03-13_01-18-22/exported/policy.pt and b/logs/rsl_rl/UROP_g1_loco_v6/2026-03-13_01-18-22/exported/policy.pt differ
+diff --git a/unitree_mujoco b/unitree_mujoco
+--- a/unitree_mujoco
++++ b/unitree_mujoco
+@@ -1 +1 @@
+-Subproject commit 1a37b051a10be723405b7ed6dc839361af036d88
++Subproject commit 1a37b051a10be723405b7ed6dc839361af036d88-dirty
+diff --git a/unitree_sdk2_python/example/g1/low_level/unitree_sdk_test.py b/unitree_sdk2_python/example/g1/low_level/unitree_sdk_test.py
+index 225380d4..cea789d9 100644
+--- a/unitree_sdk2_python/example/g1/low_level/unitree_sdk_test.py
++++ b/unitree_sdk2_python/example/g1/low_level/unitree_sdk_test.py
+@@ -375,4 +375,4 @@ if __name__ == "__main__":
+     controller.start()
+ 
+     while True:
+-        time.sleep(1)
+\ No newline at end of file
++        time.sleep(1)
