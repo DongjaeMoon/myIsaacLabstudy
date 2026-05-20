@@ -339,8 +339,8 @@ class CurriculumCfg:
         func=mdp.stage_schedule,
         params={
             "stage0_iters": 300,
-            "stage1_iters": 1200,
-            "stage2_iters": 2200,
+            "stage1_iters": 900,
+            "stage2_iters": 1300,
             "num_steps_per_env": 64,
             "eval_stage": -1,
         },
@@ -394,6 +394,14 @@ class dj_urop_v13_EnvCfg_Play(dj_urop_v13_EnvCfg):
             "stage1": (1.50, 1.50),
             "stage2": (1.50, 1.50),
             "stage3": (1.50, 1.50),
+        }
+        # In Play, always toss for visual evaluation.
+        # Training still uses no-toss episodes from the base EnvCfg.
+        self.events.reset_autonomous_episode.params["toss_probability_by_stage"] = {
+            "stage0": 0.0,
+            "stage1": 1.0,
+            "stage2": 1.0,
+            "stage3": 1.0,
         }
         self.events.reset_autonomous_episode.params["object_randomization"] = {
             "mass_range": (2.8, 3.6),
