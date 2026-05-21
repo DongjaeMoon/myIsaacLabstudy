@@ -7,7 +7,7 @@ runtime:
   print_every: 1.0
   require_enter_before_start: true
   default_move_duration: 3.0
-  target_lowpass_alpha: 0.2
+  target_lowpass_alpha: 0.05
 communication:
   backend: unitree_dds
   net_iface: null
@@ -80,7 +80,7 @@ robot:
   - 28
   imu:
     quaternion_order: auto
-    policy_body_frame: isaaclab
+    policy_body_frame: unitree
     use_base_linear_velocity: false
 control:
   command_type: joint_position_pd
