@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from pathlib import Path
 
 THIS_DIR = Path(__file__).resolve().parent
@@ -66,6 +67,8 @@ def main() -> None:
             while not controller.exit_requested:
                 key = key_reader.read_key(timeout=0.1)
                 if key is not None:
+                    if key in ("\\x08", "\\x7f", "\b", "backspace", "BACKSPACE", "KEY_BACKSPACE"):
+                        print(f"[G1] BACKSPACE pressed in Python terminal at {time.strftime('%H:%M:%S')} key={repr(key)}", flush=True)
                     controller.handle_key(key)
     except KeyboardInterrupt:
         print("\n[G1] KeyboardInterrupt detected; switching to damping.")

@@ -225,7 +225,7 @@ poses:
     right_wrist_pitch_joint: 0.0
     right_wrist_yaw_joint: 0.0
 policy:
-  path: sim2real/policies/dummy_policy_104_29.pt
+  path: /home/dongjae/isaaclab/myIsaacLabstudy/logs/rsl_rl/UROP_v13/2026-05-21_00-57-46/exported/policy.pt
   num_actions: 29
   action_clip: 1.0
   action_order:
