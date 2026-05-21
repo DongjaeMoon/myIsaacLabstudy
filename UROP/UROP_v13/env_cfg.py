@@ -387,42 +387,42 @@ class dj_urop_v13_EnvCfg_Play(dj_urop_v13_EnvCfg):
         self.scene.env_spacing = 3.2
         self.episode_length_s = 7.0
 
-        # Play defaults to gentle stage-1 close toss.
-        self.curriculum.stage_schedule.params["eval_stage"] = 1
+        # Play uses dynamic stage-3 evaluation.
+        self.curriculum.stage_schedule.params["eval_stage"] = 3
 
+        # Random timing, and sometimes no toss, to evaluate anticipatory-prior removal.
         self.events.reset_autonomous_episode.params["wait_time_ranges"] = {
-            "stage1": (1.50, 1.50),
-            "stage2": (1.50, 1.50),
-            "stage3": (1.50, 1.50),
+            "stage1": (1.20, 2.00),
+            "stage2": (1.00, 2.80),
+            "stage3": (0.80, 3.50),
         }
-        # In Play, always toss for visual evaluation.
-        # Training still uses no-toss episodes from the base EnvCfg.
         self.events.reset_autonomous_episode.params["toss_probability_by_stage"] = {
             "stage0": 0.0,
-            "stage1": 1.0,
-            "stage2": 1.0,
-            "stage3": 1.0,
+            "stage1": 0.50,
+            "stage2": 0.60,
+            "stage3": 0.70,
         }
+        # Use training-like randomized evaluation, not mild visualization-only settings.
         self.events.reset_autonomous_episode.params["object_randomization"] = {
-            "mass_range": (2.8, 3.6),
-            "friction_range": (0.75, 0.95),
-            "restitution_range": (0.00, 0.03),
-            "size_scale_range": (0.98, 1.02),
+            "mass_range": (1.5, 5.0),
+            "friction_range": (0.40, 1.20),
+            "restitution_range": (0.00, 0.10),
+            "size_scale_range": (0.95, 1.05),
             "apply_physx": True,
         }
         self.events.reset_autonomous_episode.params["robot_material_randomization"] = {
-            "friction_range": (0.80, 0.95),
-            "restitution_range": (0.00, 0.01),
+            "friction_range": (0.55, 1.15),
+            "restitution_range": (0.00, 0.02),
             "apply_physx": True,
         }
         self.events.reset_autonomous_episode.params["floor_material_randomization"] = {
-            "friction_range": (0.85, 0.95),
+            "friction_range": (0.55, 1.20),
         }
         self.events.reset_autonomous_episode.params["observation_randomization"] = {
-            "pos_noise_range": (0.003, 0.006),
-            "vel_noise_range": (0.02, 0.05),
-            "drop_prob_range": (0.00, 0.02),
-            "alpha_range": (0.75, 0.95),
+            "pos_noise_range": (0.004, 0.020),
+            "vel_noise_range": (0.02, 0.12),
+            "drop_prob_range": (0.00, 0.08),
+            "alpha_range": (0.35, 0.85),
         }
 
         self.events.toss.params["max_throws_per_episode"] = 1
