@@ -348,12 +348,6 @@ def load_catch_real_config(config_path: str | Path, policy_override: str | None 
         auto_start_after_ready=bool(policy_runtime_raw.get("auto_start_after_ready", False)),
         object_source=str(policy_runtime_raw.get("object_source", "zeros")).lower(),
         fake_object_debug=bool(policy_runtime_raw.get("fake_object_debug", False)),
-        gate_policy_until_object_visible=bool(
-            policy_runtime_raw.get("gate_policy_until_object_visible", False)
-        ),
-        object_visible_blend_duration_s=float(
-            policy_runtime_raw.get("object_visible_blend_duration_s", 0.4)
-        ),
     )
     observation = ObservationConfig(
         contract_name=str(observation_raw.get("contract_name", "real_catch_v1")),

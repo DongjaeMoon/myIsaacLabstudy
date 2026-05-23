@@ -23,9 +23,9 @@ class ObservationBuilder:
         tag_visible: np.ndarray,
         current_mode_value: str,
     ) -> np.ndarray:
-        # Deploy contract: training actor always used autonomous catch mode.
-        # Keep this fixed to [safe_stand, catch_ready, catch, hold] = [0, 0, 1, 0].
-        mode_one_hot = np.array([0.0, 0.0, 1.0, 0.0], dtype=np.float64)
+        mode_one_hot = np.zeros(len(self.cfg.modes.names), dtype=np.float64)
+        if current_mode_value in self.cfg.modes.names:
+            mode_one_hot[self.cfg.modes.names.index(current_mode_value)] = 1.0
 
         term_values = {
             "projected_gravity": projected_gravity,

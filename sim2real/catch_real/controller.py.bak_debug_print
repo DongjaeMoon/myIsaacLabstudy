@@ -77,8 +77,6 @@ class G1CatchRealController:
         self.last_object_observation = self.object_provider.get()
         self.policy_gate_blend = 0.0
         self.policy_gate_last_visible_time: float | None = None
-        self.last_obs: np.ndarray | None = None
-        self.last_base_ang_vel: np.ndarray | None = None
 
     def init(self) -> None:
         self._print_startup_summary()
@@ -236,8 +234,6 @@ class G1CatchRealController:
             tag_visible=object_observation.tag_visible,
             current_mode_value=self.current_mode.value,
         )
-        self.last_obs = obs.copy()
-        self.last_base_ang_vel = base_ang_vel.copy()
 
         if self.current_mode == ControllerMode.DAMPING:
             self.policy_runner.zero_action()
@@ -432,60 +428,6 @@ class G1CatchRealController:
             f"policy_gate={self.policy_gate_blend:.2f} "
             f"lowstate_fresh={lowstate_fresh}"
         )
-        self._print_deep_debug(q, dq, policy_running)
-
-    def _format_topk(self, label: str, values: np.ndarray, k: int = 5) -> str:
-        names = self.cfg.robot.controlled_joint_names
-        idx = np.argsort(np.abs(values))[-k:][::-1]
-        parts = [f"{names[i]}={values[i]:+.3f}" for i in idx]
-        return f"{label}: " + ", ".join(parts)
-
-    def _print_deep_debug(self, q: np.ndarray, dq: np.ndarray, policy_running: bool) -> None:
-        if self.current_target_q is None:
-            return
-
-        q_des = self.current_target_q
-        q_ref = self.reference_pose_q
-        action = self.policy_runner.prev_action
-
-        q_track_err = q_des - q
-        target_residual = q_des - q_ref
-        tau_est = (
-            self.cfg.control.kp * q_track_err
-            + self.cfg.control.kd * (float(self.cfg.control.dq_des) - dq)
-            + float(self.cfg.control.tau_ff)
-        )
-
-        print("    " + self._format_topk("top|dq|", dq))
-        print("    " + self._format_topk("top|q_des-q|", q_track_err))
-        print("    " + self._format_topk("top|q_des-q_ref|", target_residual))
-        print("    " + self._format_topk("top|tau_est|", tau_est))
-
-        if policy_running:
-            print("    " + self._format_topk("top|policy_action|", action))
-
-        if self.last_obs is not None and self.last_obs.shape[0] >= 104:
-            obs = self.last_obs
-            g = obs[0:3]
-            w = obs[3:6]
-            jp = obs[6:35]
-            jv = obs[35:64]
-            pa = obs[64:93]
-            obj_p = obs[93:96]
-            obj_v = obs[96:99]
-            tag = obs[99:100]
-            mode = obs[100:104]
-            print(
-                "    obs_norms: "
-                f"|g|={np.linalg.norm(g):.3f}, "
-                f"|base_w|={np.linalg.norm(w):.3f}, "
-                f"|jp|={np.linalg.norm(jp):.3f}, "
-                f"|jv|={np.linalg.norm(jv):.3f}, "
-                f"|prev_a|={np.linalg.norm(pa):.3f}, "
-                f"|obj_p|={np.linalg.norm(obj_p):.3f}, "
-                f"|obj_v|={np.linalg.norm(obj_v):.3f}, "
-                f"tag={tag[0]:.1f}, mode={np.round(mode, 2)}"
-            )
 
     def _policy_is_available(self) -> bool:
         return (not self.no_policy) and self.policy_runner.is_loaded

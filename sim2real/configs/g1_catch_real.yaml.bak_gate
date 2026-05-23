@@ -324,8 +324,6 @@ policy_runtime:
   auto_start_after_ready: false
   object_source: zeros
   fake_object_debug: false
-  gate_policy_until_object_visible: false
-  object_visible_blend_duration_s: 0.4
 observation:
   contract_name: real_catch_v1
   num_obs: 104

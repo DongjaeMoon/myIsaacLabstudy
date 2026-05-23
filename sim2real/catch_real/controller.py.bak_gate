@@ -75,10 +75,6 @@ class G1CatchRealController:
         self.lowstate_warned_stale = False
         self.pending_auto_start_policy = False
         self.last_object_observation = self.object_provider.get()
-        self.policy_gate_blend = 0.0
-        self.policy_gate_last_visible_time: float | None = None
-        self.last_obs: np.ndarray | None = None
-        self.last_base_ang_vel: np.ndarray | None = None
 
     def init(self) -> None:
         self._print_startup_summary()
@@ -144,8 +140,6 @@ class G1CatchRealController:
         self.transition_goal_q = target_q
         self.policy_runner.zero_action()
         self.policy_runner.reset_target(target_q)
-        self.policy_gate_blend = 0.0
-        self.policy_gate_last_visible_time = None
         self.last_policy_time = -1e9
         self.pending_auto_start_policy = (
             mode == ControllerMode.CATCH_READY
@@ -236,8 +230,6 @@ class G1CatchRealController:
             tag_visible=object_observation.tag_visible,
             current_mode_value=self.current_mode.value,
         )
-        self.last_obs = obs.copy()
-        self.last_base_ang_vel = base_ang_vel.copy()
 
         if self.current_mode == ControllerMode.DAMPING:
             self.policy_runner.zero_action()
@@ -252,7 +244,7 @@ class G1CatchRealController:
             )
             return
 
-        nominal_target_q = self._compute_nominal_target(now, obs, object_observation)
+        nominal_target_q = self._compute_nominal_target(now, obs)
         q_des = apply_joint_target_safety(self.cfg, nominal_target_q, self.last_sent_q_des)
         self.command_writer.set_position_command(self.dds.mode_machine, q_des)
         self.current_target_q = q_des.copy()
@@ -338,43 +330,11 @@ class G1CatchRealController:
         self.request_mode(initial_mode, duration=self.move_duration, announce=False)
         print(f"[G1] Initial transition -> {initial_mode.value} over {self.move_duration:.2f}s")
 
-    def _compute_nominal_target(
-        self,
-        now: float,
-        obs: np.ndarray,
-        object_observation: ObjectObservation | None = None,
-    ) -> np.ndarray:
+    def _compute_nominal_target(self, now: float, obs: np.ndarray) -> np.ndarray:
         if self.current_mode == self.policy_mode and self._policy_is_available():
-            tag_visible = False
-            if object_observation is not None:
-                tag_visible = bool(float(object_observation.tag_visible[0]) > 0.5)
-
-            gate_enabled = bool(self.cfg.policy_runtime.gate_policy_until_object_visible)
-
-            if gate_enabled and not tag_visible:
-                self.policy_gate_blend = 0.0
-                self.policy_gate_last_visible_time = None
-                self.policy_runner.zero_action()
-                self.policy_runner.reset_target(self.reference_pose_q)
-                return self.reference_pose_q.copy()
-
-            if gate_enabled and tag_visible:
-                if self.policy_gate_last_visible_time is None:
-                    self.policy_gate_last_visible_time = now
-                blend_duration = max(float(self.cfg.policy_runtime.object_visible_blend_duration_s), 1.0e-6)
-                self.policy_gate_blend = float(np.clip((now - self.policy_gate_last_visible_time) / blend_duration, 0.0, 1.0))
-            else:
-                self.policy_gate_blend = 1.0
-
             if (now - self.last_policy_time) >= self.policy_dt:
-                policy_target = self.policy_runner.compute_target(obs, self.reference_pose_q)
-                self.policy_runner.last_target_q = interpolate(
-                    self.reference_pose_q,
-                    policy_target,
-                    self.policy_gate_blend,
-                )
+                self.policy_runner.last_target_q = self.policy_runner.compute_target(obs, self.reference_pose_q)
                 self.last_policy_time = now
-
             return self.policy_runner.last_target_q.copy()
 
         if self.transition_active:
@@ -429,63 +389,8 @@ class G1CatchRealController:
             f"max|q-q_ref|={q_ref_err:.3f} max|dq|={max_dq:.3f} "
             f"gravity={gravity_str} tag_visible={tag_visible} "
             f"object_rel_pos={object_pos_str} policy_running={policy_running} "
-            f"policy_gate={self.policy_gate_blend:.2f} "
             f"lowstate_fresh={lowstate_fresh}"
         )
-        self._print_deep_debug(q, dq, policy_running)
-
-    def _format_topk(self, label: str, values: np.ndarray, k: int = 5) -> str:
-        names = self.cfg.robot.controlled_joint_names
-        idx = np.argsort(np.abs(values))[-k:][::-1]
-        parts = [f"{names[i]}={values[i]:+.3f}" for i in idx]
-        return f"{label}: " + ", ".join(parts)
-
-    def _print_deep_debug(self, q: np.ndarray, dq: np.ndarray, policy_running: bool) -> None:
-        if self.current_target_q is None:
-            return
-
-        q_des = self.current_target_q
-        q_ref = self.reference_pose_q
-        action = self.policy_runner.prev_action
-
-        q_track_err = q_des - q
-        target_residual = q_des - q_ref
-        tau_est = (
-            self.cfg.control.kp * q_track_err
-            + self.cfg.control.kd * (float(self.cfg.control.dq_des) - dq)
-            + float(self.cfg.control.tau_ff)
-        )
-
-        print("    " + self._format_topk("top|dq|", dq))
-        print("    " + self._format_topk("top|q_des-q|", q_track_err))
-        print("    " + self._format_topk("top|q_des-q_ref|", target_residual))
-        print("    " + self._format_topk("top|tau_est|", tau_est))
-
-        if policy_running:
-            print("    " + self._format_topk("top|policy_action|", action))
-
-        if self.last_obs is not None and self.last_obs.shape[0] >= 104:
-            obs = self.last_obs
-            g = obs[0:3]
-            w = obs[3:6]
-            jp = obs[6:35]
-            jv = obs[35:64]
-            pa = obs[64:93]
-            obj_p = obs[93:96]
-            obj_v = obs[96:99]
-            tag = obs[99:100]
-            mode = obs[100:104]
-            print(
-                "    obs_norms: "
-                f"|g|={np.linalg.norm(g):.3f}, "
-                f"|base_w|={np.linalg.norm(w):.3f}, "
-                f"|jp|={np.linalg.norm(jp):.3f}, "
-                f"|jv|={np.linalg.norm(jv):.3f}, "
-                f"|prev_a|={np.linalg.norm(pa):.3f}, "
-                f"|obj_p|={np.linalg.norm(obj_p):.3f}, "
-                f"|obj_v|={np.linalg.norm(obj_v):.3f}, "
-                f"tag={tag[0]:.1f}, mode={np.round(mode, 2)}"
-            )
 
     def _policy_is_available(self) -> bool:
         return (not self.no_policy) and self.policy_runner.is_loaded
