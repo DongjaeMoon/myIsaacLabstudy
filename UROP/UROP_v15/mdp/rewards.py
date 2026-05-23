@@ -321,9 +321,20 @@ def action_acceleration_penalty(env: "ManagerBasedRLEnv") -> torch.Tensor:
 
 
 def lower_body_action_rate_penalty(env: "ManagerBasedRLEnv") -> torch.Tensor:
+    """Penalize high-frequency lower-body action changes.
+
+    IMPORTANT:
+    `action` is indexed in policy-action order, not articulation joint order.
+    In this task, lower-body controlled joints are the first 15 entries of
+    CONTROLLED_JOINT_NAMES, so we slice the action vector directly.
+    """
     action, prev_action, _ = _get_action_history(env)
-    lower_body_idx = get_lower_body_joint_indices(env)
-    return torch.sum((action[:, lower_body_idx] - prev_action[:, lower_body_idx]) ** 2, dim=-1)
+
+    lower_body_action_dim = len(LOWER_BODY_JOINT_NAMES)  # 15 = legs 12 + waist 3
+    return torch.sum(
+        (action[:, :lower_body_action_dim] - prev_action[:, :lower_body_action_dim]) ** 2,
+        dim=-1,
+    )
 
 
 def foot_slip_penalty(env: "ManagerBasedRLEnv", ground_height_thr: float = 0.16) -> torch.Tensor:
