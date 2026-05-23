@@ -7,6 +7,7 @@ import torch
 from .observations import (
     get_controlled_joint_indices,
     get_lower_body_joint_indices,
+    LOWER_BODY_JOINT_NAMES,
     quat_apply,
     quat_rotate_inverse,
 )
