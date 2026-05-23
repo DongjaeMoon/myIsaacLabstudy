@@ -1,0 +1,524 @@
+import isaaclab.sim as sim_utils
+from isaaclab.assets import AssetBaseCfg
+from isaaclab.envs import ManagerBasedRLEnvCfg
+from isaaclab.managers import (
+    CurriculumTermCfg as CurrTerm,
+    EventTermCfg as EventTerm,
+    ObservationGroupCfg as ObsGroup,
+    ObservationTermCfg as ObsTerm,
+    RewardTermCfg as RewTerm,
+    TerminationTermCfg as DoneTerm,
+)
+from isaaclab.scene import InteractiveSceneCfg
+from isaaclab.utils import configclass
+
+from . import mdp
+from . import scene_objects_cfg
+
+
+CONTACT_SENSOR_NAMES = [
+    "contact_torso",
+    "contact_l_shoulder_yaw",
+    "contact_l_elbow",
+    "contact_l_wrist_roll",
+    "contact_l_wrist_pitch",
+    "contact_l_wrist_yaw",
+    "contact_l_hand",
+    "contact_r_shoulder_yaw",
+    "contact_r_elbow",
+    "contact_r_wrist_roll",
+    "contact_r_wrist_pitch",
+    "contact_r_wrist_yaw",
+    "contact_r_hand",
+]
+
+
+@configclass
+class dj_urop_v15_SceneCfg(InteractiveSceneCfg):
+    ground = AssetBaseCfg(
+        prim_path="/World/ground",
+        spawn=sim_utils.GroundPlaneCfg(
+            size=(150.0, 150.0),
+            physics_material=scene_objects_cfg.GROUND_PHYSICS_MATERIAL,
+        ),
+    )
+    dome_light = AssetBaseCfg(
+        prim_path="/World/DomeLight",
+        spawn=sim_utils.DomeLightCfg(color=(0.9, 0.9, 0.9), intensity=500.0),
+    )
+
+    robot = scene_objects_cfg.dj_robot_cfg
+    object = scene_objects_cfg.bulky_object_cfg
+
+    contact_torso = scene_objects_cfg.contact_torso_cfg
+    contact_l_shoulder_yaw = scene_objects_cfg.contact_l_shoulder_yaw_cfg
+    contact_l_elbow = scene_objects_cfg.contact_l_elbow_cfg
+    contact_l_wrist_roll = scene_objects_cfg.contact_l_wrist_roll_cfg
+    contact_l_wrist_pitch = scene_objects_cfg.contact_l_wrist_pitch_cfg
+    contact_l_wrist_yaw = scene_objects_cfg.contact_l_wrist_yaw_cfg
+    contact_l_hand = scene_objects_cfg.contact_l_hand_cfg
+    contact_r_shoulder_yaw = scene_objects_cfg.contact_r_shoulder_yaw_cfg
+    contact_r_elbow = scene_objects_cfg.contact_r_elbow_cfg
+    contact_r_wrist_roll = scene_objects_cfg.contact_r_wrist_roll_cfg
+    contact_r_wrist_pitch = scene_objects_cfg.contact_r_wrist_pitch_cfg
+    contact_r_wrist_yaw = scene_objects_cfg.contact_r_wrist_yaw_cfg
+    contact_r_hand = scene_objects_cfg.contact_r_hand_cfg
+
+
+@configclass
+class CommandsCfg:
+    command = mdp.NullCommandCfg()
+
+
+@configclass
+class ActionsCfg:
+    # DO NOT REORDER: must match sim2real deploy policy action order.
+    policy = mdp.JointPositionActionCfg(
+        asset_name="robot",
+        joint_names=list(scene_objects_cfg.CONTROLLED_JOINT_NAMES),
+        scale=dict(scene_objects_cfg.ACTION_SCALE_BY_JOINT),
+        offset=dict(scene_objects_cfg.READY_POSE),
+        use_default_offset=False,
+        preserve_order=True,
+    )
+
+
+@configclass
+class ObservationsCfg:
+    @configclass
+    class PolicyCfg(ObsGroup):
+        # 3
+        projected_gravity = ObsTerm(func=mdp.projected_gravity)
+        # 3
+        base_ang_vel = ObsTerm(func=mdp.base_angular_velocity)
+        # 29
+        joint_pos_rel = ObsTerm(func=mdp.controlled_joint_pos_rel)
+        # 29, scaled to match deploy YAML observation scale.
+        joint_vel = ObsTerm(func=mdp.controlled_joint_velocities, params={"scale": 0.05})
+        # 29
+        prev_actions = ObsTerm(func=mdp.prev_actions)
+        # 3
+        object_rel_pos = ObsTerm(func=mdp.object_rel_pos)
+        # 3
+        object_rel_lin_vel = ObsTerm(func=mdp.object_rel_lin_vel)
+        # 1
+        tag_visible = ObsTerm(func=mdp.tag_visible)
+        # 4. Intentionally kept clean because it is a semantic phase signal.
+        mode_one_hot = ObsTerm(func=mdp.mode_one_hot)
+
+        def __post_init__(self):
+            self.concatenate_terms = True
+            self.enable_corruption = False
+
+    @configclass
+    class CriticCfg(ObsGroup):
+        phase = ObsTerm(func=mdp.toss_state)
+        hold_signal = ObsTerm(func=mdp.hold_state)
+        drop_signal = ObsTerm(func=mdp.drop_state)
+        robot_state = ObsTerm(func=mdp.critic_robot_state, params={"torque_scale": 1.0 / 80.0})
+        prev_actions = ObsTerm(func=mdp.prev_actions)
+        obj_rel_full = ObsTerm(func=mdp.object_rel_full_state)
+        obj_truth = ObsTerm(func=mdp.object_truth_state)
+        root_state = ObsTerm(func=mdp.root_state_privileged)
+        hold_anchor_err = ObsTerm(func=mdp.hold_anchor_error, params={"scale": 1.0})
+        obj_params = ObsTerm(func=mdp.object_params)
+        contact = ObsTerm(func=mdp.contact_forces, params={"sensor_names": CONTACT_SENSOR_NAMES, "scale": 1.0 / 300.0})
+
+        def __post_init__(self):
+            self.concatenate_terms = True
+            self.enable_corruption = False
+
+    policy: PolicyCfg = PolicyCfg()
+    critic: CriticCfg = CriticCfg()
+
+
+@configclass
+class RewardsCfg:
+    alive = RewTerm(func=mdp.alive_bonus, weight=0.25)
+    upright = RewTerm(func=mdp.upright_reward, weight=1.75)
+    height = RewTerm(func=mdp.root_height_reward, weight=1.10, params={"target_z": 0.78, "sigma": 0.10})
+
+    base_motion = RewTerm(func=mdp.base_motion_penalty, weight=-0.12, params={"w_lin": 1.0, "w_ang": 0.30})
+    joint_vel = RewTerm(func=mdp.joint_vel_l2_penalty, weight=-0.025)
+    torque = RewTerm(func=mdp.torque_l2_penalty, weight=-0.00002)
+    action_mag = RewTerm(func=mdp.action_magnitude_penalty, weight=-0.015)
+    action_rate = RewTerm(func=mdp.action_rate_penalty, weight=-0.09)
+    action_accel = RewTerm(func=mdp.action_acceleration_penalty, weight=-0.05)
+    lower_body_action_rate = RewTerm(func=mdp.lower_body_action_rate_penalty, weight=-0.06)
+    foot_slip = RewTerm(func=mdp.foot_slip_penalty, weight=-0.10, params={"ground_height_thr": 0.16})
+
+    wait_ready_pose = RewTerm(func=mdp.ready_pose_when_waiting, weight=2.8, params={"sigma": 0.22})
+    wait_joint_still = RewTerm(func=mdp.waiting_joint_stillness_reward, weight=0.8, params={"sigma": 1.4})
+    wait_base_drift = RewTerm(func=mdp.wait_base_drift_penalty, weight=-1.6, params={"sigma": 0.14})
+    wait_yaw_drift = RewTerm(func=mdp.wait_yaw_drift_penalty, weight=-0.9, params={"sigma": 0.20})
+    lower_body_ready = RewTerm(
+        func=mdp.lower_body_ready_reward,
+        weight=1.6,
+        params={"sigma_wait": 0.16, "sigma_active": 0.26},
+    )
+
+    catch_region = RewTerm(func=mdp.catch_target_region_reward, weight=1.7, params={"sigma": 0.28})
+    upper_body_receive = RewTerm(func=mdp.upper_body_receive_reward, weight=1.4, params={"sigma": 0.26})
+    catch_vel_match = RewTerm(
+        func=mdp.catch_velocity_match_reward,
+        weight=1.0,
+        params={"torso_body_name": "torso_link", "sigma": 0.75},
+    )
+    contact_hug = RewTerm(
+        func=mdp.hug_contact_bonus,
+        weight=2.4,
+        params={
+            "sensor_names_left": [
+                "contact_l_shoulder_yaw",
+                "contact_l_elbow",
+                "contact_l_wrist_roll",
+                "contact_l_wrist_pitch",
+                "contact_l_wrist_yaw",
+            ],
+            "sensor_names_right": [
+                "contact_r_shoulder_yaw",
+                "contact_r_elbow",
+                "contact_r_wrist_roll",
+                "contact_r_wrist_pitch",
+                "contact_r_wrist_yaw",
+            ],
+            "sensor_name_torso": "contact_torso",
+            "thr": 1.5,
+        },
+    )
+    impact = RewTerm(func=mdp.impact_peak_penalty, weight=-0.004, params={"sensor_names": CONTACT_SENSOR_NAMES, "force_thr": 220.0})
+
+    hold_vel = RewTerm(func=mdp.hold_object_vel_reward, weight=1.8, params={"torso_body_name": "torso_link", "sigma": 0.45})
+    hold_pose = RewTerm(func=mdp.hold_pose_reward, weight=2.3, params={"sigma": 0.18})
+    hold_latched = RewTerm(func=mdp.hold_latched_bonus, weight=1.0)
+    hold_sustain = RewTerm(func=mdp.hold_sustain_bonus, weight=2.6, params={"min_steps": 20})
+    not_drop = RewTerm(func=mdp.object_not_dropped_bonus, weight=1.2, params={"min_z": 0.42, "max_dist": 1.8})
+
+    post_hold_still = RewTerm(func=mdp.post_hold_still_reward, weight=1.5, params={"lin_sigma": 0.10, "yaw_sigma": 0.30})
+    post_hold_anchor = RewTerm(func=mdp.post_hold_anchor_penalty, weight=-1.4, params={"sigma": 0.10})
+
+
+@configclass
+class TerminationsCfg:
+    time_out = DoneTerm(func=mdp.time_out, time_out=True)
+    success = DoneTerm(func=mdp.successful_hold_complete, params={"min_steps": 40})
+    fall = DoneTerm(func=mdp.robot_fallen_degree, params={"min_root_z": 0.50, "max_tilt_deg": 45.0})
+    drop = DoneTerm(func=mdp.object_dropped, params={"min_z": 0.30, "max_dist": 2.0})
+    runaway = DoneTerm(func=mdp.post_hold_runaway, params={"max_anchor_drift": 0.28})
+    unsafe_lower_body = DoneTerm(func=mdp.unsafe_lower_body_deviation, params={"max_abs_dev": 0.85})
+
+
+@configclass
+class EventCfg:
+    reset_all = EventTerm(func=mdp.reset_scene_to_default, mode="reset", params={"reset_joint_targets": True})
+
+    reset_autonomous_episode = EventTerm(
+        func=mdp.reset_autonomous_episode,
+        mode="reset",
+        params={
+            "park": {"pos_x": (1.55, 1.85), "pos_y": (-0.15, 0.15), "pos_z": (-0.62, -0.52)},
+            "wait_time_ranges": {
+                "stage1": (1.20, 2.00),
+                "stage2": (1.00, 2.80),
+                "stage3": (0.80, 3.50),
+            },
+            "toss_probability_by_stage": {
+                "stage0": 0.0,
+                "stage1": 0.50,
+                "stage2": 0.60,
+                "stage3": 0.70,
+            },
+            "joint_noise": {
+                "lower_body_pos": (-0.030, 0.030),
+                "waist_pos": (-0.025, 0.025),
+                "arm_pos": (-0.060, 0.060),
+                "wrist_pos": (-0.040, 0.040),
+                "velocity": (-0.10, 0.10),
+            },
+            "root_xy_range": (-0.03, 0.03),
+            "root_yaw_range": (-0.08, 0.08),
+            "object_randomization": {
+                "mass_range": (1.0, 6.0),
+                "friction_range": (0.25, 1.50),
+                "restitution_range": (0.00, 0.18),
+                "size_scale_range": (0.80, 1.25),
+                "apply_physx": True,
+            },
+            "robot_material_randomization": {
+                "friction_range": (0.40, 1.30),
+                "restitution_range": (0.00, 0.04),
+                "apply_physx": True,
+            },
+            "floor_material_randomization": {
+                "friction_range": (0.35, 1.40),
+            },
+            "observation_randomization": {
+                "projected_gravity_noise_std_range": (0.005, 0.030),
+                "base_ang_vel_noise_std_range": (0.01, 0.08),
+                "joint_pos_noise_std_range": (0.002, 0.020),
+                "joint_vel_noise_std_range": (0.02, 0.20),
+                "obj_pos_noise_range": (0.005, 0.060),
+                "obj_vel_noise_range": (0.03, 0.35),
+                "drop_prob_range": (0.00, 0.25),
+                "alpha_range": (0.20, 0.90),
+            },
+        },
+    )
+
+    random_push = EventTerm(
+        func=mdp.push_robot_root_velocity,
+        mode="interval",
+        interval_range_s=(0.6, 1.8),
+        params={
+            "stage0_xy_range": (-0.15, 0.15),
+            "stage1_xy_range": (-0.25, 0.25),
+            "stage2_xy_range": (-0.35, 0.35),
+            "stage3_xy_range": (-0.45, 0.45),
+            "stage0_yaw_range": (-0.10, 0.10),
+            "stage1_yaw_range": (-0.18, 0.18),
+            "stage2_yaw_range": (-0.25, 0.25),
+            "stage3_yaw_range": (-0.35, 0.35),
+            "z_velocity_range": (-0.02, 0.02),
+            "hold_xy_scale": 0.70,
+            "hold_yaw_scale": 0.65,
+            "max_xy_speed": 1.40,
+            "max_yaw_speed": 1.00,
+        },
+    )
+
+    toss = EventTerm(
+        func=mdp.toss_object_relative_curriculum,
+        mode="interval",
+        interval_range_s=(0.02, 0.02),
+        params={
+            "max_throws_per_episode": 1,
+            "throw_prob_stage1": 1.0,
+            "throw_prob_stage2": 1.0,
+            "throw_prob_stage3": 1.0,
+            "stage1": {
+                # Very easy close handover-like toss.
+                # z values are RELATIVE to robot root/pelvis, not world height.
+                "sampler": "target_ballistic",
+                "spawn_x": (0.30, 0.48),
+                "spawn_y": (-0.08, 0.08),
+                "spawn_z": (0.18, 0.34),
+                "target_x": (0.06, 0.18),
+                "target_y": (-0.06, 0.06),
+                "target_z": (0.08, 0.24),
+                "flight_time": (0.22, 0.36),
+                "max_speed": 1.55,
+                "max_vy_abs": 0.35,
+                "max_vz_abs": 1.90,
+                "roll": (-0.03, 0.03),
+                "pitch": (-0.04, 0.04),
+                "yaw": (-0.08, 0.08),
+                "ang_vel_x": (-0.06, 0.06),
+                "ang_vel_y": (-0.06, 0.06),
+                "ang_vel_z": (-0.10, 0.10),
+            },
+            "stage2": {
+                # Gentle short toss.
+                "sampler": "target_ballistic",
+                "spawn_x": (0.32, 0.66),
+                "spawn_y": (-0.28, 0.28),
+                "spawn_z": (0.12, 0.44),
+                "target_x": (0.02, 0.26),
+                "target_y": (-0.20, 0.20),
+                "target_z": (0.02, 0.32),
+                "flight_time": (0.20, 0.46),
+                "max_speed": 2.10,
+                "max_vy_abs": 0.85,
+                "max_vz_abs": 2.20,
+                "roll": (-0.04, 0.04),
+                "pitch": (-0.05, 0.05),
+                "yaw": (-0.14, 0.14),
+                "ang_vel_x": (-0.10, 0.10),
+                "ang_vel_y": (-0.10, 0.10),
+                "ang_vel_z": (-0.18, 0.18),
+            },
+            "stage3": {
+                # Realistic but still admissible close toss.
+                "sampler": "target_ballistic",
+                "spawn_x": (0.30, 0.85),
+                "spawn_y": (-0.45, 0.45),
+                "spawn_z": (0.05, 0.55),
+                "target_x": (-0.03, 0.32),
+                "target_y": (-0.25, 0.25),
+                "target_z": (0.00, 0.38),
+                "flight_time": (0.20, 0.55),
+                "max_speed": 2.60,
+                "max_vy_abs": 1.20,
+                "max_vz_abs": 2.40,
+                "roll": (-0.05, 0.05),
+                "pitch": (-0.06, 0.06),
+                "yaw": (-0.35, 0.35),
+                "ang_vel_x": (-0.18, 0.18),
+                "ang_vel_y": (-0.18, 0.18),
+                "ang_vel_z": (-0.42, 0.42),
+            },
+        },
+    )
+
+
+@configclass
+class CurriculumCfg:
+    stage_schedule = CurrTerm(
+        func=mdp.stage_schedule,
+        params={
+            "stage0_iters": 300,
+            "stage1_iters": 900,
+            "stage2_iters": 1300,
+            "num_steps_per_env": 64,
+            "eval_stage": -1,
+        },
+    )
+
+
+@configclass
+class dj_urop_v15_EnvCfg(ManagerBasedRLEnvCfg):
+    scene: dj_urop_v15_SceneCfg = dj_urop_v15_SceneCfg(num_envs=128, env_spacing=3.0)
+    observations: ObservationsCfg = ObservationsCfg()
+    actions: ActionsCfg = ActionsCfg()
+    events: EventCfg = EventCfg()
+    commands: CommandsCfg = CommandsCfg()
+    curriculum: CurriculumCfg = CurriculumCfg()
+    rewards: RewardsCfg = RewardsCfg()
+    terminations: TerminationsCfg = TerminationsCfg()
+
+    def __post_init__(self):
+        self.decimation = 2
+        self.episode_length_s = 7.5
+        self.sim.dt = 1 / 100
+        self.sim.render_interval = self.decimation
+
+        assert scene_objects_cfg.EXPECTED_ACTION_DIM == 29
+        assert len(scene_objects_cfg.CONTROLLED_JOINT_NAMES) == scene_objects_cfg.EXPECTED_ACTION_DIM
+        assert len(scene_objects_cfg.ACTION_SCALE) == scene_objects_cfg.EXPECTED_ACTION_DIM
+        assert len(self.actions.policy.joint_names) == scene_objects_cfg.EXPECTED_ACTION_DIM
+        assert scene_objects_cfg.EXPECTED_POLICY_OBS_DIM == 104
+        assert abs(self.decimation * self.sim.dt - 0.02) < 1e-9
+
+        try:
+            if hasattr(self.sim, "physx") and hasattr(self.sim.physx, "enable_external_forces_every_iteration"):
+                self.sim.physx.enable_external_forces_every_iteration = True
+            if hasattr(self.sim, "physx") and hasattr(self.sim.physx, "num_velocity_iterations"):
+                self.sim.physx.num_velocity_iterations = 1
+        except Exception:
+            pass
+
+
+@configclass
+class dj_urop_v15_EnvCfg_Play(dj_urop_v15_EnvCfg):
+    def __post_init__(self):
+        super().__post_init__()
+
+        self.scene.num_envs = 3
+        self.scene.env_spacing = 3.2
+        self.episode_length_s = 7.0
+
+        # Play uses dynamic stage-3 evaluation.
+        self.curriculum.stage_schedule.params["eval_stage"] = 3
+
+        # Random timing, and sometimes no toss, to evaluate anticipatory-prior removal.
+        self.events.reset_autonomous_episode.params["wait_time_ranges"] = {
+            "stage1": (1.20, 2.00),
+            "stage2": (1.00, 2.80),
+            "stage3": (0.80, 3.50),
+        }
+        self.events.reset_autonomous_episode.params["toss_probability_by_stage"] = {
+            "stage0": 0.0,
+            "stage1": 0.50,
+            "stage2": 0.60,
+            "stage3": 0.70,
+        }
+        # Use training-like randomized evaluation, not mild visualization-only settings.
+        self.events.reset_autonomous_episode.params["object_randomization"] = {
+            "mass_range": (1.0, 6.0),
+            "friction_range": (0.25, 1.50),
+            "restitution_range": (0.00, 0.18),
+            "size_scale_range": (0.80, 1.25),
+            "apply_physx": True,
+        }
+        self.events.reset_autonomous_episode.params["robot_material_randomization"] = {
+            "friction_range": (0.40, 1.30),
+            "restitution_range": (0.00, 0.04),
+            "apply_physx": True,
+        }
+        self.events.reset_autonomous_episode.params["floor_material_randomization"] = {
+            "friction_range": (0.35, 1.40),
+        }
+        self.events.reset_autonomous_episode.params["observation_randomization"] = {
+            "projected_gravity_noise_std_range": (0.005, 0.030),
+            "base_ang_vel_noise_std_range": (0.01, 0.08),
+            "joint_pos_noise_std_range": (0.002, 0.020),
+            "joint_vel_noise_std_range": (0.02, 0.20),
+            "obj_pos_noise_range": (0.005, 0.060),
+            "obj_vel_noise_range": (0.03, 0.35),
+            "drop_prob_range": (0.00, 0.25),
+            "alpha_range": (0.20, 0.90),
+        }
+
+        self.events.toss.params["max_throws_per_episode"] = 1
+        self.events.toss.params["throw_prob_stage1"] = 1.0
+        self.events.toss.params["throw_prob_stage2"] = 1.0
+        self.events.toss.params["throw_prob_stage3"] = 1.0
+
+        self.events.toss.params["stage1"] = {
+            "sampler": "target_ballistic",
+            "spawn_x": (0.30, 0.48),
+            "spawn_y": (-0.08, 0.08),
+            "spawn_z": (0.18, 0.34),
+            "target_x": (0.06, 0.18),
+            "target_y": (-0.06, 0.06),
+            "target_z": (0.08, 0.24),
+            "flight_time": (0.22, 0.36),
+            "max_speed": 1.55,
+            "max_vy_abs": 0.35,
+            "max_vz_abs": 1.90,
+            "roll": (-0.03, 0.03),
+            "pitch": (-0.04, 0.04),
+            "yaw": (-0.08, 0.08),
+            "ang_vel_x": (-0.06, 0.06),
+            "ang_vel_y": (-0.06, 0.06),
+            "ang_vel_z": (-0.10, 0.10),
+        }
+
+        self.events.toss.params["stage2"] = {
+            "sampler": "target_ballistic",
+            "spawn_x": (0.32, 0.66),
+            "spawn_y": (-0.28, 0.28),
+            "spawn_z": (0.12, 0.44),
+            "target_x": (0.02, 0.26),
+            "target_y": (-0.20, 0.20),
+            "target_z": (0.02, 0.32),
+            "flight_time": (0.20, 0.46),
+            "max_speed": 2.10,
+            "max_vy_abs": 0.85,
+            "max_vz_abs": 2.20,
+            "roll": (-0.04, 0.04),
+            "pitch": (-0.05, 0.05),
+            "yaw": (-0.14, 0.14),
+            "ang_vel_x": (-0.10, 0.10),
+            "ang_vel_y": (-0.10, 0.10),
+            "ang_vel_z": (-0.18, 0.18),
+        }
+
+        self.events.toss.params["stage3"] = {
+            "sampler": "target_ballistic",
+            "spawn_x": (0.30, 0.85),
+            "spawn_y": (-0.45, 0.45),
+            "spawn_z": (0.05, 0.55),
+            "target_x": (-0.03, 0.32),
+            "target_y": (-0.25, 0.25),
+            "target_z": (0.00, 0.38),
+            "flight_time": (0.20, 0.55),
+            "max_speed": 2.60,
+            "max_vy_abs": 1.20,
+            "max_vz_abs": 2.40,
+            "roll": (-0.05, 0.05),
+            "pitch": (-0.06, 0.06),
+            "yaw": (-0.35, 0.35),
+            "ang_vel_x": (-0.18, 0.18),
+            "ang_vel_y": (-0.18, 0.18),
+            "ang_vel_z": (-0.42, 0.42),
+        }
