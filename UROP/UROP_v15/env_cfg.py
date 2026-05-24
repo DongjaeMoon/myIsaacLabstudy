@@ -416,109 +416,95 @@ class dj_urop_v15_EnvCfg_Play(dj_urop_v15_EnvCfg):
         self.scene.env_spacing = 3.2
         self.episode_length_s = 7.0
 
-        # Play uses dynamic stage-3 evaluation.
+        # Play uses fixed stage-3 evaluation.
         self.curriculum.stage_schedule.params["eval_stage"] = 3
 
-        # Random timing, and sometimes no toss, to evaluate anticipatory-prior removal.
+        # ============================================================
+        # [PLAY-EASY OVERRIDE]
+        # Mild visualization/evaluation setting.
+        # Training remains hard; only Play is made easier and cleaner.
+        # ============================================================
+
+        # 1) Disable random external push during Play.
+        # Keep the term configured, but make it never trigger within a 7 s episode.
+        self.events.random_push.interval_range_s = (9999.0, 9999.0)
+
+        # 2) Use reasonable random timing.
         self.events.reset_autonomous_episode.params["wait_time_ranges"] = {
             "stage1": (1.20, 2.00),
-            "stage2": (1.00, 2.80),
-            "stage3": (0.80, 3.50),
+            "stage2": (1.00, 2.50),
+            "stage3": (0.80, 2.00),
         }
+
+        # 3) For visualization, make toss happen every episode.
+        # This is only for Play. Training still keeps toss/no-toss mixture.
         self.events.reset_autonomous_episode.params["toss_probability_by_stage"] = {
             "stage0": 0.0,
-            "stage1": 0.50,
-            "stage2": 0.60,
-            "stage3": 0.70,
+            "stage1": 1.0,
+            "stage2": 1.0,
+            "stage3": 1.0,
         }
-        # Use training-like randomized evaluation, not mild visualization-only settings.
+
+        # 4) Use mild object/material randomization for Play.
         self.events.reset_autonomous_episode.params["object_randomization"] = {
-            "mass_range": (1.0, 6.0),
-            "friction_range": (0.25, 1.50),
-            "restitution_range": (0.00, 0.18),
-            "size_scale_range": (0.80, 1.25),
+            "mass_range": (2.5, 4.0),
+            "friction_range": (0.60, 1.10),
+            "restitution_range": (0.00, 0.06),
+            "size_scale_range": (1.00, 1.00),
             "apply_physx": True,
         }
         self.events.reset_autonomous_episode.params["robot_material_randomization"] = {
-            "friction_range": (0.40, 1.30),
-            "restitution_range": (0.00, 0.04),
+            "friction_range": (0.70, 1.10),
+            "restitution_range": (0.00, 0.02),
             "apply_physx": True,
         }
         self.events.reset_autonomous_episode.params["floor_material_randomization"] = {
-            "friction_range": (0.35, 1.40),
-        }
-        self.events.reset_autonomous_episode.params["observation_randomization"] = {
-            "projected_gravity_noise_std_range": (0.005, 0.030),
-            "base_ang_vel_noise_std_range": (0.01, 0.08),
-            "joint_pos_noise_std_range": (0.002, 0.020),
-            "joint_vel_noise_std_range": (0.02, 0.20),
-            "obj_pos_noise_range": (0.005, 0.060),
-            "obj_vel_noise_range": (0.03, 0.35),
-            "drop_prob_range": (0.00, 0.25),
-            "alpha_range": (0.20, 0.90),
+            "friction_range": (0.75, 1.15),
         }
 
+        # 5) Use mild observation noise/dropout for Play.
+        self.events.reset_autonomous_episode.params["observation_randomization"] = {
+            "projected_gravity_noise_std_range": (0.0, 0.005),
+            "base_ang_vel_noise_std_range": (0.0, 0.010),
+            "joint_pos_noise_std_range": (0.0, 0.003),
+            "joint_vel_noise_std_range": (0.0, 0.030),
+            "obj_pos_noise_range": (0.0, 0.015),
+            "obj_vel_noise_range": (0.0, 0.080),
+            "drop_prob_range": (0.0, 0.02),
+            "alpha_range": (0.70, 1.00),
+        }
+
+        # 6) One reasonable toss per episode.
         self.events.toss.params["max_throws_per_episode"] = 1
         self.events.toss.params["throw_prob_stage1"] = 1.0
         self.events.toss.params["throw_prob_stage2"] = 1.0
         self.events.toss.params["throw_prob_stage3"] = 1.0
 
-        self.events.toss.params["stage1"] = {
-            "sampler": "target_ballistic",
-            "spawn_x": (0.30, 0.48),
-            "spawn_y": (-0.08, 0.08),
-            "spawn_z": (0.18, 0.34),
-            "target_x": (0.06, 0.18),
-            "target_y": (-0.06, 0.06),
-            "target_z": (0.08, 0.24),
-            "flight_time": (0.22, 0.36),
-            "max_speed": 1.55,
-            "max_vy_abs": 0.35,
-            "max_vz_abs": 1.90,
-            "roll": (-0.03, 0.03),
-            "pitch": (-0.04, 0.04),
-            "yaw": (-0.08, 0.08),
-            "ang_vel_x": (-0.06, 0.06),
-            "ang_vel_y": (-0.06, 0.06),
-            "ang_vel_z": (-0.10, 0.10),
-        }
-
-        self.events.toss.params["stage2"] = {
-            "sampler": "target_ballistic",
-            "spawn_x": (0.32, 0.66),
-            "spawn_y": (-0.28, 0.28),
-            "spawn_z": (0.12, 0.44),
-            "target_x": (0.02, 0.26),
-            "target_y": (-0.20, 0.20),
-            "target_z": (0.02, 0.32),
-            "flight_time": (0.20, 0.46),
-            "max_speed": 2.10,
-            "max_vy_abs": 0.85,
-            "max_vz_abs": 2.20,
-            "roll": (-0.04, 0.04),
-            "pitch": (-0.05, 0.05),
-            "yaw": (-0.14, 0.14),
-            "ang_vel_x": (-0.10, 0.10),
-            "ang_vel_y": (-0.10, 0.10),
-            "ang_vel_z": (-0.18, 0.18),
-        }
-
+        # Since eval_stage=3, only stage3 actually matters in Play.
         self.events.toss.params["stage3"] = {
             "sampler": "target_ballistic",
-            "spawn_x": (0.30, 0.85),
-            "spawn_y": (-0.45, 0.45),
-            "spawn_z": (0.05, 0.55),
-            "target_x": (-0.03, 0.32),
-            "target_y": (-0.25, 0.25),
-            "target_z": (0.00, 0.38),
-            "flight_time": (0.20, 0.55),
-            "max_speed": 2.60,
-            "max_vy_abs": 1.20,
-            "max_vz_abs": 2.40,
-            "roll": (-0.05, 0.05),
-            "pitch": (-0.06, 0.06),
-            "yaw": (-0.35, 0.35),
-            "ang_vel_x": (-0.18, 0.18),
-            "ang_vel_y": (-0.18, 0.18),
-            "ang_vel_z": (-0.42, 0.42),
+
+            # Spawn moderately in front of the robot.
+            "spawn_x": (0.38, 0.58),
+            "spawn_y": (-0.12, 0.12),
+            "spawn_z": (0.20, 0.38),
+
+            # Target near the chest/upper torso receiving region.
+            "target_x": (0.08, 0.22),
+            "target_y": (-0.07, 0.07),
+            "target_z": (0.10, 0.25),
+
+            # Not too fast, not too slow.
+            "flight_time": (0.30, 0.44),
+            "max_speed": 1.75,
+            "max_vy_abs": 0.40,
+            "max_vz_abs": 1.80,
+
+            # Mild object orientation/angular velocity.
+            "roll": (-0.02, 0.02),
+            "pitch": (-0.03, 0.03),
+            "yaw": (-0.08, 0.08),
+            "ang_vel_x": (-0.05, 0.05),
+            "ang_vel_y": (-0.05, 0.05),
+            "ang_vel_z": (-0.12, 0.12),
         }
