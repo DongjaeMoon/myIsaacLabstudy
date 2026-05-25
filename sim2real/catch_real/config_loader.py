@@ -354,6 +354,13 @@ def load_catch_real_config(config_path: str | Path, policy_override: str | None 
         object_visible_blend_duration_s=float(
             policy_runtime_raw.get("object_visible_blend_duration_s", 0.4)
         ),
+        gantry_upper_body_only=bool(policy_runtime_raw.get("gantry_upper_body_only", False)),
+        gantry_lower_body_action_scale=float(
+            policy_runtime_raw.get("gantry_lower_body_action_scale", 1.0)
+        ),
+        gantry_upper_body_action_scale=float(
+            policy_runtime_raw.get("gantry_upper_body_action_scale", 1.0)
+        ),
     )
     observation = ObservationConfig(
         contract_name=str(observation_raw.get("contract_name", "real_catch_v1")),

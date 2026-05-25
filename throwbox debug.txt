@@ -1,7 +1,7 @@
 cd ~/isaaclab/myIsaacLabstudy
 
 ./isaaclab.sh -p UROP/train_rsl_rl.py \
-  --task Isaac-Urop-v13 \
+  --task Isaac-Urop-v15 \
   --num_envs 1 \
   --max_iterations 20 \
   "env.curriculum.stage_schedule.params.eval_stage=1" \
@@ -9,7 +9,7 @@ cd ~/isaaclab/myIsaacLabstudy
   
   
   ./isaaclab.sh -p UROP/train_rsl_rl.py \
-  --task Isaac-Urop-v13 \
+  --task Isaac-Urop-v15 \
   --num_envs 1 \
   --max_iterations 20 \
   "env.curriculum.stage_schedule.params.eval_stage=2" \
@@ -17,7 +17,7 @@ cd ~/isaaclab/myIsaacLabstudy
   
   
   ./isaaclab.sh -p UROP/train_rsl_rl.py \
-  --task Isaac-Urop-v13 \
+  --task Isaac-Urop-v15 \
   --num_envs 1 \
   --max_iterations 20 \
   "env.curriculum.stage_schedule.params.eval_stage=3" \

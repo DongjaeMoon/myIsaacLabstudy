@@ -84,6 +84,9 @@ class PolicyRuntimeConfig:
     fake_object_debug: bool
     gate_policy_until_object_visible: bool
     object_visible_blend_duration_s: float
+    gantry_upper_body_only: bool
+    gantry_lower_body_action_scale: float
+    gantry_upper_body_action_scale: float
 
 
 @dataclass(frozen=True)

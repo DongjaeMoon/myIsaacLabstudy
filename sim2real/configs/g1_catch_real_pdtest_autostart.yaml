@@ -6,7 +6,7 @@ runtime:
   device: auto
   print_every: 1.0
   require_enter_before_start: true
-  default_move_duration: 3.0
+  default_move_duration: 1.0
   target_lowpass_alpha: 0.05
 communication:
   backend: unitree_dds
@@ -92,47 +92,47 @@ control:
     kd: 10.0
   pd_overrides:
     left_shoulder_pitch_joint:
-      kp: 85.0
-      kd: 12.0
+      kp: 40.0
+      kd: 5.0
     left_shoulder_roll_joint:
-      kp: 55.0
-      kd: 10.0
+      kp: 35.0
+      kd: 5.0
     left_shoulder_yaw_joint:
-      kp: 55.0
-      kd: 10.0
+      kp: 30.0
+      kd: 4.0
     left_elbow_joint:
-      kp: 85.0
-      kd: 12.0
+      kp: 40.0
+      kd: 5.0
     left_wrist_roll_joint:
-      kp: 55.0
-      kd: 10.0
+      kp: 20.0
+      kd: 2.0
     left_wrist_pitch_joint:
-      kp: 55.0
-      kd: 10.0
+      kp: 20.0
+      kd: 2.0
     left_wrist_yaw_joint:
-      kp: 55.0
-      kd: 10.0
+      kp: 20.0
+      kd: 2.0
     right_shoulder_pitch_joint:
-      kp: 85.0
-      kd: 12.0
+      kp: 40.0
+      kd: 5.0
     right_shoulder_roll_joint:
-      kp: 55.0
-      kd: 10.0
+      kp: 35.0
+      kd: 5.0
     right_shoulder_yaw_joint:
-      kp: 55.0
-      kd: 10.0
+      kp: 30.0
+      kd: 4.0
     right_elbow_joint:
-      kp: 85.0
-      kd: 12.0
+      kp: 40.0
+      kd: 5.0
     right_wrist_roll_joint:
-      kp: 55.0
-      kd: 10.0
+      kp: 20.0
+      kd: 2.0
     right_wrist_pitch_joint:
-      kp: 55.0
-      kd: 10.0
+      kp: 20.0
+      kd: 2.0
     right_wrist_yaw_joint:
-      kp: 55.0
-      kd: 10.0
+      kp: 20.0
+      kd: 2.0
 poses:
   safe_stand:
     left_hip_pitch_joint: -0.15
@@ -321,7 +321,7 @@ policy_runtime:
   manual_debug_key: k
   policy_mode_name: catch
   default_policy_reference_pose: catch_ready
-  auto_start_after_ready: false
+  auto_start_after_ready: true
   object_source: zeros
   fake_object_debug: false
   gate_policy_until_object_visible: false
@@ -387,7 +387,7 @@ modes:
     exit_primary: q
     exit_secondary: esc
   transitions:
-    default_pose_transition_duration_s: 3.0
+    default_pose_transition_duration_s: 1.0
     catch_ready_to_catch_duration: 0.2
     catch_to_hold_after_tag_lost_s: 0.5
     hold_duration_for_success_s: 2.0

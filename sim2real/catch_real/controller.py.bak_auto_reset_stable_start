@@ -21,23 +21,6 @@ from .state_reader import StateReader
 
 class G1CatchRealController:
     FAKE_OBJECT_TOGGLE_KEY = "o"
-    GANTRY_LOWER_BODY_JOINTS = {
-        "left_hip_pitch_joint",
-        "left_hip_roll_joint",
-        "left_hip_yaw_joint",
-        "left_knee_joint",
-        "left_ankle_pitch_joint",
-        "left_ankle_roll_joint",
-        "right_hip_pitch_joint",
-        "right_hip_roll_joint",
-        "right_hip_yaw_joint",
-        "right_knee_joint",
-        "right_ankle_pitch_joint",
-        "right_ankle_roll_joint",
-        "waist_yaw_joint",
-        "waist_roll_joint",
-        "waist_pitch_joint",
-    }
 
     def __init__(self, cfg: CatchRealConfig, args: argparse.Namespace):
         self.cfg = cfg
@@ -72,14 +55,6 @@ class G1CatchRealController:
         self.object_provider = ObjectObservationProvider(self.cfg)
         self.command_writer: MotorCommandWriter | None = None
         self.policy_mode = ControllerMode(self.cfg.policy_runtime.policy_mode_name)
-        self.gantry_lower_body_indices = np.array(
-            [
-                index
-                for index, joint_name in enumerate(self.cfg.robot.controlled_joint_names)
-                if joint_name in self.GANTRY_LOWER_BODY_JOINTS
-            ],
-            dtype=np.int64,
-        )
 
         self.current_mode = ControllerMode.DAMPING
         self.reference_pose_name = args.start_pose
@@ -111,11 +86,6 @@ class G1CatchRealController:
         self.last_projected_gravity: np.ndarray | None = None
         self.policy_ready_since: float | None = None
         self.last_policy_ready_status_time: float = 0.0
-
-        # [AUTO_RESET_SYNC] Detect MuJoCo Backspace/reset and re-sync controller.
-        self.last_reset_watch_q: np.ndarray | None = None
-        self.last_reset_watch_gravity: np.ndarray | None = None
-        self.last_auto_reset_sync_time: float = 0.0
 
     def init(self) -> None:
         self._print_startup_summary()
@@ -268,12 +238,6 @@ class G1CatchRealController:
         # If this improves stability, base_ang_vel frame/sign/scale is likely mismatched.
         base_ang_vel = np.zeros_like(base_ang_vel)
 
-        # [AUTO_RESET_SYNC] Keep latest state and detect MuJoCo Backspace/reset.
-        self.last_q = q.copy()
-        self.last_dq = dq.copy()
-        self.last_projected_gravity = projected_gravity.copy()
-        self._maybe_auto_sync_after_mujoco_reset(now, q, dq, projected_gravity)
-
         object_observation = self.object_provider.get()
         self.last_object_observation = object_observation
         obs = self.obs_builder.build(
@@ -311,7 +275,6 @@ class G1CatchRealController:
 
         nominal_target_q = self._compute_nominal_target(now, obs, object_observation)
         q_des = apply_joint_target_safety(self.cfg, nominal_target_q, self.last_sent_q_des)
-        q_des = self._apply_gantry_lower_body_target_freeze(q_des, q)
         self.command_writer.set_position_command(self.dds.mode_machine, q_des)
         self.current_target_q = q_des.copy()
         self.last_sent_q_des = q_des.copy()
@@ -363,13 +326,6 @@ class G1CatchRealController:
             f"debug={self.cfg.policy_runtime.manual_debug_key.upper()}"
         )
         print(f"[G1] object source      : {self.object_provider.status_label()}")
-        if self.cfg.policy_runtime.gantry_upper_body_only:
-            print("[G1] gantry upper-body-only: lower-body q_des frozen to current q")
-            print(
-                "[G1] gantry action mask : "
-                f"lower={self.cfg.policy_runtime.gantry_lower_body_action_scale:.2f}, "
-                f"upper={self.cfg.policy_runtime.gantry_upper_body_action_scale:.2f}"
-            )
 
     def _sync_after_mujoco_reset(self) -> None:
         # [DEBUG_RESET_SYNC_KEY] Re-sync Python controller after MuJoCo Backspace/reset.
@@ -493,85 +449,6 @@ class G1CatchRealController:
             return self.reference_pose_q.copy()
 
         return self.reference_pose_q.copy()
-
-    def _apply_gantry_lower_body_target_freeze(
-        self,
-        q_des: np.ndarray,
-        q_current: np.ndarray,
-    ) -> np.ndarray:
-        if not self.cfg.policy_runtime.gantry_upper_body_only:
-            return q_des
-        if self.gantry_lower_body_indices.size == 0:
-            return q_des
-
-        q_des_frozen = q_des.copy()
-        q_des_frozen[self.gantry_lower_body_indices] = q_current[self.gantry_lower_body_indices]
-        return q_des_frozen
-
-
-    def _maybe_auto_sync_after_mujoco_reset(
-        self,
-        now: float,
-        q: np.ndarray,
-        dq: np.ndarray,
-        projected_gravity: np.ndarray,
-    ) -> bool:
-        """Detect MuJoCo Backspace/reset and re-sync Python controller state."""
-        if self.last_reset_watch_q is None:
-            self.last_reset_watch_q = q.copy()
-            self.last_reset_watch_gravity = projected_gravity.copy()
-            return False
-
-        q_jump = float(np.max(np.abs(q - self.last_reset_watch_q)))
-        if self.last_reset_watch_gravity is None:
-            g_jump = 0.0
-        else:
-            g_jump = float(np.linalg.norm(projected_gravity - self.last_reset_watch_gravity))
-
-        self.last_reset_watch_q = q.copy()
-        self.last_reset_watch_gravity = projected_gravity.copy()
-
-        # Avoid repeated sync spam.
-        if (now - self.last_auto_reset_sync_time) < 0.50:
-            return False
-
-        gravity_xy = float(np.linalg.norm(projected_gravity[:2]))
-        uprightish = bool(projected_gravity[2] < -0.70 and gravity_xy < 0.45)
-
-        # Backspace/reset may appear as q jump, gravity jump, or both.
-        reset_like = bool(q_jump > 0.25 or g_jump > 0.50)
-        if not reset_like or not uprightish:
-            return False
-
-        self.last_auto_reset_sync_time = now
-
-        # Re-sync internal controller state to current MuJoCo LowState.
-        self.current_target_q = q.copy()
-        self.last_sent_q_des = q.copy()
-        self.policy_runner.zero_action()
-        self.policy_runner.reset_target(
-            self.cfg.poses[self.cfg.policy_runtime.default_policy_reference_pose].copy()
-        )
-
-        self.transition_active = False
-        self.pending_auto_start_policy = False
-        self.policy_gate_blend = 0.0
-        self.policy_gate_last_visible_time = None
-        self.policy_ready_since = None
-        self.last_policy_time = -1e9
-
-        # Restart catch_ready transition. If auto_start_after_ready=True,
-        # request_mode will set pending_auto_start_policy again.
-        self.current_mode = ControllerMode.DAMPING
-        self.request_mode(ControllerMode.CATCH_READY, duration=self.move_duration, announce=True)
-
-        print(
-            "[G1] Auto reset-sync detected: "
-            f"q_jump={q_jump:.3f}, g_jump={g_jump:.3f}, gravity_xy={gravity_xy:.3f}. "
-            "Captured current q and restarted catch_ready transition."
-        )
-        return True
-
 
     def _ready_for_policy_autostart(self, now: float) -> bool:
         """Return True only after the robot is stably near catch_ready for a short hold time."""

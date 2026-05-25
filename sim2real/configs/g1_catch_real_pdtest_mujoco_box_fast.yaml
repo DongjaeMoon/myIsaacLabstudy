@@ -1,5 +1,5 @@
 version: 0.2.0
-name: g1_standing_catch_real_deployable_v1
+name: g1_standing_catch_real_pdtest_mujoco_box
 runtime:
   control_dt: 0.002
   policy_dt: 0.02
@@ -7,7 +7,7 @@ runtime:
   print_every: 1.0
   require_enter_before_start: true
   default_move_duration: 3.0
-  target_lowpass_alpha: 0.05
+  target_lowpass_alpha: 0.3
 communication:
   backend: unitree_dds
   net_iface: null
@@ -92,47 +92,47 @@ control:
     kd: 10.0
   pd_overrides:
     left_shoulder_pitch_joint:
-      kp: 85.0
-      kd: 12.0
+      kp: 40.0
+      kd: 5.0
     left_shoulder_roll_joint:
-      kp: 55.0
-      kd: 10.0
+      kp: 35.0
+      kd: 5.0
     left_shoulder_yaw_joint:
-      kp: 55.0
-      kd: 10.0
+      kp: 30.0
+      kd: 4.0
     left_elbow_joint:
-      kp: 85.0
-      kd: 12.0
+      kp: 40.0
+      kd: 5.0
     left_wrist_roll_joint:
-      kp: 55.0
-      kd: 10.0
+      kp: 20.0
+      kd: 2.0
     left_wrist_pitch_joint:
-      kp: 55.0
-      kd: 10.0
+      kp: 20.0
+      kd: 2.0
     left_wrist_yaw_joint:
-      kp: 55.0
-      kd: 10.0
+      kp: 20.0
+      kd: 2.0
     right_shoulder_pitch_joint:
-      kp: 85.0
-      kd: 12.0
+      kp: 40.0
+      kd: 5.0
     right_shoulder_roll_joint:
-      kp: 55.0
-      kd: 10.0
+      kp: 35.0
+      kd: 5.0
     right_shoulder_yaw_joint:
-      kp: 55.0
-      kd: 10.0
+      kp: 30.0
+      kd: 4.0
     right_elbow_joint:
-      kp: 85.0
-      kd: 12.0
+      kp: 40.0
+      kd: 5.0
     right_wrist_roll_joint:
-      kp: 55.0
-      kd: 10.0
+      kp: 20.0
+      kd: 2.0
     right_wrist_pitch_joint:
-      kp: 55.0
-      kd: 10.0
+      kp: 20.0
+      kd: 2.0
     right_wrist_yaw_joint:
-      kp: 55.0
-      kd: 10.0
+      kp: 20.0
+      kd: 2.0
 poses:
   safe_stand:
     left_hip_pitch_joint: -0.15
@@ -322,7 +322,7 @@ policy_runtime:
   policy_mode_name: catch
   default_policy_reference_pose: catch_ready
   auto_start_after_ready: false
-  object_source: zeros
+  object_source: mujoco_udp
   fake_object_debug: false
   gate_policy_until_object_visible: false
   object_visible_blend_duration_s: 0.4
@@ -418,8 +418,8 @@ safety:
   damping_kd: 8.0
   clamp_action: true
   clamp_joint_targets_to_limits: false
-  max_target_delta_per_control_step: 0.01
-  max_target_delta_per_policy_step: 0.04
+  max_target_delta_per_control_step: 0.05
+  max_target_delta_per_policy_step: 0.15
   lowstate_timeout_s: 0.1
   max_abs_joint_velocity_warn: 20.0
   max_abs_action_warn: 0.95

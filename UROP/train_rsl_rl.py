@@ -126,6 +126,7 @@ import UROP_v12
 import UROP_v13
 import UROP_v14
 import UROP_v15
+import UROP_v16
 import UROP_carry_v0
 import UROP_carry_v2
 import UROP_carry_v3
@@ -182,9 +183,24 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
 
     # create isaac environment
     env = gym.make(args_cli.task, cfg=env_cfg, render_mode="rgb_array" if args_cli.video else None)
-    #robot = env.unwrapped.scene["robot"]
-    #print("JOINT NAMES:", robot.data.joint_names)
-    #raise SystemExit
+
+    if args_cli.task and "Isaac-Urop-v16" in args_cli.task:
+        policy_obs_dim = env.unwrapped.observation_manager.group_obs_dim.get("policy")
+        critic_obs_dim = env.unwrapped.observation_manager.group_obs_dim.get("critic")
+        action_dim = env.unwrapped.action_manager.total_action_dim
+        joint_names = list(getattr(env.unwrapped.cfg.actions.policy, "joint_names", []))
+        has_finger_action = any(
+            token in name for name in joint_names for token in ("thumb", "index", "middle", "hand")
+        )
+        print(f"[UROP_v16] runtime policy_obs_dim={policy_obs_dim} critic_obs_dim={critic_obs_dim}")
+        print(f"[UROP_v16] runtime action_dim={action_dim} finger_actions_present={has_finger_action}")
+        print(f"[UROP_v16] runtime controlled_joint_order={joint_names}")
+        if policy_obs_dim != (104,):
+            raise RuntimeError(f"[UROP_v16] Expected policy obs dim (104,), got {policy_obs_dim}.")
+        if action_dim != 29:
+            raise RuntimeError(f"[UROP_v16] Expected action dim 29, got {action_dim}.")
+        if has_finger_action:
+            raise RuntimeError("[UROP_v16] Finger joints unexpectedly appeared in the action space.")
 
     # convert to single-agent instance if required by the RL algorithm
     if isinstance(env.unwrapped, DirectMARLEnv):

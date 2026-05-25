@@ -12,6 +12,24 @@ except Exception:
 
 
 class PolicyRunner:
+    LOWER_BODY_JOINTS = {
+        "left_hip_pitch_joint",
+        "left_hip_roll_joint",
+        "left_hip_yaw_joint",
+        "left_knee_joint",
+        "left_ankle_pitch_joint",
+        "left_ankle_roll_joint",
+        "right_hip_pitch_joint",
+        "right_hip_roll_joint",
+        "right_hip_yaw_joint",
+        "right_knee_joint",
+        "right_ankle_pitch_joint",
+        "right_ankle_roll_joint",
+        "waist_yaw_joint",
+        "waist_roll_joint",
+        "waist_pitch_joint",
+    }
+
     def __init__(self, cfg: CatchRealConfig, no_policy: bool, device: str):
         self.cfg = cfg
         self.no_policy = no_policy
@@ -19,7 +37,8 @@ class PolicyRunner:
         self.policy = None
         self.policy_device = None
         self.prev_action = np.zeros(self.cfg.policy.num_actions, dtype=np.float64)
-        self.last_target_q = self.cfg.poses["catch"].copy()
+        self.last_target_q = self.cfg.poses[self.cfg.policy_runtime.default_policy_reference_pose].copy()
+        self.action_multipliers = self._build_action_multipliers()
 
     @property
     def is_loaded(self) -> bool:
@@ -48,6 +67,20 @@ class PolicyRunner:
         self.prev_action[:] = 0.0
         self.last_target_q = target_q.copy()
 
+    def _build_action_multipliers(self) -> np.ndarray:
+        multipliers = np.ones(self.cfg.policy.num_actions, dtype=np.float64)
+        if not self.cfg.policy_runtime.gantry_upper_body_only:
+            return multipliers
+
+        lower_scale = float(self.cfg.policy_runtime.gantry_lower_body_action_scale)
+        upper_scale = float(self.cfg.policy_runtime.gantry_upper_body_action_scale)
+        for index, entry in enumerate(self.cfg.policy.action_order):
+            if entry.name in self.LOWER_BODY_JOINTS:
+                multipliers[index] = lower_scale
+            else:
+                multipliers[index] = upper_scale
+        return multipliers
+
     def compute_target(self, obs: np.ndarray, q_ref: np.ndarray) -> np.ndarray:
         if not self.is_loaded or torch is None:
             return q_ref.copy()
@@ -59,6 +92,8 @@ class PolicyRunner:
 
         if self.cfg.safety.clamp_action:
             clipped_action = clamp(clipped_action, -self.cfg.policy.action_clip, self.cfg.policy.action_clip)
+
+        clipped_action = clipped_action * self.action_multipliers
 
         q_target_raw = q_ref.copy()
         q_target_raw[self.cfg.policy.action_slot_indices] = (

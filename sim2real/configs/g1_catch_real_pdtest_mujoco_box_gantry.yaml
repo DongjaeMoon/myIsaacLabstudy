@@ -1,5 +1,5 @@
 version: 0.2.0
-name: g1_standing_catch_real_deployable_v1
+name: g1_standing_catch_real_pdtest_mujoco_box_gantry
 runtime:
   control_dt: 0.002
   policy_dt: 0.02
@@ -92,47 +92,47 @@ control:
     kd: 10.0
   pd_overrides:
     left_shoulder_pitch_joint:
-      kp: 85.0
-      kd: 12.0
+      kp: 40.0
+      kd: 5.0
     left_shoulder_roll_joint:
-      kp: 55.0
-      kd: 10.0
+      kp: 35.0
+      kd: 5.0
     left_shoulder_yaw_joint:
-      kp: 55.0
-      kd: 10.0
+      kp: 30.0
+      kd: 4.0
     left_elbow_joint:
-      kp: 85.0
-      kd: 12.0
+      kp: 40.0
+      kd: 5.0
     left_wrist_roll_joint:
-      kp: 55.0
-      kd: 10.0
+      kp: 20.0
+      kd: 2.0
     left_wrist_pitch_joint:
-      kp: 55.0
-      kd: 10.0
+      kp: 20.0
+      kd: 2.0
     left_wrist_yaw_joint:
-      kp: 55.0
-      kd: 10.0
+      kp: 20.0
+      kd: 2.0
     right_shoulder_pitch_joint:
-      kp: 85.0
-      kd: 12.0
+      kp: 40.0
+      kd: 5.0
     right_shoulder_roll_joint:
-      kp: 55.0
-      kd: 10.0
+      kp: 35.0
+      kd: 5.0
     right_shoulder_yaw_joint:
-      kp: 55.0
-      kd: 10.0
+      kp: 30.0
+      kd: 4.0
     right_elbow_joint:
-      kp: 85.0
-      kd: 12.0
+      kp: 40.0
+      kd: 5.0
     right_wrist_roll_joint:
-      kp: 55.0
-      kd: 10.0
+      kp: 20.0
+      kd: 2.0
     right_wrist_pitch_joint:
-      kp: 55.0
-      kd: 10.0
+      kp: 20.0
+      kd: 2.0
     right_wrist_yaw_joint:
-      kp: 55.0
-      kd: 10.0
+      kp: 20.0
+      kd: 2.0
 poses:
   safe_stand:
     left_hip_pitch_joint: -0.15
@@ -322,10 +322,13 @@ policy_runtime:
   policy_mode_name: catch
   default_policy_reference_pose: catch_ready
   auto_start_after_ready: false
-  object_source: zeros
+  object_source: mujoco_udp
   fake_object_debug: false
   gate_policy_until_object_visible: false
   object_visible_blend_duration_s: 0.4
+  gantry_upper_body_only: true
+  gantry_lower_body_action_scale: 0.0
+  gantry_upper_body_action_scale: 1.0
 observation:
   contract_name: real_catch_v1
   num_obs: 104
