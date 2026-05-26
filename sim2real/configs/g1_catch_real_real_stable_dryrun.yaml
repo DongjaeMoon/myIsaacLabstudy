@@ -276,9 +276,9 @@ policy_runtime:
   autonomous_key: a
   default_policy_reference_pose: catch_ready
   fake_object_debug: false
-  gate_policy_until_object_visible: false
+  gate_policy_until_object_visible: true
   manual_debug_key: k
-  object_source: mujoco_udp
+  object_source: zeros
   object_visible_blend_duration_s: 0.4
   policy_mode_name: catch
   gantry_upper_body_only: false
@@ -447,7 +447,7 @@ runtime:
   policy_dt: 0.02
   print_every: 1.0
   require_enter_before_start: true
-  target_lowpass_alpha: 1.0
+  target_lowpass_alpha: 0.05
 safety:
   clamp_action: true
   clamp_joint_targets_to_limits: false

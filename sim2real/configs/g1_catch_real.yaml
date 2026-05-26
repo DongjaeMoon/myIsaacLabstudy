@@ -225,7 +225,7 @@ poses:
     right_wrist_pitch_joint: 0.0
     right_wrist_yaw_joint: 0.0
 policy:
-  path: ./logs/rsl_rl/UROP_v15/2026-05-24_02-11-05/exported/policy.pt
+  path: ./logs/rsl_rl/UROP_v16/2026-05-26_03-43-41/exported/policy.pt
   num_actions: 29
   action_clip: 1.0
   action_order:
