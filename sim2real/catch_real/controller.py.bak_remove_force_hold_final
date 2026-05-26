@@ -309,6 +309,10 @@ class G1CatchRealController:
         q_des = apply_joint_target_safety(self.cfg, nominal_target_q, self.last_sent_q_des)
         q_des = self._apply_gantry_lower_body_target_freeze(q_des, q)
 
+        # [FORCE_CURRENT_Q_HOLD_ALWAYS]
+        # HARD diagnostic: ignore all pose/policy targets and command current measured q.
+        # If this still oscillates, the problem is below reference/policy generation.
+        q_des = q.copy()
 
 
         # [DEBUG_CURRENT_Q_HOLD] Hard diagnostic:

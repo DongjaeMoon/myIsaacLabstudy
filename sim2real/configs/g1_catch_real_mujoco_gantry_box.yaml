@@ -1,0 +1,474 @@
+camera:
+  enabled: false
+  estimator:
+    lost_timeout_s: 0.2
+    min_valid_detections: 3
+    velocity_filter_alpha: 0.35
+  extrinsics_yaml: sim2real/calib/head_camera_extrinsics.example.yaml
+  image_show: false
+  intrinsics_yaml: sim2real/calib/head_camera_intrinsics.example.yaml
+  port: 5555
+  server_address: 192.168.123.164
+  tag_yaml: sim2real/calib/box_tag_config.example.yaml
+communication:
+  backend: unitree_dds
+  lowcmd_topic: rt/lowcmd
+  lowstate_topic: rt/lowstate
+  msg_type: hg
+  net_iface: null
+  release_high_level_mode: true
+control:
+  command_type: joint_position_pd
+  default_pd:
+    kd: 1.0
+    kp: 40.0
+  dq_des: 0.0
+  pd_overrides:
+    left_ankle_pitch_joint:
+      kd: 1.0
+      kp: 40.0
+    left_ankle_roll_joint:
+      kd: 1.0
+      kp: 40.0
+    left_elbow_joint:
+      kd: 1.0
+      kp: 40.0
+    left_hip_pitch_joint:
+      kd: 1.0
+      kp: 60.0
+    left_hip_roll_joint:
+      kd: 1.0
+      kp: 60.0
+    left_hip_yaw_joint:
+      kd: 1.0
+      kp: 60.0
+    left_knee_joint:
+      kd: 2.0
+      kp: 100.0
+    left_shoulder_pitch_joint:
+      kd: 1.0
+      kp: 40.0
+    left_shoulder_roll_joint:
+      kd: 1.0
+      kp: 40.0
+    left_shoulder_yaw_joint:
+      kd: 1.0
+      kp: 40.0
+    left_wrist_pitch_joint:
+      kd: 1.0
+      kp: 40.0
+    left_wrist_roll_joint:
+      kd: 1.0
+      kp: 40.0
+    left_wrist_yaw_joint:
+      kd: 1.0
+      kp: 40.0
+    right_ankle_pitch_joint:
+      kd: 1.0
+      kp: 40.0
+    right_ankle_roll_joint:
+      kd: 1.0
+      kp: 40.0
+    right_elbow_joint:
+      kd: 1.0
+      kp: 40.0
+    right_hip_pitch_joint:
+      kd: 1.0
+      kp: 60.0
+    right_hip_roll_joint:
+      kd: 1.0
+      kp: 60.0
+    right_hip_yaw_joint:
+      kd: 1.0
+      kp: 60.0
+    right_knee_joint:
+      kd: 2.0
+      kp: 100.0
+    right_shoulder_pitch_joint:
+      kd: 1.0
+      kp: 40.0
+    right_shoulder_roll_joint:
+      kd: 1.0
+      kp: 40.0
+    right_shoulder_yaw_joint:
+      kd: 1.0
+      kp: 40.0
+    right_wrist_pitch_joint:
+      kd: 1.0
+      kp: 40.0
+    right_wrist_roll_joint:
+      kd: 1.0
+      kp: 40.0
+    right_wrist_yaw_joint:
+      kd: 1.0
+      kp: 40.0
+    waist_pitch_joint:
+      kd: 1.0
+      kp: 40.0
+    waist_roll_joint:
+      kd: 1.0
+      kp: 40.0
+    waist_yaw_joint:
+      kd: 1.0
+      kp: 60.0
+  q_des_source: q_ref_plus_residual_action
+  tau_ff: 0.0
+modes:
+  initial: safe_stand
+  keyboard:
+    catch: k
+    catch_ready_primary: p
+    catch_ready_secondary: c
+    damping: d
+    exit_primary: q
+    exit_secondary: esc
+    hold: h
+    safe_stand: s
+  names:
+  - safe_stand
+  - catch_ready
+  - catch
+  - hold
+  transitions:
+    catch_ready_to_catch_duration: 0.2
+    catch_to_hold_after_tag_lost_s: 0.5
+    default_pose_transition_duration_s: 3.0
+    hold_duration_for_success_s: 2.0
+name: g1_standing_catch_real_deployable_v1
+observation:
+  contract_name: real_catch_v1
+  frame: policy_body
+  num_obs: 104
+  q_reference: current_mode_reference_pose
+  terms:
+  - dim: 3
+    name: projected_gravity
+    scale: 1.0
+    source: imu
+  - dim: 3
+    name: base_ang_vel
+    scale: 1.0
+    source: imu_gyro
+  - dim: 29
+    name: joint_pos_rel
+    scale: 1.0
+    source: lowstate_q_minus_q_ref
+  - dim: 29
+    name: joint_vel
+    scale: 0.05
+    source: lowstate_dq
+  - dim: 29
+    name: previous_action
+    scale: 1.0
+    source: previous_policy_action
+  - dim: 3
+    name: object_rel_pos
+    scale: 1.0
+    source: apriltag_estimator
+  - dim: 3
+    name: object_rel_lin_vel
+    scale: 1.0
+    source: apriltag_estimator
+  - dim: 1
+    name: tag_visible
+    scale: 1.0
+    source: apriltag_estimator
+  - dim: 4
+    name: mode_one_hot
+    scale: 1.0
+    source: mode_machine
+  use_base_linear_velocity_obs: false
+  use_torque_obs: false
+policy:
+  action_clip: 1.0
+  action_order:
+  - group: leg
+    name: left_hip_pitch_joint
+    scale: 0.3
+  - group: leg
+    name: left_hip_roll_joint
+    scale: 0.2
+  - group: leg
+    name: left_hip_yaw_joint
+    scale: 0.1
+  - group: leg
+    name: left_knee_joint
+    scale: 0.3
+  - group: leg
+    name: left_ankle_pitch_joint
+    scale: 0.3
+  - group: leg
+    name: left_ankle_roll_joint
+    scale: 0.2
+  - group: leg
+    name: right_hip_pitch_joint
+    scale: 0.3
+  - group: leg
+    name: right_hip_roll_joint
+    scale: 0.2
+  - group: leg
+    name: right_hip_yaw_joint
+    scale: 0.1
+  - group: leg
+    name: right_knee_joint
+    scale: 0.3
+  - group: leg
+    name: right_ankle_pitch_joint
+    scale: 0.3
+  - group: leg
+    name: right_ankle_roll_joint
+    scale: 0.2
+  - group: waist
+    name: waist_yaw_joint
+    scale: 0.2
+  - group: waist
+    name: waist_roll_joint
+    scale: 0.2
+  - group: waist
+    name: waist_pitch_joint
+    scale: 0.2
+  - group: arm
+    name: left_shoulder_pitch_joint
+    scale: 0.5
+  - group: arm
+    name: left_shoulder_roll_joint
+    scale: 0.3
+  - group: arm
+    name: left_shoulder_yaw_joint
+    scale: 0.3
+  - group: arm
+    name: left_elbow_joint
+    scale: 0.5
+  - group: arm
+    name: left_wrist_roll_joint
+    scale: 0.3
+  - group: arm
+    name: left_wrist_pitch_joint
+    scale: 0.3
+  - group: arm
+    name: left_wrist_yaw_joint
+    scale: 0.3
+  - group: arm
+    name: right_shoulder_pitch_joint
+    scale: 0.5
+  - group: arm
+    name: right_shoulder_roll_joint
+    scale: 0.3
+  - group: arm
+    name: right_shoulder_yaw_joint
+    scale: 0.3
+  - group: arm
+    name: right_elbow_joint
+    scale: 0.5
+  - group: arm
+    name: right_wrist_roll_joint
+    scale: 0.3
+  - group: arm
+    name: right_wrist_pitch_joint
+    scale: 0.3
+  - group: arm
+    name: right_wrist_yaw_joint
+    scale: 0.3
+  num_actions: 29
+  path: ./logs/rsl_rl/UROP_v15/2026-05-24_02-11-05/exported/policy.pt
+policy_runtime:
+  auto_start_after_ready: false
+  autonomous_key: a
+  default_policy_reference_pose: catch_ready
+  fake_object_debug: false
+  gantry_upper_body_only: true
+  gate_policy_until_object_visible: false
+  manual_debug_key: k
+  object_source: mujoco_udp
+  object_visible_blend_duration_s: 0.4
+  policy_mode_name: catch
+  gantry_lower_body_action_scale: 0.0
+  gantry_upper_body_action_scale: 1.0
+poses:
+  catch_ready:
+    left_ankle_pitch_joint: -0.15
+    left_ankle_roll_joint: 0.0
+    left_elbow_joint: 0.0
+    left_hip_pitch_joint: -0.15
+    left_hip_roll_joint: 0.0
+    left_hip_yaw_joint: 0.0
+    left_knee_joint: 0.3
+    left_shoulder_pitch_joint: 0.5
+    left_shoulder_roll_joint: 0.5
+    left_shoulder_yaw_joint: 0.0
+    left_wrist_pitch_joint: 0.0
+    left_wrist_roll_joint: 0.0
+    left_wrist_yaw_joint: 0.0
+    right_ankle_pitch_joint: -0.15
+    right_ankle_roll_joint: 0.0
+    right_elbow_joint: 0.0
+    right_hip_pitch_joint: -0.15
+    right_hip_roll_joint: 0.0
+    right_hip_yaw_joint: 0.0
+    right_knee_joint: 0.3
+    right_shoulder_pitch_joint: 0.5
+    right_shoulder_roll_joint: -0.5
+    right_shoulder_yaw_joint: 0.0
+    right_wrist_pitch_joint: 0.0
+    right_wrist_roll_joint: 0.0
+    right_wrist_yaw_joint: 0.0
+    waist_pitch_joint: 0.0
+    waist_roll_joint: 0.0
+    waist_yaw_joint: 0.0
+  hold:
+    left_ankle_pitch_joint: -0.15
+    left_ankle_roll_joint: 0.0
+    left_elbow_joint: 0.8
+    left_hip_pitch_joint: -0.15
+    left_hip_roll_joint: 0.0
+    left_hip_yaw_joint: 0.0
+    left_knee_joint: 0.3
+    left_shoulder_pitch_joint: -0.3
+    left_shoulder_roll_joint: 0.4
+    left_shoulder_yaw_joint: 0.0
+    left_wrist_pitch_joint: 0.0
+    left_wrist_roll_joint: 0.0
+    left_wrist_yaw_joint: 0.0
+    right_ankle_pitch_joint: -0.15
+    right_ankle_roll_joint: 0.0
+    right_elbow_joint: 0.8
+    right_hip_pitch_joint: -0.15
+    right_hip_roll_joint: 0.0
+    right_hip_yaw_joint: 0.0
+    right_knee_joint: 0.3
+    right_shoulder_pitch_joint: -0.3
+    right_shoulder_roll_joint: -0.4
+    right_shoulder_yaw_joint: 0.0
+    right_wrist_pitch_joint: 0.0
+    right_wrist_roll_joint: 0.0
+    right_wrist_yaw_joint: 0.0
+    waist_pitch_joint: 0.0
+    waist_roll_joint: 0.0
+    waist_yaw_joint: 0.0
+  safe_stand:
+    left_ankle_pitch_joint: -0.15
+    left_ankle_roll_joint: 0.0
+    left_elbow_joint: 0.55
+    left_hip_pitch_joint: -0.15
+    left_hip_roll_joint: 0.0
+    left_hip_yaw_joint: 0.0
+    left_knee_joint: 0.3
+    left_shoulder_pitch_joint: 0.2
+    left_shoulder_roll_joint: 0.0
+    left_shoulder_yaw_joint: 0.0
+    left_wrist_pitch_joint: 0.0
+    left_wrist_roll_joint: 0.0
+    left_wrist_yaw_joint: 0.0
+    right_ankle_pitch_joint: -0.15
+    right_ankle_roll_joint: 0.0
+    right_elbow_joint: 0.55
+    right_hip_pitch_joint: -0.15
+    right_hip_roll_joint: 0.0
+    right_hip_yaw_joint: 0.0
+    right_knee_joint: 0.3
+    right_shoulder_pitch_joint: 0.2
+    right_shoulder_roll_joint: 0.0
+    right_shoulder_yaw_joint: 0.0
+    right_wrist_pitch_joint: 0.0
+    right_wrist_roll_joint: 0.0
+    right_wrist_yaw_joint: 0.0
+    waist_pitch_joint: 0.0
+    waist_roll_joint: 0.0
+    waist_yaw_joint: 0.0
+robot:
+  controlled_joint_names:
+  - left_hip_pitch_joint
+  - left_hip_roll_joint
+  - left_hip_yaw_joint
+  - left_knee_joint
+  - left_ankle_pitch_joint
+  - left_ankle_roll_joint
+  - right_hip_pitch_joint
+  - right_hip_roll_joint
+  - right_hip_yaw_joint
+  - right_knee_joint
+  - right_ankle_pitch_joint
+  - right_ankle_roll_joint
+  - waist_yaw_joint
+  - waist_roll_joint
+  - waist_pitch_joint
+  - left_shoulder_pitch_joint
+  - left_shoulder_roll_joint
+  - left_shoulder_yaw_joint
+  - left_elbow_joint
+  - left_wrist_roll_joint
+  - left_wrist_pitch_joint
+  - left_wrist_yaw_joint
+  - right_shoulder_pitch_joint
+  - right_shoulder_roll_joint
+  - right_shoulder_yaw_joint
+  - right_elbow_joint
+  - right_wrist_roll_joint
+  - right_wrist_pitch_joint
+  - right_wrist_yaw_joint
+  imu:
+    policy_body_frame: unitree
+    quaternion_order: auto
+    use_base_linear_velocity: false
+  motor_indices:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+  - 16
+  - 17
+  - 18
+  - 19
+  - 20
+  - 21
+  - 22
+  - 23
+  - 24
+  - 25
+  - 26
+  - 27
+  - 28
+  name: unitree_g1
+  num_motors: 29
+runtime:
+  control_dt: 0.002
+  default_move_duration: 3.0
+  device: auto
+  policy_dt: 0.02
+  print_every: 1.0
+  require_enter_before_start: true
+  target_lowpass_alpha: 0.05
+safety:
+  clamp_action: true
+  clamp_joint_targets_to_limits: false
+  damping_kd: 8.0
+  damping_on_exit: true
+  emergency_gravity_z_min: -0.3
+  lowstate_timeout_s: 0.1
+  max_abs_action_warn: 0.95
+  max_abs_joint_velocity_warn: 20.0
+  max_target_delta_per_control_step: 0.01
+  max_target_delta_per_policy_step: 0.04
+version: 0.2.0
+virtual_object:
+  enabled_when_no_camera: true
+  initial_pos_base:
+  - 1.5
+  - 0.0
+  - 0.4
+  initial_vel_base:
+  - -2.5
+  - 0.0
+  - 0.0

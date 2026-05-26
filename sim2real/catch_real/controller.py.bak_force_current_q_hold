@@ -309,8 +309,6 @@ class G1CatchRealController:
         q_des = apply_joint_target_safety(self.cfg, nominal_target_q, self.last_sent_q_des)
         q_des = self._apply_gantry_lower_body_target_freeze(q_des, q)
 
-
-
         # [DEBUG_CURRENT_Q_HOLD] Hard diagnostic:
         # If enabled by config policy_runtime.debug_current_q_hold=True,
         # command q_des = current measured q and dq_des = 0.
