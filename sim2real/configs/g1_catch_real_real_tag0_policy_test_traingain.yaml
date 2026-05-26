@@ -270,7 +270,7 @@ policy:
     name: right_wrist_yaw_joint
     scale: 0.3
   num_actions: 29
-  #path: ./logs/rsl_rl/UROP_v16/2026-05-24_02-11-05/exported/policy.pt
+  #path: ./logs/rsl_rl/UROP_v15/2026-05-24_02-11-05/exported/policy.pt
   path: ./logs/rsl_rl/UROP_v16/2026-05-26_03-43-41/exported/policy.pt
 policy_runtime:
   auto_start_after_ready: false
