@@ -411,9 +411,9 @@ class CurriculumCfg:
     stage_schedule = CurrTerm(
         func=mdp.stage_schedule,
         params={
-            "stage0_iters": 400,
-            "stage1_iters": 1200,
-            "stage2_iters": 1800,
+            "stage0_iters": 300,
+            "stage1_iters": 500,
+            "stage2_iters": 700,
             "num_steps_per_env": 64,
             "eval_stage": -1,
         },
