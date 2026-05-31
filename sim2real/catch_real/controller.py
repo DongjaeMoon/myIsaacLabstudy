@@ -149,6 +149,7 @@ class G1CatchRealController:
                 self.control_thread.Wait(timeout=1.0)
             except Exception:
                 pass
+        self.object_provider.close()
 
     def request_mode(self, mode: ControllerMode, duration: float | None = None, announce: bool = True) -> None:
         if mode == ControllerMode.DAMPING:
@@ -262,7 +263,12 @@ class G1CatchRealController:
 
         self.lowstate_warned_stale = False
         q, dq = self.state_reader.read_motor_state(self.dds.low_state)
-        _, _, projected_gravity, base_ang_vel = self.state_reader.read_base_state(self.dds.low_state)
+        _, quat_wxyz, projected_gravity, base_ang_vel = self.state_reader.read_base_state(self.dds.low_state)
+        self.object_provider.update_robot_state(
+            quat_wxyz=quat_wxyz,
+            q=q,
+            controlled_joint_names=self.cfg.robot.controlled_joint_names,
+        )
 
         # [AUTO_RESET_SYNC] Keep latest state and detect MuJoCo Backspace/reset.
         self.last_q = q.copy()
@@ -359,7 +365,31 @@ class G1CatchRealController:
         print(f"[G1] policy disabled    : {self.no_policy}")
         print(f"[G1] policy enabled     : {not self.no_policy}")
         print(f"[G1] policy path        : {policy_path_str}")
+        print(f"[G1] object source      : {self.cfg.policy_runtime.object_source}")
+        print(f"[G1] camera enabled     : {self.cfg.camera.enabled}")
+        print(f"[G1] camera endpoint    : tcp://{self.cfg.camera.server_address}:{self.cfg.camera.port}")
+        print(
+            f"[G1] camera yaml paths  : "
+            f"intr={self.cfg.camera.intrinsics_yaml}, "
+            f"extr={self.cfg.camera.extrinsics_yaml}, "
+            f"tag={self.cfg.camera.tag_yaml}"
+        )
+        stale_timeout = self.object_provider.stale_timeout_s()
+        if stale_timeout is None:
+            print("[G1] object stale t/o  : n/a")
+        else:
+            print(f"[G1] object stale t/o  : {stale_timeout:.3f}s")
+        print(f"[G1] object source init : {self.object_provider.initialization_status()}")
+        if self.cfg.policy_runtime.object_source == "apriltag_zmq":
+            print(
+                "[G1] AprilTag base state: using IMU attitude with zero base pos/lin-vel "
+                "approximation for standing tests; body->camera is updated from live waist FK."
+            )
+            for line in self.object_provider.startup_summary_lines():
+                print(line)
         print(f"[G1] target lowpass     : alpha={self.cfg.runtime.target_lowpass_alpha:.3f}")
+        print(f"[G1] gate until visible : {self.cfg.policy_runtime.gate_policy_until_object_visible}")
+        print(f"[G1] visible blend dur  : {self.cfg.policy_runtime.object_visible_blend_duration_s:.2f}s")
         print(f"[G1] kp summary         : min={kp_min:.2f}, max={kp_max:.2f}")
         print(f"[G1] kd summary         : min={kd_min:.2f}, max={kd_max:.2f}")
         print(f"[G1] obs dim/action dim : {self.cfg.observation.num_obs} / {self.cfg.policy.num_actions}")
@@ -368,7 +398,7 @@ class G1CatchRealController:
             f"auto={self.cfg.policy_runtime.autonomous_key.upper()}, "
             f"debug={self.cfg.policy_runtime.manual_debug_key.upper()}"
         )
-        print(f"[G1] object source      : {self.object_provider.status_label()}")
+        print(f"[G1] object status      : {self.object_provider.status_label()}")
         if self.cfg.policy_runtime.gantry_upper_body_only:
             print("[G1] gantry upper-body-only: lower-body q_des frozen to current q")
             print(
@@ -637,7 +667,9 @@ class G1CatchRealController:
             print(
                 f"[G1] mode={self.current_mode.value:<12s} "
                 f"max|q-q_ref|=n/a max|dq|=n/a gravity=n/a "
-                f"tag_visible=n/a object_rel_pos=n/a policy_running={policy_running} "
+                f"tag_visible=n/a object_rel_pos=n/a object_rel_lin_vel=n/a "
+                f"object_source_status={self.object_provider.source_status()} "
+                f"policy_running={policy_running} "
                 f"lowstate_fresh={lowstate_fresh}"
             )
             return
@@ -646,12 +678,15 @@ class G1CatchRealController:
         max_dq = float(np.max(np.abs(dq)))
         gravity_str = np.array2string(np.round(gravity, 3), precision=3, separator=",")
         object_pos_str = np.array2string(np.round(object_observation.rel_pos, 3), precision=3, separator=",")
+        object_vel_str = np.array2string(np.round(object_observation.rel_lin_vel, 3), precision=3, separator=",")
         tag_visible = int(float(object_observation.tag_visible[0]) > 0.5)
         print(
             f"[G1] mode={self.current_mode.value:<12s} "
             f"max|q-q_ref|={q_ref_err:.3f} max|dq|={max_dq:.3f} "
             f"gravity={gravity_str} tag_visible={tag_visible} "
-            f"object_rel_pos={object_pos_str} policy_running={policy_running} "
+            f"object_rel_pos={object_pos_str} object_rel_lin_vel={object_vel_str} "
+            f"object_source_status={self.object_provider.source_status()} "
+            f"policy_running={policy_running} "
             f"policy_gate={self.policy_gate_blend:.2f} "
             f"lowstate_fresh={lowstate_fresh}"
         )

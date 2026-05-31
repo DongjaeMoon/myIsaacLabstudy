@@ -1,0 +1,6 @@
+# Template for torso-mounted real G1 camera extrinsics.
+# Verify that this frame matches the incoming image camera frame used by solvePnP.
+parent_frame: torso
+translation_m: [0.05762, 0.01753, 0.42987]
+quat_wxyz: [0.91496, 0.0, 0.40355, 0.0]
+rpy_deg: null

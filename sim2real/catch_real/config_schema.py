@@ -117,6 +117,16 @@ class ModesConfig:
 
 
 @dataclass(frozen=True)
+class CameraEstimatorConfig:
+    lost_timeout_s: float
+    min_valid_detections: int
+    position_filter_alpha: float
+    velocity_filter_alpha: float
+    angular_velocity_filter_alpha: float
+    status_print_interval_s: float
+
+
+@dataclass(frozen=True)
 class CameraConfig:
     enabled: bool
     server_address: str
@@ -125,6 +135,13 @@ class CameraConfig:
     intrinsics_yaml: Path | None
     extrinsics_yaml: Path | None
     tag_yaml: Path | None
+    extrinsics_parent_frame: str | None
+    dynamic_body_to_camera: bool
+    body_to_torso_urdf: Path | None
+    body_link_name: str | None
+    torso_link_name: str
+    waist_joint_names: list[str]
+    estimator: CameraEstimatorConfig
 
 
 @dataclass(frozen=True)

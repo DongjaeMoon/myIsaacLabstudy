@@ -3,6 +3,7 @@ from __future__ import annotations
 from sim2real.catch_real.config_loader import load_catch_real_config
 from sim2real.catch_real.config_schema import (
     CameraConfig,
+    CameraEstimatorConfig,
     CatchRealConfig,
     CommunicationConfig,
     ControlConfig,
@@ -21,6 +22,7 @@ from sim2real.catch_real.config_schema import (
 
 __all__ = [
     "CameraConfig",
+    "CameraEstimatorConfig",
     "CatchRealConfig",
     "CommunicationConfig",
     "ControlConfig",

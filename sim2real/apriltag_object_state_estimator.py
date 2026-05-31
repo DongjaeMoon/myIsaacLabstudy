@@ -228,6 +228,7 @@ class AprilTagObjectStateEstimator:
         frame_bgr: np.ndarray,
         robot: RobotBaseState,
         timestamp_s: Optional[float] = None,
+        T_b_c_override: Optional[np.ndarray] = None,
     ) -> ObjectStateEstimate:
         t_now = time.time() if timestamp_s is None else float(timestamp_s)
 
@@ -262,9 +263,11 @@ class AprilTagObjectStateEstimator:
                 rel_ang_vel_b=np.zeros(3, dtype=np.float64),
             )
 
+        T_b_c = self.T_b_c if T_b_c_override is None else np.asarray(T_b_c_override, dtype=np.float64)
+
         R_w_b = quat_to_rotmat(robot.quat_wxyz)
         T_w_b = make_T(R_w_b, robot.pos_w)
-        T_w_c = T_w_b @ self.T_b_c
+        T_w_c = T_w_b @ T_b_c
         T_w_o = T_w_c @ T_c_tag @ self.T_tag_to_object
 
         pos_w_raw = T_w_o[:3, 3].copy()

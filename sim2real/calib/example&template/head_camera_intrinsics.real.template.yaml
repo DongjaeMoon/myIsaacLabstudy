@@ -1,0 +1,10 @@
+# Approximate template only.
+# Replace these values with a real head-camera calibration before policy tests.
+# Do not assume the example intrinsics are accurate for depth or lateral scale.
+camera_matrix:
+  - [600.0, 0.0, 320.0]
+  - [0.0, 600.0, 240.0]
+  - [0.0, 0.0, 1.0]
+dist_coeffs: [0.0, 0.0, 0.0, 0.0, 0.0]
+image_width: 640
+image_height: 480

@@ -8,6 +8,7 @@ import yaml
 
 from .config_schema import (
     CameraConfig,
+    CameraEstimatorConfig,
     CatchRealConfig,
     CommunicationConfig,
     ControlConfig,
@@ -41,13 +42,18 @@ def _ensure_list(value: Any, name: str) -> list[Any]:
     return value
 
 
-def _resolve_existing_path(raw_path: str | None, config_path: Path) -> Path | None:
+def _resolve_existing_path(
+    raw_path: str | None,
+    config_path: Path,
+    *,
+    require_exists: bool = True,
+) -> Path | None:
     if raw_path in (None, ""):
         return None
 
     candidate = Path(raw_path)
     if candidate.is_absolute():
-        if not candidate.exists():
+        if require_exists and not candidate.exists():
             raise FileNotFoundError(f"Configured path does not exist: {candidate}")
         return candidate.resolve()
 
@@ -59,6 +65,9 @@ def _resolve_existing_path(raw_path: str | None, config_path: Path) -> Path | No
     for resolved in candidates:
         if resolved.exists():
             return resolved
+
+    if not require_exists:
+        return candidates[-1]
 
     raise FileNotFoundError(
         f"Could not resolve path '{raw_path}' relative to config '{config_path.parent}' "
@@ -162,6 +171,7 @@ def load_catch_real_config(config_path: str | Path, policy_override: str | None 
     observation_raw = _ensure_mapping(raw.get("observation", {}), "observation")
     modes_raw = _ensure_mapping(raw.get("modes", {}), "modes")
     camera_raw = _ensure_mapping(raw.get("camera", {}), "camera")
+    camera_estimator_raw = _ensure_mapping(camera_raw.get("estimator", {}), "camera.estimator")
     virtual_object_raw = _ensure_mapping(raw.get("virtual_object", {}), "virtual_object")
     safety_raw = _ensure_mapping(raw.get("safety", {}), "safety")
 
@@ -384,10 +394,66 @@ def load_catch_real_config(config_path: str | Path, policy_override: str | None 
         server_address=str(camera_raw.get("server_address", "127.0.0.1")),
         port=int(camera_raw.get("port", 5555)),
         image_show=bool(camera_raw.get("image_show", False)),
-        intrinsics_yaml=_resolve_existing_path(camera_raw.get("intrinsics_yaml"), config_path),
-        extrinsics_yaml=_resolve_existing_path(camera_raw.get("extrinsics_yaml"), config_path),
-        tag_yaml=_resolve_existing_path(camera_raw.get("tag_yaml"), config_path),
+        intrinsics_yaml=_resolve_existing_path(
+            camera_raw.get("intrinsics_yaml"),
+            config_path,
+            require_exists=False,
+        ),
+        extrinsics_yaml=_resolve_existing_path(
+            camera_raw.get("extrinsics_yaml"),
+            config_path,
+            require_exists=False,
+        ),
+        tag_yaml=_resolve_existing_path(
+            camera_raw.get("tag_yaml"),
+            config_path,
+            require_exists=False,
+        ),
+        extrinsics_parent_frame=(
+            None if camera_raw.get("extrinsics_parent_frame") in (None, "")
+            else str(camera_raw.get("extrinsics_parent_frame"))
+        ),
+        dynamic_body_to_camera=bool(camera_raw.get("dynamic_body_to_camera", False)),
+        body_to_torso_urdf=_resolve_existing_path(
+            camera_raw.get("body_to_torso_urdf"),
+            config_path,
+            require_exists=False,
+        ),
+        body_link_name=(
+            None if camera_raw.get("body_link_name") in (None, "")
+            else str(camera_raw.get("body_link_name"))
+        ),
+        torso_link_name=str(camera_raw.get("torso_link_name", "torso_link")),
+        waist_joint_names=[
+            str(name)
+            for name in _ensure_list(
+                camera_raw.get(
+                    "waist_joint_names",
+                    ["waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint"],
+                ),
+                "camera.waist_joint_names",
+            )
+        ],
+        estimator=CameraEstimatorConfig(
+            lost_timeout_s=float(camera_estimator_raw.get("lost_timeout_s", 0.2)),
+            min_valid_detections=max(int(camera_estimator_raw.get("min_valid_detections", 1)), 1),
+            position_filter_alpha=float(camera_estimator_raw.get("position_filter_alpha", 0.35)),
+            velocity_filter_alpha=float(camera_estimator_raw.get("velocity_filter_alpha", 0.25)),
+            angular_velocity_filter_alpha=float(
+                camera_estimator_raw.get(
+                    "angular_velocity_filter_alpha",
+                    camera_estimator_raw.get("velocity_filter_alpha", 0.25),
+                )
+            ),
+            status_print_interval_s=float(camera_estimator_raw.get("status_print_interval_s", 1.0)),
+        ),
     )
+    _validate_unique_strings(camera.waist_joint_names, "camera.waist_joint_names")
+    for joint_name in camera.waist_joint_names:
+        if joint_name not in controlled_joint_names:
+            raise ValueError(
+                f"camera.waist_joint_names references unknown controlled joint '{joint_name}'"
+            )
     virtual_object = VirtualObjectConfig(
         enabled_when_no_camera=bool(virtual_object_raw.get("enabled_when_no_camera", True)),
         initial_pos_base=np.array(virtual_object_raw.get("initial_pos_base", [0.0, 0.0, 0.0]), dtype=np.float64),
