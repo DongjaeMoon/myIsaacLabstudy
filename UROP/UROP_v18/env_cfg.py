@@ -138,45 +138,42 @@ class RewardsCfg:
     upright = RewTerm(func=mdp.upright_reward, weight=1.75)
     height = RewTerm(func=mdp.root_height_reward, weight=1.10, params={"target_z": 0.78, "sigma": 0.10})
 
-    # Keep balance/effort shaping, but do not make the optimal catch policy a frozen statue.
     base_motion = RewTerm(func=mdp.base_motion_penalty, weight=-0.055, params={"w_lin": 1.0, "w_ang": 0.25})
-    joint_vel = RewTerm(func=mdp.joint_vel_l2_penalty, weight=-0.022)
+    joint_vel = RewTerm(func=mdp.joint_vel_l2_penalty, weight=-0.025)
     torque = RewTerm(func=mdp.torque_l2_penalty, weight=-0.00002)
-    action_mag = RewTerm(func=mdp.action_magnitude_penalty, weight=-0.010)
-    action_rate = RewTerm(func=mdp.action_rate_penalty, weight=-0.075)
-    action_accel = RewTerm(func=mdp.action_acceleration_penalty, weight=-0.040)
-    lower_body_action_rate = RewTerm(func=mdp.lower_body_action_rate_penalty, weight=-0.050)
+    action_mag = RewTerm(func=mdp.action_magnitude_penalty, weight=-0.015)
+    action_rate = RewTerm(func=mdp.action_rate_penalty, weight=-0.095)
+    action_accel = RewTerm(func=mdp.action_acceleration_penalty, weight=-0.050)
+    lower_body_action_rate = RewTerm(func=mdp.lower_body_action_rate_penalty, weight=-0.055)
     foot_slip = RewTerm(func=mdp.foot_slip_penalty, weight=-0.10, params={"ground_height_thr": 0.16})
 
-    # Waiting rewards are active before release / for visible idle objects only.
-    wait_ready_pose = RewTerm(func=mdp.ready_pose_when_waiting, weight=2.0, params={"sigma": 0.25})
-    wait_joint_still = RewTerm(func=mdp.waiting_joint_stillness_reward, weight=0.7, params={"sigma": 1.6})
-    wait_base_drift = RewTerm(func=mdp.wait_base_drift_penalty, weight=-0.70, params={"sigma": 0.24})
-    wait_yaw_drift = RewTerm(func=mdp.wait_yaw_drift_penalty, weight=-0.45, params={"sigma": 0.30})
+    wait_ready_pose = RewTerm(func=mdp.ready_pose_when_waiting, weight=2.4, params={"sigma": 0.24})
+    wait_joint_still = RewTerm(func=mdp.waiting_joint_stillness_reward, weight=0.9, params={"sigma": 1.5})
+    wait_base_drift = RewTerm(func=mdp.wait_base_drift_penalty, weight=-0.85, params={"sigma": 0.22})
+    wait_yaw_drift = RewTerm(func=mdp.wait_yaw_drift_penalty, weight=-0.55, params={"sigma": 0.28})
     lower_body_ready = RewTerm(
         func=mdp.lower_body_ready_reward,
-        weight=1.6,
-        params={"sigma_wait": 0.18, "sigma_active": 0.34},
+        weight=1.8,
+        params={"sigma_wait": 0.18, "sigma_active": 0.30},
     )
 
-    # Anti-overhug is kept, but it now applies only to stationary/receding visible objects before release.
-    visual_wait_patience = RewTerm(func=mdp.visual_wait_patience_reward, weight=0.65, params={"action_sigma": 0.60})
-    premature_hug = RewTerm(func=mdp.premature_hug_penalty, weight=-0.22, params={"action_w": 1.0, "pose_w": 0.18})
+    # v18 anti-overhug shaping: seeing a tag is not enough to hug.
+    visual_wait_patience = RewTerm(func=mdp.visual_wait_patience_reward, weight=1.15, params={"action_sigma": 0.55})
+    premature_hug = RewTerm(func=mdp.premature_hug_penalty, weight=-0.50, params={"action_w": 1.0, "pose_w": 0.25})
+    lateral_intercept = RewTerm(func=mdp.lateral_intercept_reward, weight=0.45, params={"deadband": 0.12, "speed_sigma": 0.42})
+    incoming_receive_pose = RewTerm(func=mdp.incoming_receive_pose_reward, weight=2.6, params={"sigma": 0.52, "hold_blend": 0.70})
+    head_region = RewTerm(func=mdp.head_region_penalty, weight=-0.65)
 
-    # Dense incoming-box shaping. This is the bootstrap term missing from the failed run.
-    incoming_receive_pose = RewTerm(func=mdp.incoming_receive_pose_reward, weight=3.2, params={"sigma": 0.48})
-    lateral_intercept = RewTerm(func=mdp.lateral_intercept_reward, weight=0.55, params={"deadband": 0.12, "speed_sigma": 0.42})
-
-    catch_region = RewTerm(func=mdp.catch_target_region_reward, weight=3.4, params={"sigma": 0.52})
-    upper_body_receive = RewTerm(func=mdp.upper_body_receive_reward, weight=3.2, params={"sigma": 0.50})
+    catch_region = RewTerm(func=mdp.catch_target_region_reward, weight=2.8, params={"sigma": 0.44})
+    upper_body_receive = RewTerm(func=mdp.upper_body_receive_reward, weight=2.6, params={"sigma": 0.40})
     catch_vel_match = RewTerm(
         func=mdp.catch_velocity_match_reward,
-        weight=1.8,
-        params={"torso_body_name": "torso_link", "sigma": 1.15},
+        weight=1.7,
+        params={"torso_body_name": "torso_link", "sigma": 1.05},
     )
     contact_hug = RewTerm(
         func=mdp.hug_contact_bonus,
-        weight=4.2,
+        weight=3.6,
         params={
             "sensor_names_left": [
                 "contact_l_shoulder_yaw",
@@ -193,29 +190,28 @@ class RewardsCfg:
                 "contact_r_wrist_yaw",
             ],
             "sensor_name_torso": "contact_torso",
-            "thr": 1.2,
+            "thr": 1.5,
         },
     )
-    impact = RewTerm(func=mdp.impact_peak_penalty, weight=-0.0035, params={"sensor_names": CONTACT_SENSOR_NAMES, "force_thr": 260.0})
+    impact = RewTerm(func=mdp.impact_peak_penalty, weight=-0.005, params={"sensor_names": CONTACT_SENSOR_NAMES, "force_thr": 235.0})
 
-    hold_vel = RewTerm(func=mdp.hold_object_vel_reward, weight=2.3, params={"torso_body_name": "torso_link", "sigma": 0.70})
+    hold_vel = RewTerm(func=mdp.hold_object_vel_reward, weight=2.4, params={"torso_body_name": "torso_link", "sigma": 0.64})
     hold_pose = RewTerm(func=mdp.hold_pose_reward, weight=2.8, params={"sigma": 0.30})
-    hold_latched = RewTerm(func=mdp.hold_latched_bonus, weight=1.1)
-    hold_sustain = RewTerm(func=mdp.hold_sustain_bonus, weight=3.1, params={"min_steps": 16})
-    not_drop = RewTerm(func=mdp.object_not_dropped_bonus, weight=1.2, params={"min_z": 0.34, "max_dist": 2.2})
+    hold_latched = RewTerm(func=mdp.hold_latched_bonus, weight=1.0)
+    hold_sustain = RewTerm(func=mdp.hold_sustain_bonus, weight=3.8, params={"min_steps": 16})
+    not_drop = RewTerm(func=mdp.object_not_dropped_bonus, weight=1.4, params={"min_z": 0.34, "max_dist": 2.1})
 
-    post_hold_still = RewTerm(func=mdp.post_hold_still_reward, weight=1.3, params={"lin_sigma": 0.12, "yaw_sigma": 0.34})
-    post_hold_anchor = RewTerm(func=mdp.post_hold_anchor_penalty, weight=-0.40, params={"sigma": 0.24})
+    post_hold_still = RewTerm(func=mdp.post_hold_still_reward, weight=1.5, params={"lin_sigma": 0.10, "yaw_sigma": 0.30})
+    post_hold_anchor = RewTerm(func=mdp.post_hold_anchor_penalty, weight=-0.55, params={"sigma": 0.18})
 
 
 @configclass
 class TerminationsCfg:
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
-    success = DoneTerm(func=mdp.successful_hold_complete, params={"min_steps": 36})
+    success = DoneTerm(func=mdp.successful_hold_complete, params={"min_steps": 40})
     fall = DoneTerm(func=mdp.robot_fallen_degree, params={"min_root_z": 0.50, "max_tilt_deg": 45.0})
-    # Give the policy enough post-release time to touch the box before declaring drop.
-    drop = DoneTerm(func=mdp.object_dropped, params={"min_z": 0.18, "max_dist": 2.8})
-    runaway = DoneTerm(func=mdp.post_hold_runaway, params={"max_anchor_drift": 0.50})
+    drop = DoneTerm(func=mdp.object_dropped, params={"min_z": 0.18, "max_dist": 2.8, "min_active_steps": 10})
+    runaway = DoneTerm(func=mdp.post_hold_runaway, params={"max_anchor_drift": 0.45})
     unsafe_lower_body = DoneTerm(func=mdp.unsafe_lower_body_deviation, params={"max_abs_dev": 0.98})
 
 
@@ -227,87 +223,125 @@ class EventCfg:
         func=mdp.reset_autonomous_episode,
         mode="reset",
         params={
-            "park": {"pos_x": (1.55, 1.95), "pos_y": (-0.35, 0.35), "pos_z": (-0.68, -0.55)},
+            "park": {"pos_x": (1.70, 2.15), "pos_y": (-0.80, 0.80), "pos_z": (-0.72, -0.55)},
             "wait_time_ranges": {
-                "stage1": (0.25, 0.90),
-                "stage2": (0.20, 1.30),
-                "stage3": (0.20, 1.80),
+                "stage1": (0.80, 2.40),
+                "stage2": (0.45, 3.20),
+                "stage3": (0.25, 4.00),
             },
-            # v18 catch-bootstrap: early stages must mostly contain real tosses, not idle-only waiting.
             "toss_probability_by_stage": {
                 "stage0": 0.0,
-                "stage1": 0.95,
-                "stage2": 0.95,
-                "stage3": 0.92,
+                "stage1": 0.72,
+                "stage2": 0.78,
+                "stage3": 0.82,
             },
             "joint_noise": {
-                "lower_body_pos": (-0.030, 0.030),
-                "waist_pos": (-0.025, 0.025),
-                "arm_pos": (-0.055, 0.055),
-                "wrist_pos": (-0.045, 0.045),
-                "velocity": (-0.10, 0.10),
+                "lower_body_pos": (-0.045, 0.045),
+                "waist_pos": (-0.040, 0.040),
+                "arm_pos": (-0.090, 0.090),
+                "wrist_pos": (-0.070, 0.070),
+                "velocity": (-0.18, 0.18),
             },
-            "root_xy_range": (-0.025, 0.025),
-            "root_yaw_range": (-0.06, 0.06),
+            "root_xy_range": (-0.03, 0.03),
+            "root_yaw_range": (-0.08, 0.08),
             "object_randomization": {
-                "mass_range": (2.0, 4.8),
-                "friction_range": (0.50, 1.20),
-                "restitution_range": (0.00, 0.10),
-                "size_scale_range": (0.90, 1.12),
+                "mass_range": (1.0, 6.5),
+                "friction_range": (0.35, 1.55),
+                "restitution_range": (0.00, 0.16),
+                "size_scale_range": (0.75, 1.30),
                 "apply_physx": True,
             },
             "robot_material_randomization": {
-                "friction_range": (0.65, 1.15),
-                "restitution_range": (0.00, 0.03),
+                "friction_range": (0.40, 1.30),
+                "restitution_range": (0.00, 0.04),
                 "apply_physx": True,
             },
             "floor_material_randomization": {
-                "friction_range": (0.65, 1.20),
+                "friction_range": (0.35, 1.40),
             },
-            # All actor observation groups keep nonzero training noise, but bootstrap noise is not overwhelming.
             "observation_randomization": {
-                "projected_gravity_noise_std_range": (0.004, 0.025),
-                "base_ang_vel_noise_std_range": (0.010, 0.070),
-                "joint_pos_noise_std_range": (0.002, 0.018),
-                "joint_vel_noise_std_range": (0.020, 0.160),
-                "prev_action_noise_std_range": (0.001, 0.010),
-                "mode_noise_std_range": (0.002, 0.015),
-                "obj_pos_noise_range": (0.004, 0.040),
-                "obj_vel_noise_range": (0.025, 0.20),
-                "obj_pos_bias_range": (-0.018, 0.018),
-                "obj_vel_bias_range": (-0.040, 0.040),
-                "obj_pos_scale_range": (0.95, 1.05),
-                "obj_vel_scale_range": (0.90, 1.10),
-                "drop_prob_range": (0.005, 0.12),
-                "false_positive_prob_range": (0.0, 0.004),
-                "tag_visible_noise_std_range": (0.004, 0.025),
-                "alpha_range": (0.55, 0.95),
-                "latency_steps_range": (0, 3),
-                "noise_spike_prob_range": (0.00, 0.020),
-                "noise_spike_scale_range": (1.8, 3.5),
+                "projected_gravity_noise_std_range": (0.006, 0.035),
+                "base_ang_vel_noise_std_range": (0.015, 0.095),
+                "joint_pos_noise_std_range": (0.003, 0.024),
+                "joint_vel_noise_std_range": (0.030, 0.220),
+                "prev_action_noise_std_range": (0.002, 0.016),
+                "mode_noise_std_range": (0.003, 0.024),
+                "obj_pos_noise_range": (0.006, 0.065),
+                "obj_vel_noise_range": (0.035, 0.360),
+                "obj_pos_bias_range": (-0.028, 0.028),
+                "obj_vel_bias_range": (-0.075, 0.075),
+                "obj_pos_scale_range": (0.91, 1.09),
+                "obj_vel_scale_range": (0.82, 1.18),
+                "drop_prob_range": (0.01, 0.24),
+                "false_positive_prob_range": (0.0, 0.010),
+                "tag_visible_noise_std_range": (0.006, 0.040),
+                "alpha_range": (0.25, 0.90),
+                "latency_steps_range": (0, 4),
+                "noise_spike_prob_range": (0.00, 0.045),
+                "noise_spike_scale_range": (2.0, 5.5),
             },
             "visibility_randomization": {
                 "pre_toss_visible_probability_by_stage": {
                     "stage0": 0.0,
-                    "stage1": 0.80,
-                    "stage2": 0.90,
-                    "stage3": 0.95,
+                    "stage1": 0.70,
+                    "stage2": 0.84,
+                    "stage3": 0.92,
                 },
-                # Keep visible-idle cases, but do not let them dominate early learning.
                 "idle_visible_probability_by_stage": {
-                    "stage0": 0.90,
-                    "stage1": 0.08,
-                    "stage2": 0.14,
-                    "stage3": 0.20,
+                    "stage0": 0.92,
+                    "stage1": 0.42,
+                    "stage2": 0.34,
+                    "stage3": 0.28,
                 },
-                "visibility_start_s": (0.0, 0.30),
+                "visibility_start_s": (0.0, 0.55),
                 "idle_visible_pose": {
-                    "pos_x": (0.85, 1.45),
-                    "pos_y": (-0.35, 0.35),
-                    "pos_z": (-0.12, 0.30),
-                    "vel_x": (-0.02, 0.05),
-                    "vel_y": (-0.04, 0.04),
-                    "vel_z": (-0.015, 0.015),
+                    "pos_x": (0.75, 1.85),
+                    "pos_y": (-0.65, 0.65),
+                    "pos_z": (-0.26, 0.38),
+                    "vel_x": (-0.035, 0.070),
+                    "vel_y": (-0.070, 0.070),
+                    "vel_z": (-0.030, 0.030),
+                },
+            },
+            "delivery_randomization": {
+                # Hidden generator mixture. Actor never observes this; it only sees rel_pos/rel_vel/tag_visible.
+                "toss_family_prob_by_stage": {
+                    "stage1": {"ballistic": 0.46, "carried_release": 0.28, "push_release": 0.18, "late_visible": 0.08},
+                    "stage2": {"ballistic": 0.34, "carried_release": 0.30, "push_release": 0.20, "lob": 0.08, "late_visible": 0.08},
+                    "stage3": {"ballistic": 0.26, "carried_release": 0.30, "push_release": 0.22, "lob": 0.12, "late_visible": 0.10},
+                },
+                "no_toss_family_prob_by_stage": {
+                    "stage0": {"idle": 0.55, "pass_by": 0.25, "approach_abort": 0.20},
+                    "stage1": {"idle": 0.55, "pass_by": 0.25, "approach_abort": 0.20},
+                    "stage2": {"idle": 0.42, "pass_by": 0.34, "approach_abort": 0.24},
+                    "stage3": {"idle": 0.34, "pass_by": 0.38, "approach_abort": 0.28},
+                },
+                "pre_release_start_probability_by_stage": {
+                    "stage0": 0.0,
+                    "stage1": 0.42,
+                    "stage2": 0.64,
+                    "stage3": 0.78,
+                },
+                "pre_release_start_pose": {
+                    "pos_x": (0.85, 2.10),
+                    "pos_y": (-0.75, 0.75),
+                    "pos_z": (-0.30, 0.48),
+                },
+                "abort_visible_pose": {
+                    "pos_x": (0.70, 1.75),
+                    "pos_y": (-0.65, 0.65),
+                    "pos_z": (-0.25, 0.40),
+                    "vel_x": (-0.06, 0.09),
+                    "vel_y": (-0.08, 0.08),
+                    "vel_z": (-0.03, 0.03),
+                },
+                "pass_by_visible_pose": {
+                    "pos_x": (0.55, 1.55),
+                    "pos_y": (-0.95, 0.95),
+                    "pos_z": (-0.22, 0.42),
+                    "vel_x": (-0.06, 0.08),
+                    "vel_y": (-0.65, 0.65),
+                    "vel_z": (-0.04, 0.04),
                 },
             },
         },
@@ -317,27 +351,27 @@ class EventCfg:
         func=mdp.update_visible_object_before_toss,
         mode="interval",
         interval_range_s=(0.02, 0.02),
-        params={"max_hold_speed": 0.12, "jitter_amp": 0.006},
+        params={"max_hold_speed": 0.85, "jitter_amp": 0.010},
     )
 
     random_push = EventTerm(
         func=mdp.push_robot_root_velocity,
         mode="interval",
-        interval_range_s=(2.0, 4.0),
+        interval_range_s=(1.4, 3.5),
         params={
-            "stage0_xy_range": (-0.03, 0.03),
-            "stage1_xy_range": (-0.06, 0.06),
-            "stage2_xy_range": (-0.10, 0.10),
-            "stage3_xy_range": (-0.16, 0.16),
-            "stage0_yaw_range": (-0.02, 0.02),
-            "stage1_yaw_range": (-0.04, 0.04),
-            "stage2_yaw_range": (-0.08, 0.08),
-            "stage3_yaw_range": (-0.12, 0.12),
-            "z_velocity_range": (-0.01, 0.01),
+            "stage0_xy_range": (-0.05, 0.05),
+            "stage1_xy_range": (-0.10, 0.10),
+            "stage2_xy_range": (-0.18, 0.18),
+            "stage3_xy_range": (-0.28, 0.28),
+            "stage0_yaw_range": (-0.04, 0.04),
+            "stage1_yaw_range": (-0.08, 0.08),
+            "stage2_yaw_range": (-0.13, 0.13),
+            "stage3_yaw_range": (-0.22, 0.22),
+            "z_velocity_range": (-0.02, 0.02),
             "hold_xy_scale": 0.70,
             "hold_yaw_scale": 0.65,
-            "max_xy_speed": 0.70,
-            "max_yaw_speed": 0.55,
+            "max_xy_speed": 0.95,
+            "max_yaw_speed": 0.75,
         },
     )
 
@@ -351,61 +385,118 @@ class EventCfg:
             "throw_prob_stage2": 1.0,
             "throw_prob_stage3": 1.0,
             "stage1": {
+                # Base family: easy but not deterministic ballistic toss.
                 "sampler": "target_ballistic",
-                "spawn_x": (0.42, 0.58),
-                "spawn_y": (-0.06, 0.06),
-                "spawn_z": (0.20, 0.36),
-                "target_x": (0.12, 0.22),
-                "target_y": (-0.04, 0.04),
-                "target_z": (0.14, 0.26),
-                "flight_time": (0.40, 0.58),
-                "max_speed": 1.35,
-                "max_vy_abs": 0.22,
-                "max_vz_abs": 1.45,
-                "roll": (-0.015, 0.015),
-                "pitch": (-0.020, 0.020),
-                "yaw": (-0.04, 0.04),
-                "ang_vel_x": (-0.03, 0.03),
-                "ang_vel_y": (-0.03, 0.03),
-                "ang_vel_z": (-0.06, 0.06),
+                "spawn_x": (0.38, 0.68),
+                "spawn_y": (-0.14, 0.14),
+                "spawn_z": (0.10, 0.38),
+                "target_x": (0.08, 0.26),
+                "target_y": (-0.11, 0.11),
+                "target_z": (0.06, 0.30),
+                "flight_time": (0.34, 0.62),
+                "max_speed": 1.55,
+                "max_vy_abs": 0.42,
+                "max_vz_abs": 1.80,
+                "roll": (-0.03, 0.03), "pitch": (-0.04, 0.04), "yaw": (-0.10, 0.10),
+                "ang_vel_x": (-0.08, 0.08), "ang_vel_y": (-0.08, 0.08), "ang_vel_z": (-0.16, 0.16),
+                "carried_release": {
+                    "sampler": "independent",
+                    "spawn_x": (0.18, 0.52), "spawn_y": (-0.18, 0.18), "spawn_z": (0.06, 0.32),
+                    "vel_x": (-0.65, -0.12), "vel_y": (-0.18, 0.18), "vel_z": (-0.16, 0.18),
+                    "max_speed": 1.10,
+                    "roll": (-0.03, 0.03), "pitch": (-0.04, 0.04), "yaw": (-0.10, 0.10),
+                    "ang_vel_x": (-0.06, 0.06), "ang_vel_y": (-0.06, 0.06), "ang_vel_z": (-0.12, 0.12),
+                },
+                "push_release": {
+                    "sampler": "independent",
+                    "spawn_x": (0.22, 0.62), "spawn_y": (-0.22, 0.22), "spawn_z": (0.02, 0.34),
+                    "vel_x": (-1.05, -0.28), "vel_y": (-0.32, 0.32), "vel_z": (-0.20, 0.22),
+                    "max_speed": 1.35,
+                },
+                "late_visible_toss": {
+                    "sampler": "target_ballistic",
+                    "spawn_x": (0.36, 0.70), "spawn_y": (-0.16, 0.16), "spawn_z": (0.08, 0.38),
+                    "target_x": (0.08, 0.26), "target_y": (-0.12, 0.12), "target_z": (0.06, 0.30),
+                    "flight_time": (0.32, 0.58), "max_speed": 1.65, "max_vy_abs": 0.45, "max_vz_abs": 1.85,
+                },
             },
             "stage2": {
                 "sampler": "target_ballistic",
-                "spawn_x": (0.38, 0.78),
-                "spawn_y": (-0.22, 0.22),
-                "spawn_z": (0.10, 0.46),
-                "target_x": (0.08, 0.30),
-                "target_y": (-0.16, 0.16),
-                "target_z": (0.08, 0.34),
-                "flight_time": (0.34, 0.66),
-                "max_speed": 1.95,
-                "max_vy_abs": 0.65,
-                "max_vz_abs": 2.00,
-                "roll": (-0.025, 0.025),
-                "pitch": (-0.035, 0.035),
-                "yaw": (-0.12, 0.12),
-                "ang_vel_x": (-0.08, 0.08),
-                "ang_vel_y": (-0.08, 0.08),
-                "ang_vel_z": (-0.16, 0.16),
+                "spawn_x": (0.34, 0.92),
+                "spawn_y": (-0.38, 0.38),
+                "spawn_z": (0.02, 0.50),
+                "target_x": (0.02, 0.34),
+                "target_y": (-0.26, 0.26),
+                "target_z": (0.00, 0.40),
+                "flight_time": (0.30, 0.72),
+                "max_speed": 2.20,
+                "max_vy_abs": 0.95,
+                "max_vz_abs": 2.25,
+                "roll": (-0.04, 0.04), "pitch": (-0.05, 0.05), "yaw": (-0.24, 0.24),
+                "ang_vel_x": (-0.16, 0.16), "ang_vel_y": (-0.16, 0.16), "ang_vel_z": (-0.34, 0.34),
+                "carried_release": {
+                    "sampler": "independent",
+                    "spawn_x": (0.16, 0.62), "spawn_y": (-0.34, 0.34), "spawn_z": (-0.04, 0.42),
+                    "vel_x": (-0.85, -0.08), "vel_y": (-0.32, 0.32), "vel_z": (-0.24, 0.28),
+                    "max_speed": 1.35,
+                },
+                "push_release": {
+                    "sampler": "independent",
+                    "spawn_x": (0.18, 0.70), "spawn_y": (-0.40, 0.40), "spawn_z": (-0.08, 0.44),
+                    "vel_x": (-1.35, -0.20), "vel_y": (-0.55, 0.55), "vel_z": (-0.30, 0.34),
+                    "max_speed": 1.85,
+                },
+                "lob": {
+                    "sampler": "target_ballistic",
+                    "spawn_x": (0.42, 1.05), "spawn_y": (-0.34, 0.34), "spawn_z": (0.22, 0.64),
+                    "target_x": (0.02, 0.34), "target_y": (-0.24, 0.24), "target_z": (0.04, 0.42),
+                    "flight_time": (0.42, 0.86), "max_speed": 2.20, "max_vy_abs": 0.90, "max_vz_abs": 2.55,
+                },
+                "late_visible_toss": {
+                    "sampler": "target_ballistic",
+                    "spawn_x": (0.32, 0.85), "spawn_y": (-0.36, 0.36), "spawn_z": (0.00, 0.50),
+                    "target_x": (0.02, 0.34), "target_y": (-0.26, 0.26), "target_z": (0.00, 0.40),
+                    "flight_time": (0.28, 0.68), "max_speed": 2.25, "max_vy_abs": 0.95, "max_vz_abs": 2.30,
+                },
             },
             "stage3": {
                 "sampler": "target_ballistic",
-                "spawn_x": (0.34, 0.95),
-                "spawn_y": (-0.42, 0.42),
-                "spawn_z": (0.02, 0.56),
-                "target_x": (0.02, 0.36),
-                "target_y": (-0.28, 0.28),
-                "target_z": (0.04, 0.40),
-                "flight_time": (0.30, 0.74),
-                "max_speed": 2.35,
-                "max_vy_abs": 1.00,
-                "max_vz_abs": 2.35,
-                "roll": (-0.04, 0.04),
-                "pitch": (-0.05, 0.05),
-                "yaw": (-0.35, 0.35),
-                "ang_vel_x": (-0.16, 0.16),
-                "ang_vel_y": (-0.16, 0.16),
-                "ang_vel_z": (-0.36, 0.36),
+                "spawn_x": (0.28, 1.35),
+                "spawn_y": (-0.72, 0.72),
+                "spawn_z": (-0.18, 0.68),
+                "target_x": (-0.10, 0.46),
+                "target_y": (-0.52, 0.52),
+                "target_z": (-0.14, 0.54),
+                "flight_time": (0.24, 0.95),
+                "max_speed": 2.95,
+                "max_vy_abs": 1.50,
+                "max_vz_abs": 2.90,
+                "roll": (-0.06, 0.06), "pitch": (-0.07, 0.07), "yaw": (-0.65, 0.65),
+                "ang_vel_x": (-0.34, 0.34), "ang_vel_y": (-0.34, 0.34), "ang_vel_z": (-0.80, 0.80),
+                "carried_release": {
+                    "sampler": "independent",
+                    "spawn_x": (0.12, 0.78), "spawn_y": (-0.55, 0.55), "spawn_z": (-0.14, 0.54),
+                    "vel_x": (-1.05, -0.03), "vel_y": (-0.52, 0.52), "vel_z": (-0.35, 0.38),
+                    "max_speed": 1.70,
+                },
+                "push_release": {
+                    "sampler": "independent",
+                    "spawn_x": (0.14, 0.82), "spawn_y": (-0.62, 0.62), "spawn_z": (-0.16, 0.58),
+                    "vel_x": (-1.75, -0.16), "vel_y": (-0.85, 0.85), "vel_z": (-0.45, 0.48),
+                    "max_speed": 2.35,
+                },
+                "lob": {
+                    "sampler": "target_ballistic",
+                    "spawn_x": (0.42, 1.45), "spawn_y": (-0.65, 0.65), "spawn_z": (0.18, 0.78),
+                    "target_x": (-0.08, 0.44), "target_y": (-0.48, 0.48), "target_z": (-0.08, 0.56),
+                    "flight_time": (0.42, 1.10), "max_speed": 3.00, "max_vy_abs": 1.40, "max_vz_abs": 3.10,
+                },
+                "late_visible_toss": {
+                    "sampler": "target_ballistic",
+                    "spawn_x": (0.28, 1.20), "spawn_y": (-0.68, 0.68), "spawn_z": (-0.16, 0.66),
+                    "target_x": (-0.10, 0.44), "target_y": (-0.50, 0.50), "target_z": (-0.12, 0.52),
+                    "flight_time": (0.22, 0.86), "max_speed": 3.00, "max_vy_abs": 1.45, "max_vz_abs": 2.95,
+                },
             },
         },
     )
@@ -416,9 +507,9 @@ class CurriculumCfg:
     stage_schedule = CurrTerm(
         func=mdp.stage_schedule,
         params={
-            "stage0_iters": 200,
-            "stage1_iters": 1200,
-            "stage2_iters": 1800,
+            "stage0_iters": 300,
+            "stage1_iters": 1400,
+            "stage2_iters": 2200,
             "num_steps_per_env": 64,
             "eval_stage": -1,
         },
@@ -527,18 +618,18 @@ class dj_urop_v18_EnvCfg_Play(dj_urop_v18_EnvCfg):
             "obj_vel_bias_range": (-0.025, 0.025),
             "obj_pos_scale_range": (0.98, 1.02),
             "obj_vel_scale_range": (0.95, 1.05),
-            "drop_prob_range": (0.002, 0.020),
+            "drop_prob_range": (0.005, 0.030),
             "false_positive_prob_range": (0.0, 0.002),
             "tag_visible_noise_std_range": (0.002, 0.010),
             "alpha_range": (0.70, 0.98),
-            "latency_steps_range": (0, 1),
+            "latency_steps_range": (0, 2),
             "noise_spike_prob_range": (0.0, 0.01),
             "noise_spike_scale_range": (2.0, 3.5),
         }
 
         self.events.reset_autonomous_episode.params["visibility_randomization"] = {
             "pre_toss_visible_probability_by_stage": {"stage0": 0.0, "stage1": 1.0, "stage2": 1.0, "stage3": 1.0},
-            "idle_visible_probability_by_stage": {"stage0": 1.0, "stage1": 0.10, "stage2": 0.10, "stage3": 0.10},
+            "idle_visible_probability_by_stage": {"stage0": 1.0, "stage1": 0.35, "stage2": 0.35, "stage3": 0.35},
             "visibility_start_s": (0.0, 0.15),
             "idle_visible_pose": {
                 "pos_x": (0.85, 1.35),
@@ -547,6 +638,21 @@ class dj_urop_v18_EnvCfg_Play(dj_urop_v18_EnvCfg):
                 "vel_x": (-0.02, 0.03),
                 "vel_y": (-0.03, 0.03),
                 "vel_z": (-0.01, 0.01),
+            },
+        }
+
+        self.events.reset_autonomous_episode.params["delivery_randomization"] = {
+            "toss_family_prob_by_stage": {
+                "stage3": {"ballistic": 0.45, "carried_release": 0.25, "push_release": 0.18, "late_visible": 0.12},
+            },
+            "no_toss_family_prob_by_stage": {
+                "stage3": {"idle": 0.45, "pass_by": 0.35, "approach_abort": 0.20},
+            },
+            "pre_release_start_probability_by_stage": {"stage3": 0.65},
+            "pre_release_start_pose": {"pos_x": (0.85, 1.45), "pos_y": (-0.35, 0.35), "pos_z": (-0.12, 0.34)},
+            "pass_by_visible_pose": {
+                "pos_x": (0.65, 1.30), "pos_y": (-0.55, 0.55), "pos_z": (-0.12, 0.32),
+                "vel_x": (-0.04, 0.06), "vel_y": (-0.35, 0.35), "vel_z": (-0.02, 0.02),
             },
         }
 
@@ -583,4 +689,22 @@ class dj_urop_v18_EnvCfg_Play(dj_urop_v18_EnvCfg):
             "ang_vel_x": (-0.05, 0.05),
             "ang_vel_y": (-0.05, 0.05),
             "ang_vel_z": (-0.12, 0.12),
+            "carried_release": {
+                "sampler": "independent",
+                "spawn_x": (0.18, 0.50), "spawn_y": (-0.16, 0.16), "spawn_z": (0.08, 0.30),
+                "vel_x": (-0.55, -0.10), "vel_y": (-0.12, 0.12), "vel_z": (-0.10, 0.12),
+                "max_speed": 0.95,
+            },
+            "push_release": {
+                "sampler": "independent",
+                "spawn_x": (0.22, 0.55), "spawn_y": (-0.18, 0.18), "spawn_z": (0.06, 0.32),
+                "vel_x": (-0.95, -0.25), "vel_y": (-0.20, 0.20), "vel_z": (-0.16, 0.18),
+                "max_speed": 1.25,
+            },
+            "late_visible_toss": {
+                "sampler": "target_ballistic",
+                "spawn_x": (0.38, 0.62), "spawn_y": (-0.14, 0.14), "spawn_z": (0.18, 0.40),
+                "target_x": (0.08, 0.24), "target_y": (-0.08, 0.08), "target_z": (0.10, 0.26),
+                "flight_time": (0.30, 0.46), "max_speed": 1.75, "max_vy_abs": 0.42, "max_vz_abs": 1.85,
+            },
         }

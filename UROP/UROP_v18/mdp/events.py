@@ -14,6 +14,151 @@ if TYPE_CHECKING:
 DEFAULT_BOX_SIZE = scene_objects_cfg.OBJECT_BASE_SIZE
 
 
+# Hidden delivery-family ids used only by the event generator.
+# Actor never observes this; reward must remain trajectory-family independent.
+DELIVERY_IDLE = 0
+DELIVERY_BALLISTIC = 1
+DELIVERY_PUSH = 2
+DELIVERY_CARRIED = 3
+DELIVERY_LOB = 4
+DELIVERY_LATE_VISIBLE = 5
+DELIVERY_ABORT = 6
+DELIVERY_PASS_BY = 7
+
+TOSS_FAMILIES = {
+    "ballistic": DELIVERY_BALLISTIC,
+    "push": DELIVERY_PUSH,
+    "push_release": DELIVERY_PUSH,
+    "carried": DELIVERY_CARRIED,
+    "carried_release": DELIVERY_CARRIED,
+    "lob": DELIVERY_LOB,
+    "late_visible": DELIVERY_LATE_VISIBLE,
+    "late_visible_toss": DELIVERY_LATE_VISIBLE,
+}
+NO_TOSS_FAMILIES = {
+    "idle": DELIVERY_IDLE,
+    "visible_idle": DELIVERY_IDLE,
+    "abort": DELIVERY_ABORT,
+    "approach_abort": DELIVERY_ABORT,
+    "pass_by": DELIVERY_PASS_BY,
+    "lateral_pass": DELIVERY_PASS_BY,
+}
+FAMILY_TO_NAME = {
+    DELIVERY_IDLE: "idle",
+    DELIVERY_BALLISTIC: "ballistic",
+    DELIVERY_PUSH: "push_release",
+    DELIVERY_CARRIED: "carried_release",
+    DELIVERY_LOB: "lob",
+    DELIVERY_LATE_VISIBLE: "late_visible_toss",
+    DELIVERY_ABORT: "approach_abort",
+    DELIVERY_PASS_BY: "pass_by",
+}
+
+
+def _stage_dict_value(table: dict | None, stage: int, default):
+    if not table:
+        return default
+    return table.get(f"stage{stage}", table.get(str(stage), default))
+
+
+def _normalize_prob_dict(prob_dict: dict, allowed: dict[str, int]) -> tuple[list[str], torch.Tensor]:
+    names: list[str] = []
+    probs: list[float] = []
+    for raw_name, raw_prob in prob_dict.items():
+        name = str(raw_name).lower()
+        if name not in allowed:
+            continue
+        p = max(float(raw_prob), 0.0)
+        if p <= 0.0:
+            continue
+        names.append(name)
+        probs.append(p)
+    if not names:
+        # fallback is filled by caller
+        names = list(allowed.keys())[:1]
+        probs = [1.0]
+    prob_t = torch.tensor(probs, dtype=torch.float32)
+    prob_t = prob_t / torch.clamp(prob_t.sum(), min=1.0e-6)
+    return names, prob_t
+
+
+def _sample_delivery_families(
+    env: "ManagerBasedRLEnv",
+    num_samples: int,
+    stage: int,
+    base_should_toss: torch.Tensor,
+    delivery_randomization: dict | None,
+) -> torch.Tensor:
+    """Sample a broad hidden delivery process.
+
+    The policy never observes this family id.  It only sees noisy object rel pos/vel/tag_visible.
+    Families are used to generate diverse trajectories: idle, pass-by, carried approach, push-release,
+    late-visible tosses, and ballistic tosses.
+    """
+    delivery_randomization = delivery_randomization or {}
+    device = env.device
+    family = torch.full((num_samples,), DELIVERY_IDLE, device=device, dtype=torch.long)
+
+    toss_table = delivery_randomization.get("toss_family_prob_by_stage", {})
+    no_toss_table = delivery_randomization.get("no_toss_family_prob_by_stage", {})
+    toss_probs = _stage_dict_value(
+        toss_table,
+        stage,
+        {"ballistic": 0.35, "carried_release": 0.30, "push_release": 0.20, "lob": 0.10, "late_visible": 0.05},
+    )
+    no_toss_probs = _stage_dict_value(
+        no_toss_table,
+        stage,
+        {"idle": 0.50, "pass_by": 0.30, "approach_abort": 0.20},
+    )
+
+    for want_toss, prob_dict, allowed in [
+        (True, toss_probs, TOSS_FAMILIES),
+        (False, no_toss_probs, NO_TOSS_FAMILIES),
+    ]:
+        mask = base_should_toss if want_toss else (~base_should_toss)
+        if not torch.any(mask):
+            continue
+        ids = mask.nonzero(as_tuple=False).squeeze(-1)
+        names, probs = _normalize_prob_dict(prob_dict, allowed)
+        probs = probs.to(device=device)
+        choices = torch.multinomial(probs, int(ids.shape[0]), replacement=True)
+        mapped = torch.tensor([allowed[names[int(i)]] for i in choices.detach().cpu().tolist()], device=device, dtype=torch.long)
+        family[ids] = mapped
+    return family
+
+
+def _delivery_family_has_release(family: torch.Tensor) -> torch.Tensor:
+    return (family == DELIVERY_BALLISTIC) | (family == DELIVERY_PUSH) | (family == DELIVERY_CARRIED) | (family == DELIVERY_LOB) | (family == DELIVERY_LATE_VISIBLE)
+
+
+def _sample_pose_velocity_from_cfg(
+    cfg: dict,
+    num_samples: int,
+    device: torch.device,
+    dtype: torch.dtype,
+    default_pos=((0.75, 1.55), (-0.45, 0.45), (-0.18, 0.32)),
+    default_vel=((-0.02, 0.04), (-0.05, 0.05), (-0.02, 0.02)),
+) -> tuple[torch.Tensor, torch.Tensor]:
+    pos = torch.stack(
+        [
+            torch.empty(num_samples, device=device, dtype=dtype).uniform_(*cfg.get("pos_x", default_pos[0])),
+            torch.empty(num_samples, device=device, dtype=dtype).uniform_(*cfg.get("pos_y", default_pos[1])),
+            torch.empty(num_samples, device=device, dtype=dtype).uniform_(*cfg.get("pos_z", default_pos[2])),
+        ],
+        dim=-1,
+    )
+    vel = torch.stack(
+        [
+            torch.empty(num_samples, device=device, dtype=dtype).uniform_(*cfg.get("vel_x", default_vel[0])),
+            torch.empty(num_samples, device=device, dtype=dtype).uniform_(*cfg.get("vel_y", default_vel[1])),
+            torch.empty(num_samples, device=device, dtype=dtype).uniform_(*cfg.get("vel_z", default_vel[2])),
+        ],
+        dim=-1,
+    )
+    return pos, vel
+
+
 def _get_stage(env: "ManagerBasedRLEnv") -> int:
     params = env.cfg.curriculum.stage_schedule.params
     forced = int(params.get("eval_stage", -1))
@@ -127,6 +272,12 @@ def _ensure_urop_buffers(env: "ManagerBasedRLEnv") -> None:
         env._urop_no_toss_episode_count = torch.zeros((), dtype=torch.int64, device=d)
     if not hasattr(env, "_urop_toss_episode_count"):
         env._urop_toss_episode_count = torch.zeros((), dtype=torch.int64, device=d)
+    if not hasattr(env, "_urop_delivery_family"):
+        env._urop_delivery_family = torch.zeros(n, dtype=torch.long, device=d)
+    if not hasattr(env, "_urop_delivery_release_due"):
+        env._urop_delivery_release_due = torch.zeros(n, dtype=torch.bool, device=d)
+    if not hasattr(env, "_urop_toss_active_start_step"):
+        env._urop_toss_active_start_step = torch.zeros(n, dtype=torch.long, device=d)
 
     if not hasattr(env, "_urop_box_size"):
         env._urop_box_size = torch.tensor(DEFAULT_BOX_SIZE, device=d, dtype=dtype).unsqueeze(0).repeat(n, 1)
@@ -464,6 +615,7 @@ def reset_autonomous_episode(
     floor_material_randomization: dict | None = None,
     observation_randomization: dict | None = None,
     visibility_randomization: dict | None = None,
+    delivery_randomization: dict | None = None,
 ) -> None:
     _ensure_urop_buffers(env)
 
@@ -472,6 +624,7 @@ def reset_autonomous_episode(
     floor_material_randomization = floor_material_randomization or {}
     observation_randomization = observation_randomization or {}
     visibility_randomization = visibility_randomization or {}
+    delivery_randomization = delivery_randomization or {}
 
     robot = env.scene["robot"]
     obj = env.scene["object"]
@@ -479,14 +632,19 @@ def reset_autonomous_episode(
     n = int(env_ids.shape[0])
 
     stage = _get_stage(env)
-    should_toss, toss_probability = _sample_should_toss(env, n, stage, toss_probability_by_stage)
+    base_should_toss, toss_probability = _sample_should_toss(env, n, stage, toss_probability_by_stage)
+    delivery_family = _sample_delivery_families(env, n, stage, base_should_toss, delivery_randomization)
+    should_toss = _delivery_family_has_release(delivery_family)
     wait_times = _sample_wait_times(env, n, stage, wait_time_ranges)
     no_toss_wait = torch.full_like(wait_times, 999.0)
     wait_times = torch.where(should_toss.unsqueeze(-1), wait_times, no_toss_wait)
 
     env._urop_toss_done[env_ids] = 0
     env._urop_toss_active[env_ids] = False
+    env._urop_toss_active_start_step[env_ids] = 0
     env._urop_should_toss[env_ids] = should_toss
+    env._urop_delivery_family[env_ids] = delivery_family
+    env._urop_delivery_release_due[env_ids] = should_toss
     env._urop_toss_wait_s[env_ids] = wait_times
     env._urop_toss_probability[env_ids] = toss_probability
     env._urop_last_toss_spawn_rel[env_ids] = 0.0
@@ -581,10 +739,9 @@ def reset_autonomous_episode(
     randomize_object_observation(env, env_ids, **observation_randomization)
 
     # ------------------------------------------------------------
-    # v18 object visibility model.
-    # The object can be visible before toss, or visible in no-toss idle episodes.
-    # This is the main fix for the real-robot failure mode: tag_visible=1 must
-    # not mean "hug immediately".
+    # v18.2 broad stochastic delivery model.
+    # The hidden family samples how the object moves, but the actor never sees it.
+    # tag_visible remains a noisy perception signal; receiving is learned from rel_pos/rel_vel.
     # ------------------------------------------------------------
     toss_params = getattr(env.cfg.events, "toss").params if hasattr(env.cfg.events, "toss") else {}
     cfg, _ = _select_toss_cfg(
@@ -599,36 +756,30 @@ def reset_autonomous_episode(
 
     visible_prob_by_stage = visibility_randomization.get(
         "pre_toss_visible_probability_by_stage",
-        {"stage0": 0.0, "stage1": 0.75, "stage2": 0.82, "stage3": 0.88},
+        {"stage0": 0.0, "stage1": 0.70, "stage2": 0.82, "stage3": 0.90},
     )
     idle_visible_prob_by_stage = visibility_randomization.get(
         "idle_visible_probability_by_stage",
-        {"stage0": 0.85, "stage1": 0.55, "stage2": 0.42, "stage3": 0.35},
+        {"stage0": 0.90, "stage1": 0.45, "stage2": 0.35, "stage3": 0.28},
     )
     pre_visible_prob = float(visible_prob_by_stage.get(f"stage{stage}", 0.80))
-    idle_visible_prob = float(idle_visible_prob_by_stage.get(f"stage{stage}", 0.40))
+    idle_visible_prob = float(idle_visible_prob_by_stage.get(f"stage{stage}", 0.35))
 
     scene_visible = torch.zeros(n, dtype=torch.bool, device=d)
-    toss_scene_visible = should_toss & (torch.rand(n, device=d) < pre_visible_prob)
+    late_visible = delivery_family == DELIVERY_LATE_VISIBLE
+    toss_scene_visible = should_toss & (~late_visible) & (torch.rand(n, device=d) < pre_visible_prob)
     idle_scene_visible = (~should_toss) & (torch.rand(n, device=d) < idle_visible_prob)
-    scene_visible |= toss_scene_visible | idle_scene_visible
+    # pass-by / abort families are intentionally visible often: they teach "do not hug just because it is visible".
+    forced_no_toss_visible = (~should_toss) & ((delivery_family == DELIVERY_PASS_BY) | (delivery_family == DELIVERY_ABORT))
+    scene_visible |= toss_scene_visible | idle_scene_visible | forced_no_toss_visible
 
-    # Pending toss is sampled at reset so the held pre-toss pose and released trajectory match.
+    # Pending release state is sampled at reset so pre-release carried motion and release match.
     if torch.any(should_toss):
         toss_local = should_toss.nonzero(as_tuple=False).squeeze(-1)
         nt = int(toss_local.shape[0])
-        rel_p_toss, rel_v_toss, target_rel, flight_time = _sample_toss_state(env, cfg, nt, d, obj.data.root_pos_w.dtype)
-        roll = torch.empty(nt, device=d).uniform_(*cfg.get("roll", (-0.03, 0.03)))
-        pitch = torch.empty(nt, device=d).uniform_(*cfg.get("pitch", (-0.04, 0.04)))
-        yaw = torch.empty(nt, device=d).uniform_(*cfg.get("yaw", (-0.06, 0.06)))
-        quat_pending = _quat_from_euler_xyz(roll, pitch, yaw)
-        ang_vel_pending = torch.stack(
-            [
-                torch.empty(nt, device=d).uniform_(*cfg.get("ang_vel_x", (-0.20, 0.20))),
-                torch.empty(nt, device=d).uniform_(*cfg.get("ang_vel_y", (-0.20, 0.20))),
-                torch.empty(nt, device=d).uniform_(*cfg.get("ang_vel_z", (-0.30, 0.30))),
-            ],
-            dim=-1,
+        fam_toss = delivery_family[toss_local]
+        rel_p_toss, rel_v_toss, target_rel, flight_time, quat_pending, ang_vel_pending = _sample_release_states_for_families(
+            env, cfg, fam_toss, nt, d, obj.data.root_pos_w.dtype
         )
         ids_toss = env_ids[toss_local]
         env._urop_pending_toss_valid[ids_toss] = True
@@ -639,46 +790,93 @@ def reset_autonomous_episode(
         env._urop_pending_toss_quat[ids_toss] = quat_pending
         env._urop_pending_toss_ang_vel[ids_toss] = ang_vel_pending
 
-    # Idle visible objects are held safely out of the catchable/TTC region.  They can be
-    # in front of the robot with tag_visible=1, but rel_vel is near zero or receding.
+    # Visible/no-release states: static idle, lateral pass-by, or abort/recede.  These are not
+    # privileged labels; they just fill the rel_pos/rel_vel state space with non-catch cases.
     idle_cfg = visibility_randomization.get(
         "idle_visible_pose",
         {
-            "pos_x": (0.70, 1.55),
-            "pos_y": (-0.50, 0.50),
-            "pos_z": (-0.20, 0.30),
-            "vel_x": (-0.03, 0.05),
-            "vel_y": (-0.05, 0.05),
+            "pos_x": (0.75, 1.75),
+            "pos_y": (-0.60, 0.60),
+            "pos_z": (-0.25, 0.35),
+            "vel_x": (-0.03, 0.06),
+            "vel_y": (-0.06, 0.06),
             "vel_z": (-0.02, 0.02),
         },
     )
-    idle_rel = torch.stack(
-        [
-            torch.empty(n, device=d).uniform_(*idle_cfg.get("pos_x", (0.70, 1.55))),
-            torch.empty(n, device=d).uniform_(*idle_cfg.get("pos_y", (-0.50, 0.50))),
-            torch.empty(n, device=d).uniform_(*idle_cfg.get("pos_z", (-0.20, 0.30))),
-        ],
-        dim=-1,
-    )
-    idle_vel = torch.stack(
-        [
-            torch.empty(n, device=d).uniform_(*idle_cfg.get("vel_x", (-0.03, 0.05))),
-            torch.empty(n, device=d).uniform_(*idle_cfg.get("vel_y", (-0.05, 0.05))),
-            torch.empty(n, device=d).uniform_(*idle_cfg.get("vel_z", (-0.02, 0.02))),
-        ],
-        dim=-1,
-    )
+    idle_rel, idle_vel = _sample_pose_velocity_from_cfg(idle_cfg, n, d, obj.data.root_pos_w.dtype)
 
-    hold_rel = idle_rel
-    pending_global_mask = env._urop_pending_toss_valid[env_ids]
-    hold_rel = torch.where(pending_global_mask.unsqueeze(-1), env._urop_pending_toss_spawn_rel[env_ids], hold_rel)
+    abort_cfg = delivery_randomization.get(
+        "abort_visible_pose",
+        {
+            "pos_x": (0.65, 1.65),
+            "pos_y": (-0.60, 0.60),
+            "pos_z": (-0.20, 0.36),
+            "vel_x": (-0.08, 0.08),
+            "vel_y": (-0.08, 0.08),
+            "vel_z": (-0.03, 0.03),
+        },
+    )
+    abort_rel, abort_vel = _sample_pose_velocity_from_cfg(abort_cfg, n, d, obj.data.root_pos_w.dtype)
+    pass_cfg = delivery_randomization.get(
+        "pass_by_visible_pose",
+        {
+            "pos_x": (0.55, 1.40),
+            "pos_y": (-0.90, 0.90),
+            "pos_z": (-0.18, 0.36),
+            "vel_x": (-0.04, 0.08),
+            "vel_y": (-0.55, 0.55),
+            "vel_z": (-0.03, 0.03),
+        },
+    )
+    pass_rel, pass_vel = _sample_pose_velocity_from_cfg(pass_cfg, n, d, obj.data.root_pos_w.dtype)
+    pass_vel[:, 1] = torch.where(torch.abs(pass_vel[:, 1]) < 0.12, 0.12 * torch.sign(pass_vel[:, 1] + 1.0e-6), pass_vel[:, 1])
+
+    no_toss_rel = idle_rel
+    no_toss_vel = idle_vel
+    abort_mask = delivery_family == DELIVERY_ABORT
+    pass_mask = delivery_family == DELIVERY_PASS_BY
+    no_toss_rel = torch.where(abort_mask.unsqueeze(-1), abort_rel, no_toss_rel)
+    no_toss_vel = torch.where(abort_mask.unsqueeze(-1), abort_vel, no_toss_vel)
+    no_toss_rel = torch.where(pass_mask.unsqueeze(-1), pass_rel, no_toss_rel)
+    no_toss_vel = torch.where(pass_mask.unsqueeze(-1), pass_vel, no_toss_vel)
+
+    release_rel = env._urop_pending_toss_spawn_rel[env_ids]
+    hold_rel = torch.where(should_toss.unsqueeze(-1), release_rel, no_toss_rel)
+    hold_vel = torch.where(should_toss.unsqueeze(-1), torch.zeros_like(no_toss_vel), no_toss_vel)
+
+    # For many visible release episodes, the object starts farther away and is carried toward
+    # the sampled release state.  This prevents overfitting to "object appears exactly at release".
+    start_cfg = delivery_randomization.get(
+        "pre_release_start_pose",
+        {
+            "pos_x": (0.85, 2.05),
+            "pos_y": (-0.75, 0.75),
+            "pos_z": (-0.28, 0.46),
+            "vel_x": (0.0, 0.0),
+            "vel_y": (0.0, 0.0),
+            "vel_z": (0.0, 0.0),
+        },
+    )
+    start_rel, _ = _sample_pose_velocity_from_cfg(start_cfg, n, d, obj.data.root_pos_w.dtype)
+    start_prob_by_stage = delivery_randomization.get(
+        "pre_release_start_probability_by_stage",
+        {"stage0": 0.0, "stage1": 0.45, "stage2": 0.65, "stage3": 0.78},
+    )
+    start_prob = float(start_prob_by_stage.get(f"stage{stage}", 0.65))
+    use_carried_start = should_toss & scene_visible & (torch.rand(n, device=d) < start_prob)
+    hold_rel = torch.where(use_carried_start.unsqueeze(-1), start_rel, hold_rel)
+    wait_safe = torch.clamp(wait_times, min=0.25, max=8.0)
+    approach_vel = (release_rel - hold_rel) / wait_safe
+    approach_vel = torch.clamp(approach_vel, -1.20, 1.20)
+    hold_vel = torch.where(use_carried_start.unsqueeze(-1), approach_vel, hold_vel)
+
     env._urop_visible_hold_rel[env_ids] = hold_rel
-    env._urop_visible_drift_rel_vel[env_ids] = torch.where(pending_global_mask.unsqueeze(-1), torch.zeros_like(idle_vel), idle_vel)
+    env._urop_visible_drift_rel_vel[env_ids] = hold_vel
     env._urop_object_scene_visible[env_ids] = scene_visible
     env._urop_visible_start_s[env_ids] = torch.empty((n, 1), device=d).uniform_(
-        *visibility_randomization.get("visibility_start_s", (0.0, 0.35))
+        *visibility_randomization.get("visibility_start_s", (0.0, 0.45))
     )
-    env._urop_visible_yaw[env_ids] = torch.empty((n, 1), device=d).uniform_(-0.35, 0.35)
+    env._urop_visible_yaw[env_ids] = torch.empty((n, 1), device=d).uniform_(-0.55, 0.55)
 
     # Initial object placement. Hidden/no-tag objects are parked out of view; visible objects
     # are held in the front scene by update_visible_object_before_toss().
@@ -923,6 +1121,88 @@ def _sample_toss_state(
     return spawn_rel, rel_vel, target_rel, flight_time
 
 
+
+def _sample_release_states_for_families(
+    env: "ManagerBasedRLEnv",
+    base_cfg: dict,
+    family: torch.Tensor,
+    num_samples: int,
+    device: torch.device,
+    dtype: torch.dtype,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Sample release pose/velocity for a hidden mixture of delivery families.
+
+    All returned positions/velocities are root-body-frame relative.  The mixture is hidden from
+    the actor to reduce overfitting to any one delivery grammar.
+    """
+    rel_p = torch.zeros((num_samples, 3), device=device, dtype=dtype)
+    rel_v = torch.zeros((num_samples, 3), device=device, dtype=dtype)
+    target_rel = torch.zeros((num_samples, 3), device=device, dtype=dtype)
+    flight_time = torch.zeros((num_samples, 1), device=device, dtype=dtype)
+    quat = torch.tensor([1.0, 0.0, 0.0, 0.0], device=device, dtype=dtype).unsqueeze(0).repeat(num_samples, 1)
+    ang_vel = torch.zeros((num_samples, 3), device=device, dtype=dtype)
+
+    for fam_id, fam_name in FAMILY_TO_NAME.items():
+        mask = family == int(fam_id)
+        if not torch.any(mask):
+            continue
+        ids = mask.nonzero(as_tuple=False).squeeze(-1)
+        n = int(ids.shape[0])
+        cfg = base_cfg.get(fam_name, base_cfg)
+        # Some aliases for convenience in env_cfg.py.
+        if fam_id == DELIVERY_PUSH:
+            cfg = base_cfg.get("push_release", cfg)
+        elif fam_id == DELIVERY_CARRIED:
+            cfg = base_cfg.get("carried_release", cfg)
+        elif fam_id == DELIVERY_LATE_VISIBLE:
+            cfg = base_cfg.get("late_visible_toss", base_cfg.get("ballistic", base_cfg))
+        elif fam_id == DELIVERY_BALLISTIC:
+            cfg = base_cfg.get("ballistic", base_cfg)
+
+        if fam_id in (DELIVERY_PUSH, DELIVERY_CARRIED):
+            # Non-ballistic release: carried/pushed object already has approach velocity.
+            rel_p_i = _sample_uniform_triplet(cfg, "spawn", n, device, dtype)
+            rel_v_i = _sample_independent_velocity(cfg, n, device, dtype)
+            target_i = torch.zeros_like(rel_p_i)
+            flight_i = torch.zeros((n, 1), device=device, dtype=dtype)
+        else:
+            rel_p_i, rel_v_i, target_i, flight_i = _sample_toss_state(env, cfg, n, device, dtype)
+
+        # Generic safety clamps for all families.
+        max_speed = cfg.get("max_speed", None)
+        if max_speed is not None:
+            speed = torch.norm(rel_v_i, dim=-1, keepdim=True).clamp_min(1.0e-6)
+            rel_v_i = rel_v_i * torch.clamp(float(max_speed) / speed, max=1.0)
+        max_vy_abs = cfg.get("max_vy_abs", None)
+        if max_vy_abs is not None:
+            rel_v_i[:, 1] = torch.clamp(rel_v_i[:, 1], -float(max_vy_abs), float(max_vy_abs))
+        max_vz_abs = cfg.get("max_vz_abs", None)
+        if max_vz_abs is not None:
+            rel_v_i[:, 2] = torch.clamp(rel_v_i[:, 2], -float(max_vz_abs), float(max_vz_abs))
+
+        roll = torch.empty(n, device=device, dtype=dtype).uniform_(*cfg.get("roll", (-0.03, 0.03)))
+        pitch = torch.empty(n, device=device, dtype=dtype).uniform_(*cfg.get("pitch", (-0.04, 0.04)))
+        yaw = torch.empty(n, device=device, dtype=dtype).uniform_(*cfg.get("yaw", (-0.10, 0.10)))
+        quat_i = _quat_from_euler_xyz(roll, pitch, yaw)
+        ang_i = torch.stack(
+            [
+                torch.empty(n, device=device, dtype=dtype).uniform_(*cfg.get("ang_vel_x", (-0.12, 0.12))),
+                torch.empty(n, device=device, dtype=dtype).uniform_(*cfg.get("ang_vel_y", (-0.12, 0.12))),
+                torch.empty(n, device=device, dtype=dtype).uniform_(*cfg.get("ang_vel_z", (-0.20, 0.20))),
+            ],
+            dim=-1,
+        )
+
+        rel_p[ids] = rel_p_i
+        rel_v[ids] = rel_v_i
+        target_rel[ids] = target_i
+        flight_time[ids] = flight_i
+        quat[ids] = quat_i
+        ang_vel[ids] = ang_i
+
+    return rel_p, rel_v, target_rel, flight_time, quat, ang_vel
+
+
 def toss_object_relative_curriculum(
     env: "ManagerBasedRLEnv",
     env_ids: torch.Tensor,
@@ -1028,6 +1308,7 @@ def toss_object_relative_curriculum(
 
     env._urop_toss_done[ids_throw] += 1
     env._urop_toss_active[ids_throw] = True
+    env._urop_toss_active_start_step[ids_throw] = env.episode_length_buf[ids_throw]
     env._urop_object_scene_visible[ids_throw] = True
     env._urop_pending_toss_valid[ids_throw] = False
     env._urop_obj_obs_cache_global_step = -1
