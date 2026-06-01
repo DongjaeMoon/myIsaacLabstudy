@@ -132,25 +132,25 @@ class RewardsCfg:
     upright = RewTerm(func=mdp.upright_reward, weight=1.80)
     height = RewTerm(func=mdp.root_height_reward, weight=1.05, params={"target_z": 0.78, "sigma": 0.10})
 
-    base_motion = RewTerm(func=mdp.base_motion_penalty, weight=-0.13, params={"w_lin": 1.0, "w_ang": 0.30})
+    base_motion = RewTerm(func=mdp.base_motion_penalty, weight=-0.11, params={"w_lin": 1.0, "w_ang": 0.30})
     joint_vel = RewTerm(func=mdp.joint_vel_l2_penalty, weight=-0.025)
     torque = RewTerm(func=mdp.torque_l2_penalty, weight=-0.00002)
-    action_mag = RewTerm(func=mdp.action_magnitude_penalty, weight=-0.014)
-    action_rate = RewTerm(func=mdp.action_rate_penalty, weight=-0.10)
-    action_accel = RewTerm(func=mdp.action_acceleration_penalty, weight=-0.055)
-    lower_body_action_rate = RewTerm(func=mdp.lower_body_action_rate_penalty, weight=-0.065)
+    action_mag = RewTerm(func=mdp.action_magnitude_penalty, weight=-0.010)
+    action_rate = RewTerm(func=mdp.action_rate_penalty, weight=-0.060)
+    action_accel = RewTerm(func=mdp.action_acceleration_penalty, weight=-0.030)
+    lower_body_action_rate = RewTerm(func=mdp.lower_body_action_rate_penalty, weight=-0.045)
     foot_slip = RewTerm(func=mdp.foot_slip_penalty, weight=-0.10, params={"ground_height_thr": 0.16})
 
     # Waiting/ignore rewards are intentionally strong: visible tag alone must not trigger hugging.
-    wait_ready_pose = RewTerm(func=mdp.ready_pose_when_waiting, weight=3.0, params={"sigma": 0.22})
-    wait_joint_still = RewTerm(func=mdp.waiting_joint_stillness_reward, weight=0.9, params={"sigma": 1.3})
-    wait_base_drift = RewTerm(func=mdp.wait_base_drift_penalty, weight=-1.7, params={"sigma": 0.14})
-    wait_yaw_drift = RewTerm(func=mdp.wait_yaw_drift_penalty, weight=-0.95, params={"sigma": 0.20})
-    visible_far_ready = RewTerm(func=mdp.visible_far_ready_reward, weight=2.4, params={"sigma": 0.20, "min_x": 0.48})
+    wait_ready_pose = RewTerm(func=mdp.ready_pose_when_waiting, weight=1.15, params={"sigma": 0.24})
+    wait_joint_still = RewTerm(func=mdp.waiting_joint_stillness_reward, weight=0.35, params={"sigma": 1.5})
+    wait_base_drift = RewTerm(func=mdp.wait_base_drift_penalty, weight=-0.90, params={"sigma": 0.14})
+    wait_yaw_drift = RewTerm(func=mdp.wait_yaw_drift_penalty, weight=-0.50, params={"sigma": 0.20})
+    visible_far_ready = RewTerm(func=mdp.visible_far_ready_reward, weight=0.85, params={"sigma": 0.22, "min_x": 0.62})
     premature_receive = RewTerm(
         func=mdp.premature_receive_penalty,
-        weight=-2.2,
-        params={"min_x": 0.48, "action_weight": 0.25},
+        weight=-0.75,
+        params={"min_x": 0.62, "action_weight": 0.20},
     )
     lower_body_ready = RewTerm(
         func=mdp.lower_body_ready_reward,
@@ -159,18 +159,19 @@ class RewardsCfg:
     )
 
     # Receive/hold rewards activate only for real handover-release episodes near commit/release.
-    catch_region = RewTerm(func=mdp.catch_target_region_reward, weight=1.6, params={"sigma": 0.28})
-    upper_body_receive = RewTerm(func=mdp.upper_body_receive_reward, weight=1.25, params={"sigma": 0.27})
+    progressive_receive_pose = RewTerm(func=mdp.progressive_receive_pose_reward, weight=3.2, params={"sigma": 0.42})
+    catch_region = RewTerm(func=mdp.catch_target_region_reward, weight=3.5, params={"sigma": 0.34})
+    upper_body_receive = RewTerm(func=mdp.upper_body_receive_reward, weight=3.0, params={"sigma": 0.34})
     catch_vel_match = RewTerm(
         func=mdp.catch_velocity_match_reward,
-        weight=0.9,
-        params={"torso_body_name": "torso_link", "sigma": 0.70},
+        weight=1.4,
+        params={"torso_body_name": "torso_link", "sigma": 0.75},
     )
-    mass_brace = RewTerm(func=mdp.mass_conditioned_receive_pose_reward, weight=1.7, params={"sigma": 0.36})
-    heavy_stability = RewTerm(func=mdp.heavy_object_stability_reward, weight=1.0, params={"lin_sigma": 0.16, "ang_sigma": 0.38})
+    mass_brace = RewTerm(func=mdp.mass_conditioned_receive_pose_reward, weight=2.1, params={"sigma": 0.42})
+    heavy_stability = RewTerm(func=mdp.heavy_object_stability_reward, weight=0.8, params={"lin_sigma": 0.18, "ang_sigma": 0.42})
     contact_hug = RewTerm(
         func=mdp.hug_contact_bonus,
-        weight=2.2,
+        weight=5.0,
         params={
             "sensor_names_left": [
                 "contact_l_shoulder_yaw",
@@ -192,11 +193,11 @@ class RewardsCfg:
     )
     impact = RewTerm(func=mdp.impact_peak_penalty, weight=-0.0045, params={"sensor_names": CONTACT_SENSOR_NAMES, "force_thr": 230.0})
 
-    hold_vel = RewTerm(func=mdp.hold_object_vel_reward, weight=1.8, params={"torso_body_name": "torso_link", "sigma": 0.45})
-    hold_pose = RewTerm(func=mdp.hold_pose_reward, weight=2.3, params={"sigma": 0.18})
-    hold_latched = RewTerm(func=mdp.hold_latched_bonus, weight=1.0)
-    hold_sustain = RewTerm(func=mdp.hold_sustain_bonus, weight=2.8, params={"min_steps": 22})
-    not_drop = RewTerm(func=mdp.object_not_dropped_bonus, weight=1.25, params={"min_z": 0.42, "max_dist": 1.8})
+    hold_vel = RewTerm(func=mdp.hold_object_vel_reward, weight=2.5, params={"torso_body_name": "torso_link", "sigma": 0.55})
+    hold_pose = RewTerm(func=mdp.hold_pose_reward, weight=4.5, params={"sigma": 0.24})
+    hold_latched = RewTerm(func=mdp.hold_latched_bonus, weight=2.0)
+    hold_sustain = RewTerm(func=mdp.hold_sustain_bonus, weight=4.0, params={"min_steps": 16})
+    not_drop = RewTerm(func=mdp.object_not_dropped_bonus, weight=2.2, params={"min_z": 0.36, "max_dist": 1.8})
 
     post_hold_still = RewTerm(func=mdp.post_hold_still_reward, weight=1.55, params={"lin_sigma": 0.10, "yaw_sigma": 0.30})
     post_hold_anchor = RewTerm(func=mdp.post_hold_anchor_penalty, weight=-1.45, params={"sigma": 0.10})
@@ -223,10 +224,10 @@ class EventCfg:
             "park": {"pos_x": (1.55, 1.85), "pos_y": (-0.15, 0.15), "pos_z": (-0.62, -0.52)},
             # Deliberately keep many visible-but-not-receive episodes throughout training.
             "task_probability_by_stage": {
-                "stage0": {"hidden": 0.35, "visible_static": 0.65, "approach_no_release": 0.00, "handover_release": 0.00},
-                "stage1": {"hidden": 0.18, "visible_static": 0.36, "approach_no_release": 0.22, "handover_release": 0.24},
-                "stage2": {"hidden": 0.12, "visible_static": 0.28, "approach_no_release": 0.22, "handover_release": 0.38},
-                "stage3": {"hidden": 0.08, "visible_static": 0.22, "approach_no_release": 0.20, "handover_release": 0.50},
+                "stage0": {"hidden": 0.20, "visible_static": 0.80, "approach_no_release": 0.00, "handover_release": 0.00},
+                "stage1": {"hidden": 0.05, "visible_static": 0.25, "approach_no_release": 0.15, "handover_release": 0.55},
+                "stage2": {"hidden": 0.06, "visible_static": 0.18, "approach_no_release": 0.16, "handover_release": 0.60},
+                "stage3": {"hidden": 0.07, "visible_static": 0.12, "approach_no_release": 0.16, "handover_release": 0.65},
             },
             "joint_noise": {
                 "lower_body_pos": (-0.030, 0.030),
@@ -239,15 +240,15 @@ class EventCfg:
             "root_yaw_range": (-0.08, 0.08),
             "object_randomization": {
                 "mass_class_ranges": {
-                    "light": (1.0, 2.4),
-                    "medium": (2.4, 4.5),
-                    "heavy": (4.5, 8.0),
+                    "light": (0.8, 1.6),
+                    "medium": (1.6, 2.8),
+                    "heavy": (2.8, 4.2),
                 },
                 "mass_class_prob_by_stage": {
-                    "stage0": {"light": 0.45, "medium": 0.40, "heavy": 0.15},
-                    "stage1": {"light": 0.44, "medium": 0.42, "heavy": 0.14},
-                    "stage2": {"light": 0.34, "medium": 0.42, "heavy": 0.24},
-                    "stage3": {"light": 0.28, "medium": 0.40, "heavy": 0.32},
+                    "stage0": {"light": 0.55, "medium": 0.35, "heavy": 0.10},
+                    "stage1": {"light": 0.45, "medium": 0.42, "heavy": 0.13},
+                    "stage2": {"light": 0.35, "medium": 0.45, "heavy": 0.20},
+                    "stage3": {"light": 0.30, "medium": 0.45, "heavy": 0.25},
                 },
                 "friction_range": (0.25, 1.60),
                 "restitution_range": (0.00, 0.16),
@@ -286,10 +287,10 @@ class EventCfg:
                     "goal_x": (0.16, 0.28), "goal_y": (-0.07, 0.07), "goal_z": (0.08, 0.24),
                     "stop_x": (0.52, 0.78), "stop_y": (-0.15, 0.15), "stop_z": (0.10, 0.32),
                     "static_x": (0.70, 1.20), "static_y": (-0.30, 0.30), "static_z": (0.08, 0.40),
-                    "start_wait_s": {"stage1": (0.40, 1.40)},
-                    "move_duration_s": (1.20, 2.60),
-                    "pre_release_pause_s": (0.15, 0.55),
-                    "commit_lead_s": (0.25, 0.50),
+                    "start_wait_s": {"stage1": (0.15, 0.75)},
+                    "move_duration_s": (0.85, 1.80),
+                    "pre_release_pause_s": (0.05, 0.25),
+                    "commit_lead_s": (0.45, 0.80),
                     "release_vel_x": (-0.08, 0.03), "release_vel_y": (-0.04, 0.04), "release_vel_z": (-0.08, 0.06),
                 },
                 "stage2": {
@@ -297,10 +298,10 @@ class EventCfg:
                     "goal_x": (0.12, 0.30), "goal_y": (-0.11, 0.11), "goal_z": (0.04, 0.30),
                     "stop_x": (0.48, 0.85), "stop_y": (-0.23, 0.23), "stop_z": (0.06, 0.36),
                     "static_x": (0.62, 1.35), "static_y": (-0.40, 0.40), "static_z": (0.04, 0.46),
-                    "start_wait_s": {"stage2": (0.30, 1.70)},
-                    "move_duration_s": (1.00, 2.80),
-                    "pre_release_pause_s": (0.08, 0.60),
-                    "commit_lead_s": (0.25, 0.58),
+                    "start_wait_s": {"stage2": (0.15, 0.95)},
+                    "move_duration_s": (0.80, 2.20),
+                    "pre_release_pause_s": (0.04, 0.30),
+                    "commit_lead_s": (0.45, 0.85),
                     "release_vel_x": (-0.12, 0.04), "release_vel_y": (-0.06, 0.06), "release_vel_z": (-0.12, 0.08),
                 },
                 "stage3": {
@@ -308,10 +309,10 @@ class EventCfg:
                     "goal_x": (0.08, 0.32), "goal_y": (-0.16, 0.16), "goal_z": (0.00, 0.34),
                     "stop_x": (0.48, 0.95), "stop_y": (-0.30, 0.30), "stop_z": (0.02, 0.42),
                     "static_x": (0.58, 1.55), "static_y": (-0.48, 0.48), "static_z": (0.00, 0.55),
-                    "start_wait_s": {"stage3": (0.20, 2.00)},
-                    "move_duration_s": (0.85, 3.20),
-                    "pre_release_pause_s": (0.05, 0.70),
-                    "commit_lead_s": (0.22, 0.65),
+                    "start_wait_s": {"stage3": (0.10, 1.30)},
+                    "move_duration_s": (0.75, 2.60),
+                    "pre_release_pause_s": (0.02, 0.35),
+                    "commit_lead_s": (0.45, 0.90),
                     "release_vel_x": (-0.16, 0.06), "release_vel_y": (-0.10, 0.10), "release_vel_z": (-0.16, 0.10),
                 },
             },
@@ -344,7 +345,7 @@ class EventCfg:
         mode="interval",
         interval_range_s=(0.02, 0.02),
         params={
-            "commit_x": 0.42,
+            "commit_x": 0.58,
             "debug_print": False,
             "debug_print_rate_s": 0.75,
         },
@@ -356,7 +357,7 @@ class CurriculumCfg:
     stage_schedule = CurrTerm(
         func=mdp.stage_schedule,
         params={
-            "stage0_iters": 500,
+            "stage0_iters": 350,
             "stage1_iters": 1000,
             "stage2_iters": 1500,
             "num_steps_per_env": 64,
@@ -411,11 +412,11 @@ class dj_urop_v19_EnvCfg_Play(dj_urop_v19_EnvCfg):
 
     def _set_mild_play_randomization(self):
         self.events.reset_autonomous_episode.params["task_probability_by_stage"] = {
-            "stage3": {"hidden": 0.10, "visible_static": 0.30, "approach_no_release": 0.25, "handover_release": 0.35},
+            "stage3": {"hidden": 0.05, "visible_static": 0.15, "approach_no_release": 0.15, "handover_release": 0.65},
         }
         self.events.reset_autonomous_episode.params["object_randomization"] = {
-            "mass_class_ranges": {"light": (1.2, 2.2), "medium": (2.6, 4.0), "heavy": (4.8, 6.8)},
-            "mass_class_prob_by_stage": {"stage3": {"light": 0.30, "medium": 0.40, "heavy": 0.30}},
+            "mass_class_ranges": {"light": (0.9, 1.5), "medium": (1.5, 2.5), "heavy": (2.5, 3.5)},
+            "mass_class_prob_by_stage": {"stage3": {"light": 0.30, "medium": 0.50, "heavy": 0.20}},
             "friction_range": (0.55, 1.15),
             "restitution_range": (0.00, 0.06),
             "size_scale_range": (0.90, 1.15),
@@ -457,5 +458,5 @@ class dj_urop_v19_EnvCfg_Debug(dj_urop_v19_EnvCfg_Play):
         self.events.handover.params["debug_print_rate_s"] = 0.50
         # Make the GUI visibly include all event types, not just successful handovers.
         self.events.reset_autonomous_episode.params["task_probability_by_stage"] = {
-            "stage3": {"hidden": 0.125, "visible_static": 0.375, "approach_no_release": 0.250, "handover_release": 0.250},
+            "stage3": {"hidden": 0.10, "visible_static": 0.25, "approach_no_release": 0.20, "handover_release": 0.45},
         }

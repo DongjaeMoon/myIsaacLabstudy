@@ -210,7 +210,19 @@ def _hold_ramp(env: "ManagerBasedRLEnv", warmup_steps: int = 18) -> torch.Tensor
 
 
 def _wait_gate(env: "ManagerBasedRLEnv") -> torch.Tensor:
-    return 1.0 - _toss_active(env)
+    """Wait only when the object is hidden or visibly far.
+
+    v19b: the previous gate waited until the internal receive-active bit.
+    That made slow handover too conservative.  Now a close visible handover
+    stops receiving the wait reward even before physical contact.
+    """
+    if not hasattr(env, "_urop_obj_visible_truth"):
+        return 1.0 - _toss_active(env)
+
+    visible = _object_visible_truth(env)
+    hidden_wait = 1.0 - visible
+    far_wait = _far_visible_wait_gate(env)
+    return torch.clamp(hidden_wait + far_wait, 0.0, 1.0) * (1.0 - _hold_gate(env))
 
 
 def _hold_gate(env: "ManagerBasedRLEnv") -> torch.Tensor:
@@ -219,6 +231,8 @@ def _hold_gate(env: "ManagerBasedRLEnv") -> torch.Tensor:
 
 def _catch_gate(env: "ManagerBasedRLEnv") -> torch.Tensor:
     hold = _hold_gate(env)
+    # Internal receive-active remains the authoritative gate, but v19b makes
+    # that gate turn on earlier in the event config.
     return _toss_active(env) * (1.0 - hold)
 
 
@@ -236,15 +250,49 @@ def _object_rel_body(env: "ManagerBasedRLEnv") -> tuple[torch.Tensor, torch.Tens
     return rel_p_b, rel_v_b
 
 
-def _visible_far_gate(env: "ManagerBasedRLEnv", min_x: float = 0.48, max_abs_y: float = 0.34) -> torch.Tensor:
-    rel_p, _ = _object_rel_body(env)
+def _receive_affordance(env: "ManagerBasedRLEnv") -> torch.Tensor:
+    """Continuous proximity/approach score for human-style handover.
+
+    Far visible box -> near 0.
+    Box entering the arm/chest receive zone -> near 1, even if slow.
+    This teaches "when" without adding a new actor observation.
+    """
+    rel_p, rel_v = _object_rel_body(env)
+    x, y, z = rel_p[:, 0], rel_p[:, 1], rel_p[:, 2]
+    vx = rel_v[:, 0]
+
     visible = _object_visible_truth(env)
-    far = (rel_p[:, 0] > float(min_x)) | (torch.abs(rel_p[:, 1]) > float(max_abs_y))
-    return visible * (1.0 - _toss_active(env)) * far.float()
+    in_front = ((x > 0.05) & (x < 1.20)).float()
+    lateral_ok = torch.exp(-((torch.abs(y) / 0.38) ** 2)) * (torch.abs(y) < 0.65).float()
+    height_ok = torch.exp(-(((z - 0.16) / 0.34) ** 2)) * ((z > -0.22) & (z < 0.62)).float()
+
+    # High once the object center is around arm/chest receive distance.
+    near = torch.clamp((0.72 - x) / 0.42, 0.0, 1.0) * torch.clamp((x - 0.06) / 0.12, 0.0, 1.0)
+    approach = torch.clamp((-vx + 0.05) / 0.40, 0.0, 1.0)
+    score = near * (0.35 + 0.65 * approach)
+    return torch.clamp(score * visible * in_front * lateral_ok * height_ok, 0.0, 1.0)
+
+
+def _far_visible_wait_gate(env: "ManagerBasedRLEnv", far_x: float = 0.62, max_abs_y: float = 0.45) -> torch.Tensor:
+    rel_p, rel_v = _object_rel_body(env)
+    visible = _object_visible_truth(env)
+    x, y, z = rel_p[:, 0], rel_p[:, 1], rel_p[:, 2]
+    vx = rel_v[:, 0]
+    far = torch.clamp((x - float(far_x)) / 0.35, 0.0, 1.0)
+    lateral_ok = (torch.abs(y) < float(max_abs_y)).float()
+    height_ok = ((z > -0.30) & (z < 0.70)).float()
+    not_urgent = (vx > -0.45).float()
+    return visible * far * lateral_ok * height_ok * not_urgent * (1.0 - _hold_gate(env))
+
+
+def _visible_far_gate(env: "ManagerBasedRLEnv", min_x: float = 0.62, max_abs_y: float = 0.45) -> torch.Tensor:
+    return _far_visible_wait_gate(env, far_x=min_x, max_abs_y=max_abs_y)
 
 
 def _nonreceive_visible_gate(env: "ManagerBasedRLEnv") -> torch.Tensor:
-    return _object_visible_truth(env) * (1.0 - _toss_active(env))
+    # Only far visible objects should strongly punish receiving.  Close handover
+    # objects must be allowed to transition into receive posture.
+    return _far_visible_wait_gate(env)
 
 
 def _mass_norm(env: "ManagerBasedRLEnv") -> torch.Tensor:
@@ -253,8 +301,8 @@ def _mass_norm(env: "ManagerBasedRLEnv") -> torch.Tensor:
         "_urop_box_mass",
         torch.full((env.num_envs, 1), scene_objects_cfg.OBJECT_DEFAULT_MASS, device=env.device),
     )[:, 0]
-    # Map roughly 1.0-8.0 kg to 0-1. Heavy prior should induce more whole-body bracing.
-    return torch.clamp((mass - 1.0) / 7.0, 0.0, 1.0)
+    # v19b mass range is intentionally moderate: roughly 0.8-4.2 kg.
+    return torch.clamp((mass - 0.8) / 3.4, 0.0, 1.0)
 
 
 def _pose_vector_from_dict(env: "ManagerBasedRLEnv", pose_dict: dict[str, float]) -> torch.Tensor:
@@ -487,6 +535,26 @@ def premature_receive_penalty(env: "ManagerBasedRLEnv", min_x: float = 0.48, act
     if hasattr(env, "action_manager") and hasattr(env.action_manager, "action"):
         penalty = penalty + float(action_weight) * torch.sum(env.action_manager.action[:, 15:] ** 2, dim=-1)
     return penalty * _visible_far_gate(env, min_x=min_x)
+
+
+def progressive_receive_pose_reward(env: "ManagerBasedRLEnv", sigma: float = 0.42) -> torch.Tensor:
+    """Reward a gradual transition from ready pose to receive/hug pose.
+
+    The gate is the real receive-active gate, which v19b turns on earlier
+    when a true handover object enters the near zone.  This avoids a new
+    actor state flag while still teaching the policy "when to start receiving".
+    """
+    idx = get_controlled_joint_indices(env)
+    current = env.scene["robot"].data.joint_pos[:, idx]
+    ready = _pose_vector_from_dict(env, scene_objects_cfg.READY_POSE)
+    hold = _pose_vector_from_dict(env, scene_objects_cfg.HOLD_POSE)
+    gate = torch.clamp(_catch_gate(env), 0.0, 1.0).unsqueeze(-1)
+
+    target = ready.clone()
+    upper = slice(15, scene_objects_cfg.EXPECTED_ACTION_DIM)
+    target[:, upper] = ready[:, upper] * (1.0 - gate) + hold[:, upper] * gate
+    upper_err = torch.norm(current[:, upper] - target[:, upper], dim=-1)
+    return torch.exp(-((upper_err / float(sigma)) ** 2)) * gate[:, 0]
 
 
 def mass_conditioned_receive_pose_reward(env: "ManagerBasedRLEnv", sigma: float = 0.34) -> torch.Tensor:

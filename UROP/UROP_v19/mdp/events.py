@@ -832,7 +832,7 @@ def _held_trajectory_state(
 def handover_object_curriculum(
     env: "ManagerBasedRLEnv",
     env_ids: torch.Tensor,
-    commit_x: float = 0.42,
+    commit_x: float = 0.58,
     debug_print: bool = False,
     debug_print_rate_s: float = 0.75,
 ) -> None:
