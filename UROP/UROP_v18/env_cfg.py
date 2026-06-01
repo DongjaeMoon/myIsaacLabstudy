@@ -138,40 +138,45 @@ class RewardsCfg:
     upright = RewTerm(func=mdp.upright_reward, weight=1.75)
     height = RewTerm(func=mdp.root_height_reward, weight=1.10, params={"target_z": 0.78, "sigma": 0.10})
 
-    base_motion = RewTerm(func=mdp.base_motion_penalty, weight=-0.08, params={"w_lin": 1.0, "w_ang": 0.30})
-    joint_vel = RewTerm(func=mdp.joint_vel_l2_penalty, weight=-0.025)
+    # Keep balance/effort shaping, but do not make the optimal catch policy a frozen statue.
+    base_motion = RewTerm(func=mdp.base_motion_penalty, weight=-0.055, params={"w_lin": 1.0, "w_ang": 0.25})
+    joint_vel = RewTerm(func=mdp.joint_vel_l2_penalty, weight=-0.022)
     torque = RewTerm(func=mdp.torque_l2_penalty, weight=-0.00002)
-    action_mag = RewTerm(func=mdp.action_magnitude_penalty, weight=-0.015)
-    action_rate = RewTerm(func=mdp.action_rate_penalty, weight=-0.12)
-    action_accel = RewTerm(func=mdp.action_acceleration_penalty, weight=-0.07)
-    lower_body_action_rate = RewTerm(func=mdp.lower_body_action_rate_penalty, weight=-0.08)
+    action_mag = RewTerm(func=mdp.action_magnitude_penalty, weight=-0.010)
+    action_rate = RewTerm(func=mdp.action_rate_penalty, weight=-0.075)
+    action_accel = RewTerm(func=mdp.action_acceleration_penalty, weight=-0.040)
+    lower_body_action_rate = RewTerm(func=mdp.lower_body_action_rate_penalty, weight=-0.050)
     foot_slip = RewTerm(func=mdp.foot_slip_penalty, weight=-0.10, params={"ground_height_thr": 0.16})
 
-    wait_ready_pose = RewTerm(func=mdp.ready_pose_when_waiting, weight=2.4, params={"sigma": 0.24})
-    wait_joint_still = RewTerm(func=mdp.waiting_joint_stillness_reward, weight=0.9, params={"sigma": 1.5})
-    wait_base_drift = RewTerm(func=mdp.wait_base_drift_penalty, weight=-0.85, params={"sigma": 0.22})
-    wait_yaw_drift = RewTerm(func=mdp.wait_yaw_drift_penalty, weight=-0.55, params={"sigma": 0.28})
+    # Waiting rewards are active before release / for visible idle objects only.
+    wait_ready_pose = RewTerm(func=mdp.ready_pose_when_waiting, weight=2.0, params={"sigma": 0.25})
+    wait_joint_still = RewTerm(func=mdp.waiting_joint_stillness_reward, weight=0.7, params={"sigma": 1.6})
+    wait_base_drift = RewTerm(func=mdp.wait_base_drift_penalty, weight=-0.70, params={"sigma": 0.24})
+    wait_yaw_drift = RewTerm(func=mdp.wait_yaw_drift_penalty, weight=-0.45, params={"sigma": 0.30})
     lower_body_ready = RewTerm(
         func=mdp.lower_body_ready_reward,
-        weight=1.8,
-        params={"sigma_wait": 0.18, "sigma_active": 0.30},
+        weight=1.6,
+        params={"sigma_wait": 0.18, "sigma_active": 0.34},
     )
 
-    # v18 anti-overhug shaping: seeing a tag is not enough to hug.
-    visual_wait_patience = RewTerm(func=mdp.visual_wait_patience_reward, weight=1.8, params={"action_sigma": 0.45})
-    premature_hug = RewTerm(func=mdp.premature_hug_penalty, weight=-1.05, params={"action_w": 1.0, "pose_w": 0.35})
-    lateral_intercept = RewTerm(func=mdp.lateral_intercept_reward, weight=0.75, params={"deadband": 0.10, "speed_sigma": 0.35})
+    # Anti-overhug is kept, but it now applies only to stationary/receding visible objects before release.
+    visual_wait_patience = RewTerm(func=mdp.visual_wait_patience_reward, weight=0.65, params={"action_sigma": 0.60})
+    premature_hug = RewTerm(func=mdp.premature_hug_penalty, weight=-0.22, params={"action_w": 1.0, "pose_w": 0.18})
 
-    catch_region = RewTerm(func=mdp.catch_target_region_reward, weight=2.1, params={"sigma": 0.32})
-    upper_body_receive = RewTerm(func=mdp.upper_body_receive_reward, weight=1.8, params={"sigma": 0.30})
+    # Dense incoming-box shaping. This is the bootstrap term missing from the failed run.
+    incoming_receive_pose = RewTerm(func=mdp.incoming_receive_pose_reward, weight=3.2, params={"sigma": 0.48})
+    lateral_intercept = RewTerm(func=mdp.lateral_intercept_reward, weight=0.55, params={"deadband": 0.12, "speed_sigma": 0.42})
+
+    catch_region = RewTerm(func=mdp.catch_target_region_reward, weight=3.4, params={"sigma": 0.52})
+    upper_body_receive = RewTerm(func=mdp.upper_body_receive_reward, weight=3.2, params={"sigma": 0.50})
     catch_vel_match = RewTerm(
         func=mdp.catch_velocity_match_reward,
-        weight=1.2,
-        params={"torso_body_name": "torso_link", "sigma": 0.85},
+        weight=1.8,
+        params={"torso_body_name": "torso_link", "sigma": 1.15},
     )
     contact_hug = RewTerm(
         func=mdp.hug_contact_bonus,
-        weight=2.7,
+        weight=4.2,
         params={
             "sensor_names_left": [
                 "contact_l_shoulder_yaw",
@@ -188,29 +193,30 @@ class RewardsCfg:
                 "contact_r_wrist_yaw",
             ],
             "sensor_name_torso": "contact_torso",
-            "thr": 1.5,
+            "thr": 1.2,
         },
     )
-    impact = RewTerm(func=mdp.impact_peak_penalty, weight=-0.006, params={"sensor_names": CONTACT_SENSOR_NAMES, "force_thr": 210.0})
+    impact = RewTerm(func=mdp.impact_peak_penalty, weight=-0.0035, params={"sensor_names": CONTACT_SENSOR_NAMES, "force_thr": 260.0})
 
-    hold_vel = RewTerm(func=mdp.hold_object_vel_reward, weight=2.0, params={"torso_body_name": "torso_link", "sigma": 0.48})
-    hold_pose = RewTerm(func=mdp.hold_pose_reward, weight=2.5, params={"sigma": 0.20})
-    hold_latched = RewTerm(func=mdp.hold_latched_bonus, weight=1.0)
-    hold_sustain = RewTerm(func=mdp.hold_sustain_bonus, weight=3.0, params={"min_steps": 20})
-    not_drop = RewTerm(func=mdp.object_not_dropped_bonus, weight=1.2, params={"min_z": 0.42, "max_dist": 1.8})
+    hold_vel = RewTerm(func=mdp.hold_object_vel_reward, weight=2.3, params={"torso_body_name": "torso_link", "sigma": 0.70})
+    hold_pose = RewTerm(func=mdp.hold_pose_reward, weight=2.8, params={"sigma": 0.30})
+    hold_latched = RewTerm(func=mdp.hold_latched_bonus, weight=1.1)
+    hold_sustain = RewTerm(func=mdp.hold_sustain_bonus, weight=3.1, params={"min_steps": 16})
+    not_drop = RewTerm(func=mdp.object_not_dropped_bonus, weight=1.2, params={"min_z": 0.34, "max_dist": 2.2})
 
-    post_hold_still = RewTerm(func=mdp.post_hold_still_reward, weight=1.5, params={"lin_sigma": 0.10, "yaw_sigma": 0.30})
-    post_hold_anchor = RewTerm(func=mdp.post_hold_anchor_penalty, weight=-0.55, params={"sigma": 0.18})
+    post_hold_still = RewTerm(func=mdp.post_hold_still_reward, weight=1.3, params={"lin_sigma": 0.12, "yaw_sigma": 0.34})
+    post_hold_anchor = RewTerm(func=mdp.post_hold_anchor_penalty, weight=-0.40, params={"sigma": 0.24})
 
 
 @configclass
 class TerminationsCfg:
     time_out = DoneTerm(func=mdp.time_out, time_out=True)
-    success = DoneTerm(func=mdp.successful_hold_complete, params={"min_steps": 40})
+    success = DoneTerm(func=mdp.successful_hold_complete, params={"min_steps": 36})
     fall = DoneTerm(func=mdp.robot_fallen_degree, params={"min_root_z": 0.50, "max_tilt_deg": 45.0})
-    drop = DoneTerm(func=mdp.object_dropped, params={"min_z": 0.30, "max_dist": 2.0})
-    runaway = DoneTerm(func=mdp.post_hold_runaway, params={"max_anchor_drift": 0.45})
-    unsafe_lower_body = DoneTerm(func=mdp.unsafe_lower_body_deviation, params={"max_abs_dev": 0.85})
+    # Give the policy enough post-release time to touch the box before declaring drop.
+    drop = DoneTerm(func=mdp.object_dropped, params={"min_z": 0.18, "max_dist": 2.8})
+    runaway = DoneTerm(func=mdp.post_hold_runaway, params={"max_anchor_drift": 0.50})
+    unsafe_lower_body = DoneTerm(func=mdp.unsafe_lower_body_deviation, params={"max_abs_dev": 0.98})
 
 
 @configclass
@@ -221,84 +227,87 @@ class EventCfg:
         func=mdp.reset_autonomous_episode,
         mode="reset",
         params={
-            "park": {"pos_x": (1.70, 2.15), "pos_y": (-0.80, 0.80), "pos_z": (-0.72, -0.55)},
+            "park": {"pos_x": (1.55, 1.95), "pos_y": (-0.35, 0.35), "pos_z": (-0.68, -0.55)},
             "wait_time_ranges": {
-                "stage1": (0.80, 2.40),
-                "stage2": (0.45, 3.20),
-                "stage3": (0.25, 4.00),
+                "stage1": (0.25, 0.90),
+                "stage2": (0.20, 1.30),
+                "stage3": (0.20, 1.80),
             },
+            # v18 catch-bootstrap: early stages must mostly contain real tosses, not idle-only waiting.
             "toss_probability_by_stage": {
                 "stage0": 0.0,
-                "stage1": 0.55,
-                "stage2": 0.70,
-                "stage3": 0.82,
+                "stage1": 0.95,
+                "stage2": 0.95,
+                "stage3": 0.92,
             },
             "joint_noise": {
-                "lower_body_pos": (-0.045, 0.045),
-                "waist_pos": (-0.040, 0.040),
-                "arm_pos": (-0.090, 0.090),
-                "wrist_pos": (-0.070, 0.070),
-                "velocity": (-0.18, 0.18),
+                "lower_body_pos": (-0.030, 0.030),
+                "waist_pos": (-0.025, 0.025),
+                "arm_pos": (-0.055, 0.055),
+                "wrist_pos": (-0.045, 0.045),
+                "velocity": (-0.10, 0.10),
             },
-            "root_xy_range": (-0.03, 0.03),
-            "root_yaw_range": (-0.08, 0.08),
+            "root_xy_range": (-0.025, 0.025),
+            "root_yaw_range": (-0.06, 0.06),
             "object_randomization": {
-                "mass_range": (0.8, 7.5),
-                "friction_range": (0.18, 1.75),
-                "restitution_range": (0.00, 0.24),
-                "size_scale_range": (0.70, 1.35),
+                "mass_range": (2.0, 4.8),
+                "friction_range": (0.50, 1.20),
+                "restitution_range": (0.00, 0.10),
+                "size_scale_range": (0.90, 1.12),
                 "apply_physx": True,
             },
             "robot_material_randomization": {
-                "friction_range": (0.40, 1.30),
-                "restitution_range": (0.00, 0.04),
+                "friction_range": (0.65, 1.15),
+                "restitution_range": (0.00, 0.03),
                 "apply_physx": True,
             },
             "floor_material_randomization": {
-                "friction_range": (0.35, 1.40),
+                "friction_range": (0.65, 1.20),
             },
+            # All actor observation groups keep nonzero training noise, but bootstrap noise is not overwhelming.
             "observation_randomization": {
-                "projected_gravity_noise_std_range": (0.008, 0.045),
-                "base_ang_vel_noise_std_range": (0.02, 0.12),
-                "joint_pos_noise_std_range": (0.004, 0.030),
-                "joint_vel_noise_std_range": (0.04, 0.28),
-                "prev_action_noise_std_range": (0.002, 0.020),
-                "mode_noise_std_range": (0.004, 0.030),
-                "obj_pos_noise_range": (0.010, 0.095),
-                "obj_vel_noise_range": (0.06, 0.55),
-                "obj_pos_bias_range": (-0.035, 0.035),
-                "obj_vel_bias_range": (-0.10, 0.10),
-                "obj_pos_scale_range": (0.88, 1.12),
-                "obj_vel_scale_range": (0.75, 1.25),
-                "drop_prob_range": (0.03, 0.38),
-                "false_positive_prob_range": (0.0, 0.015),
-                "tag_visible_noise_std_range": (0.010, 0.050),
-                "alpha_range": (0.15, 0.85),
-                "latency_steps_range": (0, 5),
-                "noise_spike_prob_range": (0.00, 0.08),
-                "noise_spike_scale_range": (2.5, 7.0),
+                "projected_gravity_noise_std_range": (0.004, 0.025),
+                "base_ang_vel_noise_std_range": (0.010, 0.070),
+                "joint_pos_noise_std_range": (0.002, 0.018),
+                "joint_vel_noise_std_range": (0.020, 0.160),
+                "prev_action_noise_std_range": (0.001, 0.010),
+                "mode_noise_std_range": (0.002, 0.015),
+                "obj_pos_noise_range": (0.004, 0.040),
+                "obj_vel_noise_range": (0.025, 0.20),
+                "obj_pos_bias_range": (-0.018, 0.018),
+                "obj_vel_bias_range": (-0.040, 0.040),
+                "obj_pos_scale_range": (0.95, 1.05),
+                "obj_vel_scale_range": (0.90, 1.10),
+                "drop_prob_range": (0.005, 0.12),
+                "false_positive_prob_range": (0.0, 0.004),
+                "tag_visible_noise_std_range": (0.004, 0.025),
+                "alpha_range": (0.55, 0.95),
+                "latency_steps_range": (0, 3),
+                "noise_spike_prob_range": (0.00, 0.020),
+                "noise_spike_scale_range": (1.8, 3.5),
             },
             "visibility_randomization": {
                 "pre_toss_visible_probability_by_stage": {
                     "stage0": 0.0,
-                    "stage1": 0.72,
-                    "stage2": 0.84,
-                    "stage3": 0.92,
+                    "stage1": 0.80,
+                    "stage2": 0.90,
+                    "stage3": 0.95,
                 },
+                # Keep visible-idle cases, but do not let them dominate early learning.
                 "idle_visible_probability_by_stage": {
                     "stage0": 0.90,
-                    "stage1": 0.58,
-                    "stage2": 0.42,
-                    "stage3": 0.32,
+                    "stage1": 0.08,
+                    "stage2": 0.14,
+                    "stage3": 0.20,
                 },
-                "visibility_start_s": (0.0, 0.45),
+                "visibility_start_s": (0.0, 0.30),
                 "idle_visible_pose": {
-                    "pos_x": (0.65, 1.65),
-                    "pos_y": (-0.55, 0.55),
-                    "pos_z": (-0.22, 0.34),
-                    "vel_x": (-0.04, 0.06),
-                    "vel_y": (-0.06, 0.06),
-                    "vel_z": (-0.025, 0.025),
+                    "pos_x": (0.85, 1.45),
+                    "pos_y": (-0.35, 0.35),
+                    "pos_z": (-0.12, 0.30),
+                    "vel_x": (-0.02, 0.05),
+                    "vel_y": (-0.04, 0.04),
+                    "vel_z": (-0.015, 0.015),
                 },
             },
         },
@@ -308,27 +317,27 @@ class EventCfg:
         func=mdp.update_visible_object_before_toss,
         mode="interval",
         interval_range_s=(0.02, 0.02),
-        params={"max_hold_speed": 0.25, "jitter_amp": 0.015},
+        params={"max_hold_speed": 0.12, "jitter_amp": 0.006},
     )
 
     random_push = EventTerm(
         func=mdp.push_robot_root_velocity,
         mode="interval",
-        interval_range_s=(0.6, 1.8),
+        interval_range_s=(2.0, 4.0),
         params={
-            "stage0_xy_range": (-0.15, 0.15),
-            "stage1_xy_range": (-0.25, 0.25),
-            "stage2_xy_range": (-0.35, 0.35),
-            "stage3_xy_range": (-0.45, 0.45),
-            "stage0_yaw_range": (-0.10, 0.10),
-            "stage1_yaw_range": (-0.18, 0.18),
-            "stage2_yaw_range": (-0.25, 0.25),
-            "stage3_yaw_range": (-0.35, 0.35),
-            "z_velocity_range": (-0.02, 0.02),
+            "stage0_xy_range": (-0.03, 0.03),
+            "stage1_xy_range": (-0.06, 0.06),
+            "stage2_xy_range": (-0.10, 0.10),
+            "stage3_xy_range": (-0.16, 0.16),
+            "stage0_yaw_range": (-0.02, 0.02),
+            "stage1_yaw_range": (-0.04, 0.04),
+            "stage2_yaw_range": (-0.08, 0.08),
+            "stage3_yaw_range": (-0.12, 0.12),
+            "z_velocity_range": (-0.01, 0.01),
             "hold_xy_scale": 0.70,
             "hold_yaw_scale": 0.65,
-            "max_xy_speed": 1.40,
-            "max_yaw_speed": 1.00,
+            "max_xy_speed": 0.70,
+            "max_yaw_speed": 0.55,
         },
     )
 
@@ -342,65 +351,61 @@ class EventCfg:
             "throw_prob_stage2": 1.0,
             "throw_prob_stage3": 1.0,
             "stage1": {
-                # Very easy close handover-like toss.
-                # z values are RELATIVE to robot root/pelvis, not world height.
                 "sampler": "target_ballistic",
-                "spawn_x": (0.42, 0.72),
-                "spawn_y": (-0.16, 0.16),
-                "spawn_z": (0.08, 0.40),
-                "target_x": (0.05, 0.24),
-                "target_y": (-0.13, 0.13),
-                "target_z": (0.03, 0.30),
-                "flight_time": (0.30, 0.55),
-                "max_speed": 1.65,
-                "max_vy_abs": 0.45,
-                "max_vz_abs": 1.95,
-                "roll": (-0.03, 0.03),
-                "pitch": (-0.04, 0.04),
-                "yaw": (-0.08, 0.08),
-                "ang_vel_x": (-0.06, 0.06),
-                "ang_vel_y": (-0.06, 0.06),
-                "ang_vel_z": (-0.10, 0.10),
+                "spawn_x": (0.42, 0.58),
+                "spawn_y": (-0.06, 0.06),
+                "spawn_z": (0.20, 0.36),
+                "target_x": (0.12, 0.22),
+                "target_y": (-0.04, 0.04),
+                "target_z": (0.14, 0.26),
+                "flight_time": (0.40, 0.58),
+                "max_speed": 1.35,
+                "max_vy_abs": 0.22,
+                "max_vz_abs": 1.45,
+                "roll": (-0.015, 0.015),
+                "pitch": (-0.020, 0.020),
+                "yaw": (-0.04, 0.04),
+                "ang_vel_x": (-0.03, 0.03),
+                "ang_vel_y": (-0.03, 0.03),
+                "ang_vel_z": (-0.06, 0.06),
             },
             "stage2": {
-                # Gentle short toss.
                 "sampler": "target_ballistic",
-                "spawn_x": (0.38, 1.02),
+                "spawn_x": (0.38, 0.78),
+                "spawn_y": (-0.22, 0.22),
+                "spawn_z": (0.10, 0.46),
+                "target_x": (0.08, 0.30),
+                "target_y": (-0.16, 0.16),
+                "target_z": (0.08, 0.34),
+                "flight_time": (0.34, 0.66),
+                "max_speed": 1.95,
+                "max_vy_abs": 0.65,
+                "max_vz_abs": 2.00,
+                "roll": (-0.025, 0.025),
+                "pitch": (-0.035, 0.035),
+                "yaw": (-0.12, 0.12),
+                "ang_vel_x": (-0.08, 0.08),
+                "ang_vel_y": (-0.08, 0.08),
+                "ang_vel_z": (-0.16, 0.16),
+            },
+            "stage3": {
+                "sampler": "target_ballistic",
+                "spawn_x": (0.34, 0.95),
                 "spawn_y": (-0.42, 0.42),
-                "spawn_z": (-0.05, 0.52),
-                "target_x": (0.00, 0.34),
-                "target_y": (-0.30, 0.30),
-                "target_z": (-0.06, 0.42),
-                "flight_time": (0.25, 0.70),
+                "spawn_z": (0.02, 0.56),
+                "target_x": (0.02, 0.36),
+                "target_y": (-0.28, 0.28),
+                "target_z": (0.04, 0.40),
+                "flight_time": (0.30, 0.74),
                 "max_speed": 2.35,
-                "max_vy_abs": 1.05,
+                "max_vy_abs": 1.00,
                 "max_vz_abs": 2.35,
                 "roll": (-0.04, 0.04),
                 "pitch": (-0.05, 0.05),
-                "yaw": (-0.14, 0.14),
-                "ang_vel_x": (-0.10, 0.10),
-                "ang_vel_y": (-0.10, 0.10),
-                "ang_vel_z": (-0.18, 0.18),
-            },
-            "stage3": {
-                # Realistic but still admissible close toss.
-                "sampler": "target_ballistic",
-                "spawn_x": (0.34, 1.25),
-                "spawn_y": (-0.68, 0.68),
-                "spawn_z": (-0.12, 0.62),
-                "target_x": (-0.08, 0.42),
-                "target_y": (-0.46, 0.46),
-                "target_z": (-0.10, 0.50),
-                "flight_time": (0.22, 0.85),
-                "max_speed": 2.85,
-                "max_vy_abs": 1.45,
-                "max_vz_abs": 2.70,
-                "roll": (-0.05, 0.05),
-                "pitch": (-0.06, 0.06),
-                "yaw": (-0.55, 0.55),
-                "ang_vel_x": (-0.28, 0.28),
-                "ang_vel_y": (-0.28, 0.28),
-                "ang_vel_z": (-0.65, 0.65),
+                "yaw": (-0.35, 0.35),
+                "ang_vel_x": (-0.16, 0.16),
+                "ang_vel_y": (-0.16, 0.16),
+                "ang_vel_z": (-0.36, 0.36),
             },
         },
     )
@@ -411,9 +416,9 @@ class CurriculumCfg:
     stage_schedule = CurrTerm(
         func=mdp.stage_schedule,
         params={
-            "stage0_iters": 300,
-            "stage1_iters": 500,
-            "stage2_iters": 700,
+            "stage0_iters": 200,
+            "stage1_iters": 1200,
+            "stage2_iters": 1800,
             "num_steps_per_env": 64,
             "eval_stage": -1,
         },
@@ -522,18 +527,18 @@ class dj_urop_v18_EnvCfg_Play(dj_urop_v18_EnvCfg):
             "obj_vel_bias_range": (-0.025, 0.025),
             "obj_pos_scale_range": (0.98, 1.02),
             "obj_vel_scale_range": (0.95, 1.05),
-            "drop_prob_range": (0.005, 0.030),
+            "drop_prob_range": (0.002, 0.020),
             "false_positive_prob_range": (0.0, 0.002),
             "tag_visible_noise_std_range": (0.002, 0.010),
             "alpha_range": (0.70, 0.98),
-            "latency_steps_range": (0, 2),
+            "latency_steps_range": (0, 1),
             "noise_spike_prob_range": (0.0, 0.01),
             "noise_spike_scale_range": (2.0, 3.5),
         }
 
         self.events.reset_autonomous_episode.params["visibility_randomization"] = {
             "pre_toss_visible_probability_by_stage": {"stage0": 0.0, "stage1": 1.0, "stage2": 1.0, "stage3": 1.0},
-            "idle_visible_probability_by_stage": {"stage0": 1.0, "stage1": 0.35, "stage2": 0.35, "stage3": 0.35},
+            "idle_visible_probability_by_stage": {"stage0": 1.0, "stage1": 0.10, "stage2": 0.10, "stage3": 0.10},
             "visibility_start_s": (0.0, 0.15),
             "idle_visible_pose": {
                 "pos_x": (0.85, 1.35),

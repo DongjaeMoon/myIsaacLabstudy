@@ -30,8 +30,18 @@ def robot_fallen_degree(
     return (z < min_root_z) | (upright < upright_min)
 
 
-def object_dropped(env: "ManagerBasedRLEnv", min_z: float = 0.30, max_dist: float = 2.0) -> torch.Tensor:
+def object_dropped(
+    env: "ManagerBasedRLEnv",
+    min_z: float = 0.18,
+    max_dist: float = 2.8,
+    min_active_steps: int = 10,
+) -> torch.Tensor:
     active = _toss_active(env) > 0.5
+    if not hasattr(env, "_urop_drop_active_steps"):
+        env._urop_drop_active_steps = torch.zeros(env.num_envs, dtype=torch.int32, device=env.device)
+    env._urop_drop_active_steps[active] += 1
+    env._urop_drop_active_steps[~active] = 0
+
     if not torch.any(active):
         return torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
 
@@ -39,7 +49,8 @@ def object_dropped(env: "ManagerBasedRLEnv", min_z: float = 0.30, max_dist: floa
     robot = env.scene["robot"]
     z = obj.data.root_pos_w[:, 2]
     dist = torch.norm(obj.data.root_pos_w - robot.data.root_pos_w, dim=-1)
-    dropped = (z < min_z) | (dist > max_dist)
+    grace_done = env._urop_drop_active_steps >= int(min_active_steps)
+    dropped = ((z < min_z) | (dist > max_dist)) & grace_done
     out = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
     out[active] = dropped[active]
     return out
@@ -61,7 +72,7 @@ def post_hold_runaway(env: "ManagerBasedRLEnv", max_anchor_drift: float = 0.28) 
     return env._urop_hold_latched & (drift > max_anchor_drift)
 
 
-def unsafe_lower_body_deviation(env: "ManagerBasedRLEnv", max_abs_dev: float = 0.85) -> torch.Tensor:
+def unsafe_lower_body_deviation(env: "ManagerBasedRLEnv", max_abs_dev: float = 0.98) -> torch.Tensor:
     idx = get_lower_body_joint_indices(env)
     robot = env.scene["robot"]
     if hasattr(env, "_urop_ready_joint_pos"):
