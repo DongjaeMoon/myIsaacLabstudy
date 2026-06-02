@@ -141,9 +141,9 @@ class RewardsCfg:
     base_motion = RewTerm(func=mdp.base_motion_penalty, weight=-0.055, params={"w_lin": 1.0, "w_ang": 0.25})
     joint_vel = RewTerm(func=mdp.joint_vel_l2_penalty, weight=-0.025)
     torque = RewTerm(func=mdp.torque_l2_penalty, weight=-0.00002)
-    action_mag = RewTerm(func=mdp.action_magnitude_penalty, weight=-0.015)
-    action_rate = RewTerm(func=mdp.action_rate_penalty, weight=-0.095)
-    action_accel = RewTerm(func=mdp.action_acceleration_penalty, weight=-0.050)
+    action_mag = RewTerm(func=mdp.action_magnitude_penalty, weight=-0.010)
+    action_rate = RewTerm(func=mdp.action_rate_penalty, weight=-0.070)
+    action_accel = RewTerm(func=mdp.action_acceleration_penalty, weight=-0.035)
     lower_body_action_rate = RewTerm(func=mdp.lower_body_action_rate_penalty, weight=-0.055)
     foot_slip = RewTerm(func=mdp.foot_slip_penalty, weight=-0.10, params={"ground_height_thr": 0.16})
 
@@ -158,22 +158,22 @@ class RewardsCfg:
     )
 
     # v18 anti-overhug shaping: seeing a tag is not enough to hug.
-    visual_wait_patience = RewTerm(func=mdp.visual_wait_patience_reward, weight=1.15, params={"action_sigma": 0.55})
-    premature_hug = RewTerm(func=mdp.premature_hug_penalty, weight=-0.50, params={"action_w": 1.0, "pose_w": 0.25})
+    visual_wait_patience = RewTerm(func=mdp.visual_wait_patience_reward, weight=0.75, params={"action_sigma": 0.55})
+    premature_hug = RewTerm(func=mdp.premature_hug_penalty, weight=-0.25, params={"action_w": 1.0, "pose_w": 0.25})
     lateral_intercept = RewTerm(func=mdp.lateral_intercept_reward, weight=0.45, params={"deadband": 0.12, "speed_sigma": 0.42})
-    incoming_receive_pose = RewTerm(func=mdp.incoming_receive_pose_reward, weight=2.6, params={"sigma": 0.52, "hold_blend": 0.70})
+    incoming_receive_pose = RewTerm(func=mdp.incoming_receive_pose_reward, weight=4.0, params={"sigma": 0.52, "hold_blend": 0.70})
     head_region = RewTerm(func=mdp.head_region_penalty, weight=-0.65)
 
-    catch_region = RewTerm(func=mdp.catch_target_region_reward, weight=2.8, params={"sigma": 0.44})
-    upper_body_receive = RewTerm(func=mdp.upper_body_receive_reward, weight=2.6, params={"sigma": 0.40})
+    catch_region = RewTerm(func=mdp.catch_target_region_reward, weight=3.4, params={"sigma": 0.44})
+    upper_body_receive = RewTerm(func=mdp.upper_body_receive_reward, weight=3.5, params={"sigma": 0.40})
     catch_vel_match = RewTerm(
         func=mdp.catch_velocity_match_reward,
-        weight=1.7,
+        weight=1.8,
         params={"torso_body_name": "torso_link", "sigma": 1.05},
     )
     contact_hug = RewTerm(
         func=mdp.hug_contact_bonus,
-        weight=3.6,
+        weight=4.6,
         params={
             "sensor_names_left": [
                 "contact_l_shoulder_yaw",
@@ -195,10 +195,10 @@ class RewardsCfg:
     )
     impact = RewTerm(func=mdp.impact_peak_penalty, weight=-0.005, params={"sensor_names": CONTACT_SENSOR_NAMES, "force_thr": 235.0})
 
-    hold_vel = RewTerm(func=mdp.hold_object_vel_reward, weight=2.4, params={"torso_body_name": "torso_link", "sigma": 0.64})
-    hold_pose = RewTerm(func=mdp.hold_pose_reward, weight=2.8, params={"sigma": 0.30})
+    hold_vel = RewTerm(func=mdp.hold_object_vel_reward, weight=2.8, params={"torso_body_name": "torso_link", "sigma": 0.64})
+    hold_pose = RewTerm(func=mdp.hold_pose_reward, weight=3.4, params={"sigma": 0.30})
     hold_latched = RewTerm(func=mdp.hold_latched_bonus, weight=1.0)
-    hold_sustain = RewTerm(func=mdp.hold_sustain_bonus, weight=3.8, params={"min_steps": 16})
+    hold_sustain = RewTerm(func=mdp.hold_sustain_bonus, weight=5.0, params={"min_steps": 16})
     not_drop = RewTerm(func=mdp.object_not_dropped_bonus, weight=1.4, params={"min_z": 0.34, "max_dist": 2.1})
 
     post_hold_still = RewTerm(func=mdp.post_hold_still_reward, weight=1.5, params={"lin_sigma": 0.10, "yaw_sigma": 0.30})

@@ -236,6 +236,33 @@ def _scene_visible(env: "ManagerBasedRLEnv") -> torch.Tensor:
     return visible
 
 
+def _near_receive_gate(env: "ManagerBasedRLEnv") -> torch.Tensor:
+    """Gate for a visible box that is already inside the receive workspace.
+
+    This is the missing handover affordance: even if relative velocity is small and
+    TTC is ambiguous, a visible box right in front of the robot should encourage
+    active receive/capture rather than waiting.
+    """
+    rel_p_b, rel_v_b = _object_rel_kinematics_body(env)
+    x = rel_p_b[:, 0]
+    y = rel_p_b[:, 1]
+    z = rel_p_b[:, 2]
+    vx = rel_v_b[:, 0]
+
+    visible = torch.clamp(_scene_visible(env) + _toss_active(env), 0.0, 1.0)
+
+    x_score = torch.exp(-(((x - 0.30) / 0.34) ** 2)) * ((x > 0.02) & (x < 0.72)).float()
+    y_score = torch.exp(-((torch.abs(y) / 0.42) ** 2)) * (torch.abs(y) < 0.62).float()
+    z_score = torch.exp(-(((z - 0.08) / 0.36) ** 2)) * ((z > -0.32) & (z < 0.62)).float()
+
+    spatial = torch.clamp(x_score * y_score * z_score, 0.0, 1.0).pow(1.0 / 3.0)
+
+    # Do not encourage receiving if the object is clearly moving away fast.
+    not_fast_receding = (vx < 0.35).float()
+
+    return torch.clamp(visible * spatial * not_fast_receding * (1.0 - _hold_gate(env)), 0.0, 1.0)
+
+
 def _catchability_score(
     env: "ManagerBasedRLEnv",
     min_incoming_speed: float = 0.04,
@@ -271,6 +298,7 @@ def _catchability_score(
 
     visible = torch.clamp(_scene_visible(env) + _toss_active(env), 0.0, 1.0)
     score = incoming_score * spatial * ttc_score * visible
+    score = torch.clamp(score + 0.65 * _near_receive_gate(env), 0.0, 1.0)
     return torch.clamp(score, 0.0, 1.0)
 
 
@@ -288,24 +316,28 @@ def _pre_receive_gate(env: "ManagerBasedRLEnv") -> torch.Tensor:
     ttc_ok = ((ttc > 0.08) & (ttc < 2.20)).float()
     # Include active/released objects even if instantaneous TTC is noisy.
     active_boost = torch.clamp(_toss_active(env), 0.0, 1.0)
-    return torch.clamp(visible * in_corridor * (0.75 * incoming * ttc_ok + 0.25 * active_boost), 0.0, 1.0) * (1.0 - _hold_gate(env))
+    near = _near_receive_gate(env)
+    existing_pre = torch.clamp(visible * in_corridor * (0.75 * incoming * ttc_ok + 0.25 * active_boost), 0.0, 1.0)
+    return torch.clamp(existing_pre + near, 0.0, 1.0) * (1.0 - _hold_gate(env))
 
 
 def _wait_gate(env: "ManagerBasedRLEnv") -> torch.Tensor:
     # Wait when nothing is visible, or when a visible object is far/stationary/receding.
     # Do NOT wait-gate incoming objects merely because the precise receive score is still low.
     hold = _hold_gate(env)
+    near = _near_receive_gate(env)
     rel_p_b, rel_v_b = _object_rel_kinematics_body(env)
     x = rel_p_b[:, 0]
     vx = rel_v_b[:, 0]
     speed = torch.norm(rel_v_b, dim=-1)
     visible = _scene_visible(env)
     active = _toss_active(env)
-    hidden = 1.0 - visible
-    far = (x > 0.62).float()
+    hidden = (1.0 - visible) * (1.0 - active)
+    far = (x > 0.75).float()
     not_incoming = ((vx > -0.08) | (speed < 0.12)).float()
     safe_visible_wait = visible * far * not_incoming * (1.0 - active)
-    return torch.clamp(hidden + safe_visible_wait, 0.0, 1.0) * (1.0 - hold)
+    wait = torch.clamp(hidden + safe_visible_wait, 0.0, 1.0)
+    return wait * (1.0 - near) * (1.0 - hold)
 
 
 def _hold_gate(env: "ManagerBasedRLEnv") -> torch.Tensor:
@@ -324,10 +356,11 @@ def _visible_noncatchable_gate(env: "ManagerBasedRLEnv") -> torch.Tensor:
     vx = rel_v_b[:, 0]
     speed = torch.norm(rel_v_b, dim=-1)
     visible = _scene_visible(env)
-    far = (x > 0.58).float()
-    stationary_or_receding = ((vx > -0.06) | (speed < 0.11)).float()
-    # only punish/praise waiting before release; never suppress pre-shape for incoming objects.
-    return visible * far * stationary_or_receding * (1.0 - _toss_active(env)) * (1.0 - _pre_receive_gate(env)) * (1.0 - _hold_gate(env))
+    near = _near_receive_gate(env)
+    far = (x > 0.78).float()
+    not_incoming = ((vx > -0.08) | (speed < 0.12)).float()
+    # Only punish/praise waiting before release; never suppress near-object receiving.
+    return visible * far * not_incoming * (1.0 - _toss_active(env)) * (1.0 - _hold_gate(env)) * (1.0 - near)
 
 
 def alive_bonus(env: "ManagerBasedRLEnv") -> torch.Tensor:
