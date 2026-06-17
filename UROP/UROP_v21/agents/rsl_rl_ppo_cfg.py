@@ -4,11 +4,11 @@ from isaaclab.utils import configclass
 
 
 @configclass
-class UropV20PPORunnerCfg(RslRlOnPolicyRunnerCfg):
+class UropV21PPORunnerCfg(RslRlOnPolicyRunnerCfg):
     num_steps_per_env = 64
     max_iterations = 5000
     save_interval = 500
-    experiment_name = "UROP_v20"
+    experiment_name = "UROP_v21"
     empirical_normalization = True
     policy = RslRlPpoActorCriticCfg(
         init_noise_std=0.22,
