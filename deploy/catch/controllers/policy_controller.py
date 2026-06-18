@@ -1,43 +1,94 @@
-#[/home/idim5080-2/mdj/myIsaacLabstudy/deploy/catch/controllers/policy_controller.py]
-#[/home/dongjae/isaaclab/myIsaacLabstudy/deploy/catch/controllers/policy_controller.py]
+# [/home/<user>/.../myIsaacLabstudy/deploy/catch/controllers/policy_controller.py]
+"""Base controller used by Isaac-Sim policy deploy examples."""
+from __future__ import annotations
+
 import io
+import os
 from typing import Optional
-import carb
+
 import numpy as np
-import omni
 import torch
+
+try:
+    import carb
+except Exception:  # pragma: no cover - only outside Isaac Sim
+    carb = None  # type: ignore
+
+try:
+    import omni.client  # type: ignore
+except Exception:  # pragma: no cover - only outside Isaac Sim
+    omni = None  # type: ignore
+
 from isaacsim.core.api.controllers.base_controller import BaseController
 from isaacsim.core.prims import SingleArticulation
 from isaacsim.core.utils.prims import define_prim, get_prim_at_path
 from omni.physx import get_physx_simulation_interface
 
-from catch.controllers.config_loader import get_articulation_props, get_physics_properties, get_robot_joint_properties, parse_env_config
+from catch.controllers.config_loader import (
+    get_articulation_props,
+    get_physics_properties,
+    get_robot_joint_properties,
+    parse_env_config,
+)
+
+
+def _torch_jit_load_any(policy_file_path: str, map_location: str = "cpu"):
+    expanded = os.path.expanduser(os.path.expandvars(str(policy_file_path)))
+    if os.path.exists(expanded):
+        return torch.jit.load(expanded, map_location=map_location)
+
+    if omni is not None:
+        result = omni.client.read_file(expanded)  # type: ignore[attr-defined]
+        content = result[-1]
+        file_obj = io.BytesIO(memoryview(content).tobytes())
+        return torch.jit.load(file_obj, map_location=map_location)
+
+    raise FileNotFoundError(f"Could not read policy file: {policy_file_path}")
+
 
 class PolicyController(BaseController):
-    def __init__(self, name: str, prim_path: str, root_path: Optional[str] = None, usd_path: Optional[str] = None, position: Optional[np.ndarray] = None, orientation: Optional[np.ndarray] = None) -> None:
+    def __init__(
+        self,
+        name: str,
+        prim_path: str,
+        root_path: Optional[str] = None,
+        usd_path: Optional[str] = None,
+        position: Optional[np.ndarray] = None,
+        orientation: Optional[np.ndarray] = None,
+    ) -> None:
+        super().__init__(name)
+        self.prim_path = prim_path
+        self.root_path = root_path
+        self.usd_path = usd_path
+        self.articulation_path = prim_path if root_path is None else root_path
+
         prim = get_prim_at_path(prim_path)
         if not prim.IsValid():
             prim = define_prim(prim_path, "Xform")
             if usd_path:
-                prim.GetReferences().AddReference(usd_path)
-            else:
-                carb.log_error("unable to add robot usd, usd_path not provided")
+                prim.GetReferences().AddReference(os.path.expanduser(os.path.expandvars(str(usd_path))))
+            elif carb is not None:
+                carb.log_error("Unable to add robot USD: usd_path was not provided")
 
-        if root_path == None:
-            self.robot = SingleArticulation(prim_path=prim_path, name=name, position=position, orientation=orientation)
-        else:
-            self.robot = SingleArticulation(prim_path=root_path, name=name, position=position, orientation=orientation)
+        articulation_path = self.articulation_path
+        self.robot = SingleArticulation(
+            prim_path=articulation_path,
+            name=name,
+            position=position,
+            orientation=orientation,
+        )
 
-    def load_policy(self, policy_file_path, policy_env_path) -> None:
-        file_content = omni.client.read_file(policy_file_path)[2]
-        file = io.BytesIO(memoryview(file_content).tobytes())
-        self.policy = torch.jit.load(file)
+    def load_policy(self, policy_file_path: str, policy_env_path: str, map_location: str = "cpu") -> None:
+        self.policy = _torch_jit_load_any(policy_file_path, map_location=map_location)
+        self.policy.eval()
         self.policy_env_params = parse_env_config(policy_env_path)
         self._decimation, self._dt, self.render_interval = get_physics_properties(self.policy_env_params)
+        self.policy_file_path = policy_file_path
+        self.policy_env_path = policy_env_path
 
     def initialize(
         self,
-        physics_sim_view: omni.physics.tensors.SimulationView = None,
+        physics_sim_view=None,
         effort_modes: str = "force",
         control_mode: str = "position",
         set_gains: bool = True,
@@ -45,70 +96,87 @@ class PolicyController(BaseController):
         set_articulation_props: bool = True,
     ) -> None:
         self.robot.initialize(physics_sim_view=physics_sim_view)
-        self.robot.get_articulation_controller().set_effort_modes(effort_modes)
+        controller = self.robot.get_articulation_controller()
+        if controller is not None:
+            controller.set_effort_modes(effort_modes)
 
         get_physx_simulation_interface().flush_changes()
 
-        self.robot.get_articulation_controller().switch_control_mode(control_mode)
-        
-        # 🚨 [수정된 부분] 7개의 값을 전부 받고, 외부에서 쓸 수 있게 self 변수로 저장합니다.
+        if controller is not None:
+            controller.switch_control_mode(control_mode)
+
         (
-            self.max_effort, 
-            self.max_vel, 
-            self.stiffness, 
-            self.damping, 
-            self.armature,       # config_loader.py에서 추가한 7번째 리턴값
-            self.default_pos, 
-            self.default_vel
-        ) = get_robot_joint_properties(
-            self.policy_env_params, self.robot.dof_names
-        )
+            self.max_effort,
+            self.max_vel,
+            self.stiffness,
+            self.damping,
+            self.armature,
+            self.default_pos,
+            self.default_vel,
+        ) = get_robot_joint_properties(self.policy_env_params, self.robot.dof_names)
 
-        if set_gains:
-            # 지역 변수가 아닌 self 변수를 사용하도록 변경
-            self.robot._articulation_view.set_gains(self.stiffness, self.damping)
-            
-        if set_limits:
-            self.robot._articulation_view.set_max_efforts(self.max_effort)
+        # Isaac Lab's implicit actuators are effectively high-authority position
+        # drives when no explicit effort/velocity limits are given.  Avoid passing
+        # sys.maxsize into PhysX tensors, but keep the limits high enough for sim.
+        safe_effort = np.where(self.max_effort > 1.0e8, 1.0e8, self.max_effort).astype(np.float32)
+        safe_vel = np.where(self.max_vel > 1.0e6, 1.0e6, self.max_vel).astype(np.float32)
 
+        articulation_view = getattr(self.robot, "_articulation_view", None)
+        if set_gains and articulation_view is not None:
+            articulation_view.set_gains(self.stiffness, self.damping)
+
+        if set_limits and articulation_view is not None:
+            articulation_view.set_max_efforts(safe_effort)
             get_physx_simulation_interface().flush_changes()
+            articulation_view.set_max_joint_velocities(safe_vel)
 
-            self.robot._articulation_view.set_max_joint_velocities(self.max_vel)
-            
         if set_articulation_props:
             self._set_articulation_props()
-        
-        # [디버깅 추가] 파싱된 주요 관절의 Gain과 Default Position 확인
-        print("\n" + "="*50)
-        print("[DEBUG] 물리 속성 로드 결과 (일부 관절 확인)")
+
+        print("\n" + "=" * 72)
+        print(f"[PolicyController] Loaded policy: {self.policy_file_path}")
+        print(f"[PolicyController] Loaded env:    {self.policy_env_path}")
+        print(f"[PolicyController] dt={self._dt:.5f}, decimation={self._decimation}, policy_dt={self._dt * self._decimation:.5f}")
+        print("[PolicyController] Joint gains/defaults from env.yaml")
         for name, stiff, damp, d_pos in zip(self.robot.dof_names, self.stiffness, self.damping, self.default_pos):
-            # 너무 기니까 다리 관절 몇 개만 필터링해서 확인
-            if "left_hip" in name or "left_knee" in name or "waist" in name:
-                print(f"{name:25s} | Kp(stiff): {stiff:6.1f} | Kd(damp): {damp:5.1f} | D_Pos: {d_pos:6.2f}")
-        print("="*50 + "\n")
+            if (
+                "hip" in name
+                or "knee" in name
+                or "ankle" in name
+                or "waist" in name
+                or "shoulder" in name
+                or "elbow" in name
+            ):
+                print(f"  {name:28s} | Kp={stiff:7.2f} | Kd={damp:6.2f} | q0={d_pos:+7.3f}")
+        print("=" * 72 + "\n")
 
     def _set_articulation_props(self) -> None:
         articulation_prop = get_articulation_props(self.policy_env_params)
-        # 🚨 [방어 코드 추가] env.yaml에 articulation_props가 null일 경우 빈 딕셔너리로 대체
-        if articulation_prop is None:
-            articulation_prop = {}
         solver_position_iteration_count = articulation_prop.get("solver_position_iteration_count")
         solver_velocity_iteration_count = articulation_prop.get("solver_velocity_iteration_count")
         stabilization_threshold = articulation_prop.get("stabilization_threshold")
         enabled_self_collisions = articulation_prop.get("enabled_self_collisions")
         sleep_threshold = articulation_prop.get("sleep_threshold")
 
-        if solver_position_iteration_count not in [None, float("inf")]: self.robot.set_solver_position_iteration_count(solver_position_iteration_count)
-        if solver_velocity_iteration_count not in [None, float("inf")]: self.robot.set_solver_velocity_iteration_count(solver_velocity_iteration_count)
-        if stabilization_threshold not in [None, float("inf")]: self.robot.set_stabilization_threshold(stabilization_threshold)
-        if isinstance(enabled_self_collisions, bool): self.robot.set_enabled_self_collisions(enabled_self_collisions)
-        if sleep_threshold not in [None, float("inf")]: self.robot.set_sleep_threshold(sleep_threshold)
+        if solver_position_iteration_count not in (None, float("inf")):
+            self.robot.set_solver_position_iteration_count(int(solver_position_iteration_count))
+        if solver_velocity_iteration_count not in (None, float("inf")):
+            self.robot.set_solver_velocity_iteration_count(int(solver_velocity_iteration_count))
+        if stabilization_threshold not in (None, float("inf")):
+            self.robot.set_stabilization_threshold(float(stabilization_threshold))
+        if isinstance(enabled_self_collisions, bool):
+            self.robot.set_enabled_self_collisions(enabled_self_collisions)
+        if sleep_threshold not in (None, float("inf")):
+            self.robot.set_sleep_threshold(float(sleep_threshold))
 
     def _compute_action(self, obs: np.ndarray) -> np.ndarray:
         with torch.no_grad():
-            obs = torch.from_numpy(obs).view(1, -1).float()
-            action = self.policy(obs).detach().view(-1).numpy()
-        return action
+            obs_t = torch.from_numpy(obs).view(1, -1).float()
+            out = self.policy(obs_t)
+            if isinstance(out, (tuple, list)):
+                out = out[0]
+            action = out.detach().view(-1).cpu().numpy()
+        return action.astype(np.float32)
 
     def post_reset(self) -> None:
         self.robot.post_reset()
