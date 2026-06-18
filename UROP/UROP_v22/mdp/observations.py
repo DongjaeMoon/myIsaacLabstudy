@@ -409,6 +409,8 @@ def update_action_history(env: "ManagerBasedRLEnv") -> tuple[torch.Tensor, torch
     current = _current_action(env)
     if current.shape[-1] != scene_objects_cfg.EXPECTED_ACTION_DIM:
         current = current[..., : scene_objects_cfg.EXPECTED_ACTION_DIM]
+    # Shift before overwriting last_action so rate/acceleration rewards compare
+    # the current policy command against the previous environment step.
     state.prev_prev_action = state.prev_action.clone()
     state.prev_action = torch.where(state.action_initialized[:, None], state.last_action, current)
     state.last_action = current
@@ -578,22 +580,20 @@ def toss_state(env: "ManagerBasedRLEnv") -> torch.Tensor:
     return torch.cat((one_hot, released, time_to_release, time_since_release), dim=-1)
 
 
-def hold_condition(env: "ManagerBasedRLEnv", pos_tol: tuple[float, float, float] = (0.145, 0.175, 0.155)) -> torch.Tensor:
-    """Strict demo-quality hold: chest pocket + slow object + two-hand bracket.
+def hold_condition(env: "ManagerBasedRLEnv", pos_tol: tuple[float, float, float] = (0.18, 0.22, 0.20)) -> torch.Tensor:
+    """Object-only stabilized hold check.
 
-    Contact/force is intentionally not used here. The actor still sees only
-    proprioception and AprilTag-like object pose/velocity.
+    Hug quality is shaped by rewards; success should not require exact hand
+    geometry that makes termination brittle.
     """
     state = get_task_state(env)
     rel_pos_b, rel_lin_vel_b, obj_ang_vel_b = _object_rel_in_root_frame(env)
     err = rel_pos_b - state.target_anchor_b
     tol = _as_tensor(pos_tol, env).view(1, 3)
     in_box = torch.all(torch.abs(err) < tol, dim=-1)
-    slow = (_safe_norm(rel_lin_vel_b) < 0.30) & (_safe_norm(obj_ang_vel_b) < 1.35)
-    left_err, right_err, lateral_order, depth_order = hand_side_errors(env)
-    hand_wrap = (left_err < 0.26) & (right_err < 0.26) & (lateral_order > 0.5) & (depth_order > 0.5)
+    slow = (_safe_norm(rel_lin_vel_b) < 0.35) & (_safe_norm(obj_ang_vel_b) < 1.80)
     valid_episode = (state.episode_type == EP_TOSS) | (state.episode_type == EP_DELAYED_TOSS)
-    return (in_box & slow & hand_wrap & valid_episode & state.has_released).to(torch.float32).unsqueeze(-1)
+    return (in_box & slow & valid_episode & state.has_released).to(torch.float32).unsqueeze(-1)
 
 
 def hold_state(env: "ManagerBasedRLEnv") -> torch.Tensor:
@@ -720,59 +720,49 @@ def contact_forces(env: "ManagerBasedRLEnv", sensor_names: list[str], scale: flo
 # -----------------------------------------------------------------------------
 def reaction_window(
     env: "ManagerBasedRLEnv",
-    min_ttc: float = 0.08,
-    max_ttc: float = 0.78,
-    min_closing_speed: float = 0.24,
+    min_ttc: float = 0.06,
+    max_ttc: float = 0.70,
+    min_closing_speed: float = 0.25,
 ) -> torch.Tensor:
-    """True only when the box is approaching and catch motion should begin soon."""
+    """True only when a released toss is closing on the torso anchor soon."""
     state = get_task_state(env)
     rel_pos_b, rel_vel_b, _obj_ang = _object_rel_in_root_frame(env)
-    anchor = state.target_anchor_b
-    distance_x = rel_pos_b[:, 0] - anchor[:, 0]
-    lateral_err = torch.abs(rel_pos_b[:, 1] - anchor[:, 1])
-    vertical_err = torch.abs(rel_pos_b[:, 2] - anchor[:, 2])
-    closing_speed = -rel_vel_b[:, 0]
-    ttc = distance_x / torch.clamp(closing_speed, min=1e-3)
-    incoming = (distance_x > -0.08) & (closing_speed > min_closing_speed)
-    roughly_catchable = (lateral_err < 0.55) & (vertical_err < 0.42)
+    err = rel_pos_b - state.target_anchor_b
+    dist = _safe_norm(err)
+    closing_speed = -torch.sum(err * rel_vel_b, dim=-1) / torch.clamp(dist, min=1e-3)
+    ttc = dist / torch.clamp(closing_speed, min=1e-3)
+    moving_toward_anchor = closing_speed > float(min_closing_speed)
     valid_type = (state.episode_type == EP_TOSS) | (state.episode_type == EP_DELAYED_TOSS)
-    return incoming & roughly_catchable & valid_type & state.has_released & (ttc > min_ttc) & (ttc < max_ttc)
+    return valid_type & state.has_released & moving_toward_anchor & (ttc > float(min_ttc)) & (ttc < float(max_ttc))
 
 
-def near_catch_window(
-    env: "ManagerBasedRLEnv",
-    x_tol_front: float = 0.34,
-    x_tol_back: float = 0.18,
-    y_tol: float = 0.46,
-    z_tol: float = 0.34,
-) -> torch.Tensor:
-    """Object is close enough that hug/hold rewards may be active.
-
-    This is the anti-early-motion gate: v22 does not activate catch rewards merely
-    because the object has been released.
-    """
+def near_catch_window(env: "ManagerBasedRLEnv") -> torch.Tensor:
+    """Released object is spatially near the chest/hold anchor region."""
     state = get_task_state(env)
     rel_pos_b, _rel_vel_b, _obj_ang = _object_rel_in_root_frame(env)
     err = rel_pos_b - state.target_anchor_b
     valid_type = (state.episode_type == EP_TOSS) | (state.episode_type == EP_DELAYED_TOSS)
-    near = (err[:, 0] < float(x_tol_front)) & (err[:, 0] > -float(x_tol_back))
-    near &= torch.abs(err[:, 1]) < float(y_tol)
-    near &= torch.abs(err[:, 2]) < float(z_tol)
-    return near & valid_type & state.has_released
+    close_dist = _safe_norm(err) < 0.60
+    close_box = (torch.abs(err[:, 0]) < 0.38) & (torch.abs(err[:, 1]) < 0.42) & (torch.abs(err[:, 2]) < 0.36)
+    return valid_type & state.has_released & close_dist & close_box
 
 
 def catchable_or_hold_phase(env: "ManagerBasedRLEnv") -> torch.Tensor:
-    return reaction_window(env) | near_catch_window(env) | hold_condition(env).squeeze(-1).to(torch.bool)
+    return (
+        reaction_window(env)
+        | near_catch_window(env)
+        | post_catch_phase(env)
+        | hold_condition(env).squeeze(-1).to(torch.bool)
+    )
 
 
 def post_catch_phase(env: "ManagerBasedRLEnv") -> torch.Tensor:
     state = get_task_state(env)
-    rel_pos_b, rel_vel_b, _obj_ang = _object_rel_in_root_frame(env)
+    rel_pos_b, _rel_vel_b, _obj_ang = _object_rel_in_root_frame(env)
     err = rel_pos_b - state.target_anchor_b
-    in_pocket = (torch.abs(err[:, 0]) < 0.20) & (torch.abs(err[:, 1]) < 0.24) & (torch.abs(err[:, 2]) < 0.22)
-    slowish = _safe_norm(rel_vel_b) < 0.65
+    inside = (torch.abs(err[:, 0]) < 0.30) & (torch.abs(err[:, 1]) < 0.34) & (torch.abs(err[:, 2]) < 0.30)
     valid_type = (state.episode_type == EP_TOSS) | (state.episode_type == EP_DELAYED_TOSS)
-    return state.has_released & valid_type & in_pocket & slowish
+    return valid_type & state.has_released & inside
 
 
 def hold_quality_terms(env: "ManagerBasedRLEnv") -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -787,17 +777,6 @@ def hold_quality_terms(env: "ManagerBasedRLEnv") -> tuple[torch.Tensor, torch.Te
     ang_quality = _exp_reward(_safe_norm(obj_ang_vel_b), sigma=1.45)
     z_ok = _exp_reward(rel_pos_b[:, 2] - state.target_anchor_b[:, 2], sigma=0.145)
     return pos_quality, lin_quality, ang_quality, z_ok
-
-
-def chest_pocket_terms(env: "ManagerBasedRLEnv") -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    state = get_task_state(env)
-    rel_pos_b, _rel_vel_b, _obj_ang = _object_rel_in_root_frame(env)
-    err = rel_pos_b - state.target_anchor_b
-    x_quality = _exp_reward(err[:, 0], sigma=0.13)
-    y_quality = _exp_reward(err[:, 1], sigma=0.16)
-    z_quality = _exp_reward(err[:, 2], sigma=0.15)
-    not_far_forward = torch.sigmoid((0.50 - rel_pos_b[:, 0]) * 12.0)
-    return x_quality, y_quality, z_quality, not_far_forward
 
 
 def hand_side_errors(env: "ManagerBasedRLEnv") -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -821,14 +800,6 @@ def hand_side_errors(env: "ManagerBasedRLEnv") -> tuple[torch.Tensor, torch.Tens
     right_depth = (right_b[:, 0] < rel_pos_b[:, 0] + 0.13) & (right_b[:, 0] > rel_pos_b[:, 0] - 0.34)
     depth_order = left_depth & right_depth
     return left_err, right_err, lateral_order.to(torch.float32), depth_order.to(torch.float32)
-
-
-def hug_geometry_terms(env: "ManagerBasedRLEnv") -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    left_err, right_err, lateral_order, depth_order = hand_side_errors(env)
-    side_close = torch.exp(-(left_err * left_err + right_err * right_err) / (0.27 * 0.27))
-    symmetry = torch.exp(-((left_err - right_err) ** 2) / (0.10 * 0.10))
-    bracket = side_close * (0.35 + 0.65 * lateral_order) * (0.35 + 0.65 * depth_order)
-    return bracket, symmetry, lateral_order, depth_order
 
 
 def ready_pose_error(env: "ManagerBasedRLEnv", pose: dict[str, float] | None = None) -> torch.Tensor:
@@ -875,9 +846,7 @@ __all__ = [
     "post_catch_phase",
     "hold_condition",
     "hold_quality_terms",
-    "chest_pocket_terms",
     "hand_side_errors",
-    "hug_geometry_terms",
     "ready_pose_error",
     "update_action_history",
     "_as_tensor",
