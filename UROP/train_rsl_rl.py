@@ -133,6 +133,7 @@ import UROP_v20
 import UROP_v21
 import UROP_v22
 import UROP_v23
+import UROP_v24
 import UROP_carry_v0
 import UROP_carry_v2
 import UROP_carry_v3
