@@ -18,6 +18,14 @@ class RuntimeConfig:
 
 
 @dataclass(frozen=True)
+class MetadataConfig:
+    urop_version: str
+    contract_path: Path | None
+    run_safety: str
+    notes: list[str]
+
+
+@dataclass(frozen=True)
 class CommunicationConfig:
     backend: str
     net_iface: str | None
@@ -142,6 +150,9 @@ class CameraConfig:
     body_link_name: str | None
     torso_link_name: str
     waist_joint_names: list[str]
+    training_camera_translation: np.ndarray | None
+    training_camera_quat_wxyz: np.ndarray | None
+    training_camera_convention: str
     estimator: CameraEstimatorConfig
 
 
@@ -172,6 +183,7 @@ class CatchRealConfig:
     repo_root: Path
     name: str
     version: str
+    metadata: MetadataConfig
     runtime: RuntimeConfig
     communication: CommunicationConfig
     robot: RobotConfig

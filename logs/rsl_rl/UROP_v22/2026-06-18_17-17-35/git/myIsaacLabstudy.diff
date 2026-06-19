@@ -1,0 +1,618 @@
+--- git status ---
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   UROP/UROP_v22/agents/rsl_rl_ppo_cfg.py
+	modified:   UROP/UROP_v22/env_cfg.py
+	modified:   UROP/UROP_v22/mdp/observations.py
+	modified:   UROP/UROP_v22/mdp/rewards.py
+
+no changes added to commit (use "git add" and/or "git commit -a") 
+
+
+--- git diff ---
+diff --git a/UROP/UROP_v22/agents/rsl_rl_ppo_cfg.py b/UROP/UROP_v22/agents/rsl_rl_ppo_cfg.py
+index 98235acc..c9971782 100644
+--- a/UROP/UROP_v22/agents/rsl_rl_ppo_cfg.py
++++ b/UROP/UROP_v22/agents/rsl_rl_ppo_cfg.py
+@@ -4,18 +4,16 @@ from isaaclab.utils import configclass
+ 
+ @configclass
+ class UropV22PPORunnerCfg(RslRlOnPolicyRunnerCfg):
+-    # 64 steps at 50 Hz = 1.28 s rollout. This covers wait -> react -> contact.
+     num_steps_per_env = 64
+-    max_iterations = 6000
++    max_iterations = 5000
+     save_interval = 250
+     experiment_name = "UROP_v22"
+     empirical_normalization = True
+ 
+     policy = RslRlPpoActorCriticCfg(
+-        init_noise_std=0.28,
++        init_noise_std=0.24,
+         actor_hidden_dims=[256, 256, 128],
+-        # Critic sees privileged object/contact/domain terms, so it gets a larger first layer.
+-        critic_hidden_dims=[512, 256, 128],
++        critic_hidden_dims=[256, 256, 128],
+         activation="elu",
+     )
+ 
+@@ -23,7 +21,7 @@ class UropV22PPORunnerCfg(RslRlOnPolicyRunnerCfg):
+         value_loss_coef=1.0,
+         use_clipped_value_loss=True,
+         clip_param=0.2,
+-        entropy_coef=0.0035,
++        entropy_coef=0.0025,
+         num_learning_epochs=3,
+         num_mini_batches=8,
+         learning_rate=2.0e-4,
+diff --git a/UROP/UROP_v22/env_cfg.py b/UROP/UROP_v22/env_cfg.py
+index c8e5b576..d34b664b 100644
+--- a/UROP/UROP_v22/env_cfg.py
++++ b/UROP/UROP_v22/env_cfg.py
+@@ -136,58 +136,46 @@ class ObservationsCfg:
+ 
+ @configclass
+ class RewardsCfg:
+-    # Balance / survival.
+-    alive = RewTerm(func=mdp.alive_bonus, weight=0.08)
+-    upright = RewTerm(func=mdp.upright_reward, weight=1.35, params={"sigma": 0.24})
+-    height = RewTerm(func=mdp.root_height_reward, weight=0.80, params={"target_z": 0.78, "sigma": 0.11})
+-    base_motion = RewTerm(func=mdp.base_motion_penalty, weight=-0.045)
+-
+-    # False-positive suppression and reaction timing.
+-    ready_posture = RewTerm(func=mdp.ready_posture_reward, weight=0.55)
+-    idle_until_reaction = RewTerm(func=mdp.idle_until_reaction_reward, weight=1.20)
+-    early_arm_motion = RewTerm(func=mdp.early_arm_motion_penalty, weight=-2.25)
+-    no_toss_hug = RewTerm(func=mdp.no_toss_contact_like_penalty, weight=-2.00)
+-    reaction_timing = RewTerm(func=mdp.reaction_timing_reward, weight=1.00)
+-
+-    # Hug geometry. These are gated by reaction/near-catch/post-catch phase, not by release alone.
+-    hand_side_proximity = RewTerm(func=mdp.hand_side_proximity_reward, weight=1.65)
+-    hug_bracket = RewTerm(func=mdp.hug_bracket_reward, weight=1.55)
+-    hug_symmetry = RewTerm(func=mdp.hug_symmetry_reward, weight=0.95)
+-    chest_pocket = RewTerm(func=mdp.chest_pocket_reward, weight=2.60)
+-    hug_depth = RewTerm(func=mdp.hug_depth_reward, weight=1.35)
+-    elbow_flexion = RewTerm(func=mdp.elbow_flexion_reward, weight=0.55)
+-    whole_body_absorb = RewTerm(func=mdp.whole_body_absorption_reward, weight=0.42)
+-
+-    # Object reception and stabilization.
+-    object_anchor = RewTerm(func=mdp.object_anchor_reward, weight=1.50)
+-    object_velocity_damping = RewTerm(func=mdp.object_velocity_damping_reward, weight=2.35)
+-    object_height_safety = RewTerm(func=mdp.object_height_safety_reward, weight=0.50)
+-    successful_hold = RewTerm(func=mdp.successful_hold_reward, weight=5.00)
+-    sustained_hold = RewTerm(func=mdp.sustained_hold_reward, weight=2.20, params={"scale_steps": 60.0})
+-    stable_hug = RewTerm(func=mdp.stable_hug_reward, weight=1.80)
+-    post_catch_stillness = RewTerm(func=mdp.post_catch_stillness_reward, weight=0.80)
+-
+-    # Failure / anti-hacking.
+-    object_drop = RewTerm(func=mdp.object_drop_penalty, weight=-4.50)
++    # Balance / survival
++    alive = RewTerm(func=mdp.alive_bonus, weight=0.10)
++    upright = RewTerm(func=mdp.upright_reward, weight=1.40, params={"sigma": 0.24})
++    height = RewTerm(func=mdp.root_height_reward, weight=0.85, params={"target_z": 0.78, "sigma": 0.11})
++    base_motion = RewTerm(func=mdp.base_motion_penalty, weight=-0.060)
++
++    # False-positive suppression and timing
++    idle_until_reaction = RewTerm(func=mdp.idle_until_reaction_reward, weight=0.75)
++    early_arm_motion = RewTerm(func=mdp.early_arm_motion_penalty, weight=-1.10)
++    reaction_timing = RewTerm(func=mdp.reaction_timing_reward, weight=0.85)
++
++    # Catch geometry
++    hand_side_proximity = RewTerm(func=mdp.hand_side_proximity_reward, weight=2.00)
++    hug_symmetry = RewTerm(func=mdp.hug_symmetry_reward, weight=0.75)
++    hug_pocket = RewTerm(func=mdp.hug_pocket_reward, weight=1.35)
++    whole_body_absorb = RewTerm(func=mdp.whole_body_absorption_reward, weight=0.25)
++
++    # Object stabilization
++    object_anchor = RewTerm(func=mdp.object_anchor_reward, weight=2.15)
++    object_velocity_damping = RewTerm(func=mdp.object_velocity_damping_reward, weight=1.85)
++    object_height_safety = RewTerm(func=mdp.object_height_safety_reward, weight=0.45)
++    successful_hold = RewTerm(func=mdp.successful_hold_reward, weight=3.00)
++    sustained_hold = RewTerm(func=mdp.sustained_hold_reward, weight=1.40, params={"scale_steps": 50.0})
++
++    # Failure / regularization
++    object_drop = RewTerm(func=mdp.object_drop_penalty, weight=-4.00)
+     object_escape = RewTerm(func=mdp.object_escape_penalty, weight=-2.50)
+-    front_shelf = RewTerm(func=mdp.front_shelf_penalty, weight=-1.20)
+-
+-    # Smoothness / tremor suppression. Post-catch functions are phase-gated internally.
+-    joint_vel = RewTerm(func=mdp.joint_velocity_penalty, weight=-0.020)
+-    lower_body_joint_vel = RewTerm(func=mdp.lower_body_joint_velocity_penalty, weight=-0.055)
+-    action_mag = RewTerm(func=mdp.action_magnitude_penalty, weight=-0.010)
+-    action_rate = RewTerm(func=mdp.action_rate_penalty, weight=-0.080)
+-    action_accel = RewTerm(func=mdp.action_acceleration_penalty, weight=-0.050)
+-    lower_body_action_rate = RewTerm(func=mdp.lower_body_action_rate_penalty, weight=-0.120)
+-    post_catch_action_rate = RewTerm(func=mdp.post_catch_action_rate_penalty, weight=-0.240)
+-    base_ang_vel_post_catch = RewTerm(func=mdp.base_ang_vel_post_catch_penalty, weight=-0.080)
+-    post_catch_tremor = RewTerm(func=mdp.post_catch_tremor_penalty, weight=-0.200)
++    no_toss_hug = RewTerm(func=mdp.no_toss_contact_like_penalty, weight=-1.20)
++    joint_vel = RewTerm(func=mdp.joint_velocity_penalty, weight=-0.030)
++    action_mag = RewTerm(func=mdp.action_magnitude_penalty, weight=-0.012)
++    action_rate = RewTerm(func=mdp.action_rate_penalty, weight=-0.060)
++    action_accel = RewTerm(func=mdp.action_acceleration_penalty, weight=-0.030)
++    post_catch_action_rate = RewTerm(func=mdp.post_catch_action_rate_penalty, weight=-0.100)
++    post_catch_base_ang_vel = RewTerm(func=mdp.post_catch_base_ang_vel_penalty, weight=-0.080)
+ 
+ 
+ @configclass
+ class TerminationsCfg:
+     time_out = DoneTerm(func=mdp.time_out, time_out=True)
+-    success = DoneTerm(func=mdp.successful_hold_complete, params={"min_steps": 55})
++    success = DoneTerm(func=mdp.successful_hold_complete, params={"min_steps": 50})
+     robot_fell = DoneTerm(func=mdp.robot_fell, params={"min_root_z": 0.46, "max_tilt_xy": 0.86})
+     object_dropped = DoneTerm(func=mdp.object_dropped, params={"drop_z": 0.23, "grace_steps_after_release": 12})
+     object_escaped = DoneTerm(func=mdp.object_escaped, params={"max_dist": 2.60, "behind_x": -0.62})
+@@ -355,17 +343,22 @@ class dj_urop_v22_EnvCfg_Demo(dj_urop_v22_EnvCfg):
+             (1.0, 0.0, 0.0, 0.0, 0.0),
+             (1.0, 0.0, 0.0, 0.0, 0.0),
+         )
+-        self.events.reset_autonomous_episode.params["release_time_range_s"] = (0.55, 0.70)
+-        self.events.reset_autonomous_episode.params["sender_x_range"] = (1.18, 1.36)
+-        self.events.reset_autonomous_episode.params["sender_y_range"] = (-0.045, 0.045)
+-        self.events.reset_autonomous_episode.params["sender_z_rel_range"] = (0.30, 0.39)
+-        self.events.reset_autonomous_episode.params["arrival_time_range_s"] = (0.72, 0.88)
++        self.events.reset_autonomous_episode.params["release_time_range_s"] = (0.20, 0.35)
++        self.events.reset_autonomous_episode.params["delayed_release_time_range_s"] = (0.20, 0.35)
++        self.events.reset_autonomous_episode.params["sender_x_range"] = (1.20, 1.45)
++        self.events.reset_autonomous_episode.params["sender_y_range"] = (-0.08, 0.08)
++        self.events.reset_autonomous_episode.params["sender_z_rel_range"] = (0.28, 0.42)
++        self.events.reset_autonomous_episode.params["arrival_time_range_s"] = (0.55, 0.80)
+         self.events.reset_autonomous_episode.params["target_noise_xyz"] = (0.015, 0.020, 0.020)
++        self.events.reset_autonomous_episode.params["object_size_scale_range"] = (0.95, 1.05)
++        self.events.reset_autonomous_episode.params["object_mass_range"] = (1.8, 2.2)
++        self.events.reset_autonomous_episode.params["object_friction_range"] = (0.75, 0.90)
++        self.events.reset_autonomous_episode.params["object_restitution_range"] = (0.00, 0.04)
+         self.events.reset_autonomous_episode.params["obs_noise_scale_range"] = (0.0, 0.0)
+         self.events.reset_autonomous_episode.params["tag_available_prob"] = 1.0
+         self.events.reset_autonomous_episode.params["demo_mode"] = True
+-        self.events.reset_autonomous_episode.params["demo_release_time_s"] = 0.62
+-        self.events.reset_autonomous_episode.params["demo_arrival_time_s"] = 0.76
++        self.events.reset_autonomous_episode.params["demo_release_time_s"] = 0.28
++        self.events.reset_autonomous_episode.params["demo_arrival_time_s"] = 0.68
+         self.events.object_scale = None
+         self.events.object_material = None
+         self.events.object_mass = None
+diff --git a/UROP/UROP_v22/mdp/observations.py b/UROP/UROP_v22/mdp/observations.py
+index 7e6bf1c7..9b84ae0c 100644
+--- a/UROP/UROP_v22/mdp/observations.py
++++ b/UROP/UROP_v22/mdp/observations.py
+@@ -409,6 +409,8 @@ def update_action_history(env: "ManagerBasedRLEnv") -> tuple[torch.Tensor, torch
+     current = _current_action(env)
+     if current.shape[-1] != scene_objects_cfg.EXPECTED_ACTION_DIM:
+         current = current[..., : scene_objects_cfg.EXPECTED_ACTION_DIM]
++    # Shift before overwriting last_action so rate/acceleration rewards compare
++    # the current policy command against the previous environment step.
+     state.prev_prev_action = state.prev_action.clone()
+     state.prev_action = torch.where(state.action_initialized[:, None], state.last_action, current)
+     state.last_action = current
+@@ -578,22 +580,20 @@ def toss_state(env: "ManagerBasedRLEnv") -> torch.Tensor:
+     return torch.cat((one_hot, released, time_to_release, time_since_release), dim=-1)
+ 
+ 
+-def hold_condition(env: "ManagerBasedRLEnv", pos_tol: tuple[float, float, float] = (0.145, 0.175, 0.155)) -> torch.Tensor:
+-    """Strict demo-quality hold: chest pocket + slow object + two-hand bracket.
++def hold_condition(env: "ManagerBasedRLEnv", pos_tol: tuple[float, float, float] = (0.18, 0.22, 0.20)) -> torch.Tensor:
++    """Object-only stabilized hold check.
+ 
+-    Contact/force is intentionally not used here. The actor still sees only
+-    proprioception and AprilTag-like object pose/velocity.
++    Hug quality is shaped by rewards; success should not require exact hand
++    geometry that makes termination brittle.
+     """
+     state = get_task_state(env)
+     rel_pos_b, rel_lin_vel_b, obj_ang_vel_b = _object_rel_in_root_frame(env)
+     err = rel_pos_b - state.target_anchor_b
+     tol = _as_tensor(pos_tol, env).view(1, 3)
+     in_box = torch.all(torch.abs(err) < tol, dim=-1)
+-    slow = (_safe_norm(rel_lin_vel_b) < 0.30) & (_safe_norm(obj_ang_vel_b) < 1.35)
+-    left_err, right_err, lateral_order, depth_order = hand_side_errors(env)
+-    hand_wrap = (left_err < 0.26) & (right_err < 0.26) & (lateral_order > 0.5) & (depth_order > 0.5)
++    slow = (_safe_norm(rel_lin_vel_b) < 0.35) & (_safe_norm(obj_ang_vel_b) < 1.80)
+     valid_episode = (state.episode_type == EP_TOSS) | (state.episode_type == EP_DELAYED_TOSS)
+-    return (in_box & slow & hand_wrap & valid_episode & state.has_released).to(torch.float32).unsqueeze(-1)
++    return (in_box & slow & valid_episode & state.has_released).to(torch.float32).unsqueeze(-1)
+ 
+ 
+ def hold_state(env: "ManagerBasedRLEnv") -> torch.Tensor:
+@@ -720,59 +720,49 @@ def contact_forces(env: "ManagerBasedRLEnv", sensor_names: list[str], scale: flo
+ # -----------------------------------------------------------------------------
+ def reaction_window(
+     env: "ManagerBasedRLEnv",
+-    min_ttc: float = 0.08,
+-    max_ttc: float = 0.78,
+-    min_closing_speed: float = 0.24,
++    min_ttc: float = 0.06,
++    max_ttc: float = 0.70,
++    min_closing_speed: float = 0.25,
+ ) -> torch.Tensor:
+-    """True only when the box is approaching and catch motion should begin soon."""
++    """True only when a released toss is closing on the torso anchor soon."""
+     state = get_task_state(env)
+     rel_pos_b, rel_vel_b, _obj_ang = _object_rel_in_root_frame(env)
+-    anchor = state.target_anchor_b
+-    distance_x = rel_pos_b[:, 0] - anchor[:, 0]
+-    lateral_err = torch.abs(rel_pos_b[:, 1] - anchor[:, 1])
+-    vertical_err = torch.abs(rel_pos_b[:, 2] - anchor[:, 2])
+-    closing_speed = -rel_vel_b[:, 0]
+-    ttc = distance_x / torch.clamp(closing_speed, min=1e-3)
+-    incoming = (distance_x > -0.08) & (closing_speed > min_closing_speed)
+-    roughly_catchable = (lateral_err < 0.55) & (vertical_err < 0.42)
++    err = rel_pos_b - state.target_anchor_b
++    dist = _safe_norm(err)
++    closing_speed = -torch.sum(err * rel_vel_b, dim=-1) / torch.clamp(dist, min=1e-3)
++    ttc = dist / torch.clamp(closing_speed, min=1e-3)
++    moving_toward_anchor = closing_speed > float(min_closing_speed)
+     valid_type = (state.episode_type == EP_TOSS) | (state.episode_type == EP_DELAYED_TOSS)
+-    return incoming & roughly_catchable & valid_type & state.has_released & (ttc > min_ttc) & (ttc < max_ttc)
+-
++    return valid_type & state.has_released & moving_toward_anchor & (ttc > float(min_ttc)) & (ttc < float(max_ttc))
+ 
+-def near_catch_window(
+-    env: "ManagerBasedRLEnv",
+-    x_tol_front: float = 0.34,
+-    x_tol_back: float = 0.18,
+-    y_tol: float = 0.46,
+-    z_tol: float = 0.34,
+-) -> torch.Tensor:
+-    """Object is close enough that hug/hold rewards may be active.
+ 
+-    This is the anti-early-motion gate: v22 does not activate catch rewards merely
+-    because the object has been released.
+-    """
++def near_catch_window(env: "ManagerBasedRLEnv") -> torch.Tensor:
++    """Released object is spatially near the chest/hold anchor region."""
+     state = get_task_state(env)
+     rel_pos_b, _rel_vel_b, _obj_ang = _object_rel_in_root_frame(env)
+     err = rel_pos_b - state.target_anchor_b
+     valid_type = (state.episode_type == EP_TOSS) | (state.episode_type == EP_DELAYED_TOSS)
+-    near = (err[:, 0] < float(x_tol_front)) & (err[:, 0] > -float(x_tol_back))
+-    near &= torch.abs(err[:, 1]) < float(y_tol)
+-    near &= torch.abs(err[:, 2]) < float(z_tol)
+-    return near & valid_type & state.has_released
++    close_dist = _safe_norm(err) < 0.60
++    close_box = (torch.abs(err[:, 0]) < 0.38) & (torch.abs(err[:, 1]) < 0.42) & (torch.abs(err[:, 2]) < 0.36)
++    return valid_type & state.has_released & close_dist & close_box
+ 
+ 
+ def catchable_or_hold_phase(env: "ManagerBasedRLEnv") -> torch.Tensor:
+-    return reaction_window(env) | near_catch_window(env) | hold_condition(env).squeeze(-1).to(torch.bool)
++    return (
++        reaction_window(env)
++        | near_catch_window(env)
++        | post_catch_phase(env)
++        | hold_condition(env).squeeze(-1).to(torch.bool)
++    )
+ 
+ 
+ def post_catch_phase(env: "ManagerBasedRLEnv") -> torch.Tensor:
+     state = get_task_state(env)
+-    rel_pos_b, rel_vel_b, _obj_ang = _object_rel_in_root_frame(env)
++    rel_pos_b, _rel_vel_b, _obj_ang = _object_rel_in_root_frame(env)
+     err = rel_pos_b - state.target_anchor_b
+-    in_pocket = (torch.abs(err[:, 0]) < 0.20) & (torch.abs(err[:, 1]) < 0.24) & (torch.abs(err[:, 2]) < 0.22)
+-    slowish = _safe_norm(rel_vel_b) < 0.65
++    inside = (torch.abs(err[:, 0]) < 0.30) & (torch.abs(err[:, 1]) < 0.34) & (torch.abs(err[:, 2]) < 0.30)
+     valid_type = (state.episode_type == EP_TOSS) | (state.episode_type == EP_DELAYED_TOSS)
+-    return state.has_released & valid_type & in_pocket & slowish
++    return valid_type & state.has_released & inside
+ 
+ 
+ def hold_quality_terms(env: "ManagerBasedRLEnv") -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+@@ -789,17 +779,6 @@ def hold_quality_terms(env: "ManagerBasedRLEnv") -> tuple[torch.Tensor, torch.Te
+     return pos_quality, lin_quality, ang_quality, z_ok
+ 
+ 
+-def chest_pocket_terms(env: "ManagerBasedRLEnv") -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+-    state = get_task_state(env)
+-    rel_pos_b, _rel_vel_b, _obj_ang = _object_rel_in_root_frame(env)
+-    err = rel_pos_b - state.target_anchor_b
+-    x_quality = _exp_reward(err[:, 0], sigma=0.13)
+-    y_quality = _exp_reward(err[:, 1], sigma=0.16)
+-    z_quality = _exp_reward(err[:, 2], sigma=0.15)
+-    not_far_forward = torch.sigmoid((0.50 - rel_pos_b[:, 0]) * 12.0)
+-    return x_quality, y_quality, z_quality, not_far_forward
+-
+-
+ def hand_side_errors(env: "ManagerBasedRLEnv") -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+     state = get_task_state(env)
+     rel_pos_b, _rel_vel_b, _obj_ang = _object_rel_in_root_frame(env)
+@@ -823,14 +802,6 @@ def hand_side_errors(env: "ManagerBasedRLEnv") -> tuple[torch.Tensor, torch.Tens
+     return left_err, right_err, lateral_order.to(torch.float32), depth_order.to(torch.float32)
+ 
+ 
+-def hug_geometry_terms(env: "ManagerBasedRLEnv") -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+-    left_err, right_err, lateral_order, depth_order = hand_side_errors(env)
+-    side_close = torch.exp(-(left_err * left_err + right_err * right_err) / (0.27 * 0.27))
+-    symmetry = torch.exp(-((left_err - right_err) ** 2) / (0.10 * 0.10))
+-    bracket = side_close * (0.35 + 0.65 * lateral_order) * (0.35 + 0.65 * depth_order)
+-    return bracket, symmetry, lateral_order, depth_order
+-
+-
+ def ready_pose_error(env: "ManagerBasedRLEnv", pose: dict[str, float] | None = None) -> torch.Tensor:
+     if pose is None:
+         pose = scene_objects_cfg.READY_POSE
+@@ -875,9 +846,7 @@ __all__ = [
+     "post_catch_phase",
+     "hold_condition",
+     "hold_quality_terms",
+-    "chest_pocket_terms",
+     "hand_side_errors",
+-    "hug_geometry_terms",
+     "ready_pose_error",
+     "update_action_history",
+     "_as_tensor",
+diff --git a/UROP/UROP_v22/mdp/rewards.py b/UROP/UROP_v22/mdp/rewards.py
+index c5010b2d..90210dcc 100644
+--- a/UROP/UROP_v22/mdp/rewards.py
++++ b/UROP/UROP_v22/mdp/rewards.py
+@@ -9,13 +9,10 @@ from .observations import (
+     EP_NO_TOSS,
+     EP_PASS_BY,
+     catchable_or_hold_phase,
+-    chest_pocket_terms,
+     get_task_state,
+     hand_side_errors,
+     hold_condition,
+     hold_quality_terms,
+-    hug_geometry_terms,
+-    near_catch_window,
+     post_catch_phase,
+     projected_gravity,
+     reaction_window,
+@@ -24,8 +21,8 @@ from .observations import (
+     _get_robot,
+     _object_pos_quat_vel_w,
+     _object_rel_in_root_frame,
+-    _root_lin_vel_w,
+     _root_ang_vel_w,
++    _root_lin_vel_w,
+     _root_pos_quat,
+     _safe_norm,
+ )
+@@ -82,12 +79,6 @@ def joint_velocity_penalty(env: "ManagerBasedRLEnv", scale: float = 0.0025) -> t
+     return float(scale) * torch.sum(qd * qd, dim=-1)
+ 
+ 
+-def lower_body_joint_velocity_penalty(env: "ManagerBasedRLEnv", scale: float = 0.010) -> torch.Tensor:
+-    qd = _controlled_qd(env)[:, :15]
+-    post = post_catch_phase(env).to(torch.float32)
+-    return float(scale) * (0.35 + 1.65 * post) * torch.sum(qd * qd, dim=-1)
+-
+-
+ def action_rate_penalty(env: "ManagerBasedRLEnv") -> torch.Tensor:
+     action, prev, _prev_prev = update_action_history(env)
+     diff = action - prev
+@@ -105,29 +96,17 @@ def action_magnitude_penalty(env: "ManagerBasedRLEnv") -> torch.Tensor:
+     return torch.mean(action * action, dim=-1)
+ 
+ 
+-def lower_body_action_rate_penalty(env: "ManagerBasedRLEnv") -> torch.Tensor:
+-    action, prev, _prev_prev = update_action_history(env)
+-    diff = action[:, :15] - prev[:, :15]
+-    post = post_catch_phase(env).to(torch.float32)
+-    return (0.5 + 2.0 * post) * torch.mean(diff * diff, dim=-1)
+-
+-
+ def post_catch_action_rate_penalty(env: "ManagerBasedRLEnv") -> torch.Tensor:
++    active = post_catch_phase(env).to(torch.float32)
+     action, prev, _prev_prev = update_action_history(env)
+     diff = action - prev
+-    return post_catch_phase(env).to(torch.float32) * torch.mean(diff * diff, dim=-1)
++    return active * torch.mean(diff * diff, dim=-1)
+ 
+ 
+-def base_ang_vel_post_catch_penalty(env: "ManagerBasedRLEnv") -> torch.Tensor:
++def post_catch_base_ang_vel_penalty(env: "ManagerBasedRLEnv") -> torch.Tensor:
++    active = post_catch_phase(env).to(torch.float32)
+     robot = _get_robot(env)
+-    return post_catch_phase(env).to(torch.float32) * _safe_norm(_root_ang_vel_w(robot)) ** 2
+-
+-
+-def post_catch_tremor_penalty(env: "ManagerBasedRLEnv") -> torch.Tensor:
+-    qd = _controlled_qd(env)
+-    action_rate = action_rate_penalty(env)
+-    lower_vel = torch.mean(qd[:, :15] * qd[:, :15], dim=-1)
+-    return post_catch_phase(env).to(torch.float32) * (lower_vel + 2.0 * action_rate)
++    return active * _safe_norm(_root_ang_vel_w(robot)) ** 2
+ 
+ 
+ # -----------------------------------------------------------------------------
+@@ -165,7 +144,7 @@ def early_arm_motion_penalty(env: "ManagerBasedRLEnv") -> torch.Tensor:
+ 
+ def no_toss_contact_like_penalty(env: "ManagerBasedRLEnv") -> torch.Tensor:
+     state = get_task_state(env)
+-    left_err, right_err, _lat, _depth = hand_side_errors(env)
++    left_err, right_err, _lat, _front = hand_side_errors(env)
+     close_to_box = torch.exp(-((left_err + right_err) ** 2) / 0.22)
+     no_toss_or_pass = (state.episode_type == EP_NO_TOSS) | (state.episode_type == EP_PASS_BY)
+     return no_toss_or_pass.to(torch.float32) * close_to_box
+@@ -177,64 +156,46 @@ def no_toss_contact_like_penalty(env: "ManagerBasedRLEnv") -> torch.Tensor:
+ def reaction_timing_reward(env: "ManagerBasedRLEnv", target_ttc: float = 0.32, sigma: float = 0.23) -> torch.Tensor:
+     state = get_task_state(env)
+     rel_pos_b, rel_vel_b, _obj_ang = _object_rel_in_root_frame(env)
+-    dist_x = rel_pos_b[:, 0] - state.target_anchor_b[:, 0]
+-    closing = -rel_vel_b[:, 0]
+-    ttc = dist_x / torch.clamp(closing, min=1e-3)
++    err = rel_pos_b - state.target_anchor_b
++    dist = _safe_norm(err)
++    closing = -torch.sum(err * rel_vel_b, dim=-1) / torch.clamp(dist, min=1e-3)
++    ttc = dist / torch.clamp(closing, min=1e-3)
+     score = torch.exp(-((ttc - float(target_ttc)) ** 2) / (float(sigma) ** 2))
+     return reaction_window(env).to(torch.float32) * score
+ 
+ 
+ def hand_side_proximity_reward(env: "ManagerBasedRLEnv", sigma: float = 0.20) -> torch.Tensor:
+-    left_err, right_err, lateral_order, depth_order = hand_side_errors(env)
++    left_err, right_err, lateral_order, front_ok = hand_side_errors(env)
+     active = _phase_active_float(env)
+     left_score = torch.exp(-(left_err * left_err) / (float(sigma) ** 2))
+     right_score = torch.exp(-(right_err * right_err) / (float(sigma) ** 2))
+-    return active * left_score * right_score * (0.35 + 0.65 * lateral_order) * (0.35 + 0.65 * depth_order)
++    return active * left_score * right_score * (0.35 + 0.65 * lateral_order) * (0.35 + 0.65 * front_ok)
+ 
+ 
+ def hug_symmetry_reward(env: "ManagerBasedRLEnv") -> torch.Tensor:
+-    bracket, symmetry, lateral_order, depth_order = hug_geometry_terms(env)
++    left_err, right_err, lateral_order, front_ok = hand_side_errors(env)
+     active = _phase_active_float(env)
+-    return active * bracket * symmetry * (0.35 + 0.65 * lateral_order) * (0.35 + 0.65 * depth_order)
++    symmetry = torch.exp(-((left_err - right_err) ** 2) / 0.08)
++    close = torch.exp(-((left_err + right_err) ** 2) / 0.42)
++    return active * symmetry * close * lateral_order * front_ok
+ 
+ 
+-def hug_bracket_reward(env: "ManagerBasedRLEnv") -> torch.Tensor:
+-    bracket, _sym, _lat, _depth = hug_geometry_terms(env)
+-    return _phase_active_float(env) * bracket
+-
+-
+-def chest_pocket_reward(env: "ManagerBasedRLEnv") -> torch.Tensor:
+-    x_quality, y_quality, z_quality, not_far_forward = chest_pocket_terms(env)
+-    active = (near_catch_window(env) | post_catch_phase(env) | hold_condition(env).squeeze(-1).to(torch.bool)).to(torch.float32)
+-    return active * x_quality * y_quality * z_quality * not_far_forward
+-
+-
+-def hug_depth_reward(env: "ManagerBasedRLEnv") -> torch.Tensor:
+-    bracket, symmetry, _lateral_order, depth_order = hug_geometry_terms(env)
+-    x_quality, _y, _z, not_far_forward = chest_pocket_terms(env)
+-    active = (near_catch_window(env) | post_catch_phase(env) | hold_condition(env).squeeze(-1).to(torch.bool)).to(torch.float32)
+-    return active * bracket * symmetry * depth_order * x_quality * not_far_forward
+-
+-
+-def elbow_wrap_reward(env: "ManagerBasedRLEnv", sigma: float = 0.48) -> torch.Tensor:
+-    active = (near_catch_window(env) | post_catch_phase(env) | hold_condition(env).squeeze(-1).to(torch.bool)).to(torch.float32)
+-    err = ready_pose_error(env, scene_objects_cfg.HOLD_POSE)
+-    arm_err = err[:, 15:]
+-    elbow_err = torch.stack((err[:, 18], err[:, 25]), dim=-1)
+-    arm_score = torch.exp(-torch.mean(arm_err * arm_err, dim=-1) / (float(sigma) ** 2))
+-    elbow_score = torch.exp(-torch.mean(elbow_err * elbow_err, dim=-1) / (0.38 * 0.38))
+-    return active * (0.45 * arm_score + 0.55 * elbow_score)
+-
+-
+-def elbow_flexion_reward(env: "ManagerBasedRLEnv") -> torch.Tensor:
+-    return elbow_wrap_reward(env)
++def hug_pocket_reward(env: "ManagerBasedRLEnv", sigma_pos: float = 0.23, sigma_hands: float = 0.34) -> torch.Tensor:
++    active = _phase_active_float(env)
++    state = get_task_state(env)
++    rel_pos_b, _rel_vel_b, _obj_ang_vel_b = _object_rel_in_root_frame(env)
++    err = rel_pos_b - state.target_anchor_b
++    pos_score = torch.exp(-(_safe_norm(err) ** 2) / (float(sigma_pos) ** 2))
++    left_err, right_err, lateral_order, front_ok = hand_side_errors(env)
++    hand_score = torch.exp(-((left_err + right_err) ** 2) / (float(sigma_hands) ** 2))
++    too_far_front = rel_pos_b[:, 0] - state.target_anchor_b[:, 0]
++    depth_score = torch.exp(-(torch.clamp(too_far_front, min=0.0) ** 2) / (0.16 * 0.16))
++    return active * pos_score * hand_score * lateral_order * front_ok * depth_score
+ 
+ 
+ def whole_body_absorption_reward(env: "ManagerBasedRLEnv") -> torch.Tensor:
+-    active = (near_catch_window(env) | post_catch_phase(env)).to(torch.float32)
+-    qd = _controlled_qd(env)
+-    lower_quiet = torch.exp(-torch.mean(qd[:, :15] * qd[:, :15], dim=-1) / (1.30 * 1.30))
+-    return active * hold_posture_reward(env, sigma=0.78) * (0.35 + 0.65 * lower_quiet)
++    active = _phase_active_float(env)
++    return active * hold_posture_reward(env, sigma=0.90)
+ 
+ 
+ # -----------------------------------------------------------------------------
+@@ -242,20 +203,19 @@ def whole_body_absorption_reward(env: "ManagerBasedRLEnv") -> torch.Tensor:
+ # -----------------------------------------------------------------------------
+ def object_anchor_reward(env: "ManagerBasedRLEnv") -> torch.Tensor:
+     pos_quality, _lin_quality, _ang_quality, z_ok = hold_quality_terms(env)
+-    active = (near_catch_window(env) | post_catch_phase(env) | hold_condition(env).squeeze(-1).to(torch.bool)).to(torch.float32)
++    active = _phase_active_float(env)
+     return active * pos_quality * (0.35 + 0.65 * z_ok)
+ 
+ 
+ def object_velocity_damping_reward(env: "ManagerBasedRLEnv") -> torch.Tensor:
+     _pos_quality, lin_quality, ang_quality, _z_ok = hold_quality_terms(env)
+-    active = (near_catch_window(env) | post_catch_phase(env) | hold_condition(env).squeeze(-1).to(torch.bool)).to(torch.float32)
++    active = _phase_active_float(env)
+     return active * lin_quality * ang_quality
+ 
+ 
+ def object_height_safety_reward(env: "ManagerBasedRLEnv", min_z: float = 0.58, sigma: float = 0.16) -> torch.Tensor:
+-    state = get_task_state(env)
+     obj_pos, _q, _v, _w = _object_pos_quat_vel_w(env)
+-    active = (state.has_released & (state.episode_type != EP_NO_TOSS)).to(torch.float32)
++    active = _phase_active_float(env)
+     height_err = torch.clamp(float(min_z) - obj_pos[:, 2], min=0.0)
+     return active * torch.exp(-(height_err * height_err) / (float(sigma) ** 2))
+ 
+@@ -264,26 +224,11 @@ def successful_hold_reward(env: "ManagerBasedRLEnv") -> torch.Tensor:
+     return hold_condition(env).squeeze(-1).to(torch.float32)
+ 
+ 
+-def sustained_hold_reward(env: "ManagerBasedRLEnv", scale_steps: float = 60.0) -> torch.Tensor:
++def sustained_hold_reward(env: "ManagerBasedRLEnv", scale_steps: float = 50.0) -> torch.Tensor:
+     state = get_task_state(env)
+     return torch.clamp(state.hold_counter.to(torch.float32) / float(scale_steps), 0.0, 1.0)
+ 
+ 
+-def post_catch_stillness_reward(env: "ManagerBasedRLEnv") -> torch.Tensor:
+-    post = post_catch_phase(env).to(torch.float32)
+-    qd = _controlled_qd(env)
+-    robot = _get_robot(env)
+-    action_rate = action_rate_penalty(env)
+-    lower_quiet = torch.exp(-torch.mean(qd[:, :15] * qd[:, :15], dim=-1) / (0.85 * 0.85))
+-    base_quiet = torch.exp(-_safe_norm(_root_ang_vel_w(robot)) / 0.85)
+-    action_quiet = torch.exp(-action_rate / 0.025)
+-    return post * lower_quiet * base_quiet * action_quiet
+-
+-
+-def stable_hug_reward(env: "ManagerBasedRLEnv") -> torch.Tensor:
+-    return post_catch_stillness_reward(env) * (0.5 + 0.5 * successful_hold_reward(env))
+-
+-
+ # -----------------------------------------------------------------------------
+ # Failure penalties.
+ # -----------------------------------------------------------------------------
+@@ -302,16 +247,32 @@ def object_escape_penalty(env: "ManagerBasedRLEnv", max_dist: float = 2.25) -> t
+     return (escaped | behind).to(torch.float32)
+ 
+ 
+-def object_far_forward_penalty(env: "ManagerBasedRLEnv") -> torch.Tensor:
+-    rel_pos_b, _rel_vel_b, _obj_ang = _object_rel_in_root_frame(env)
+-    state = get_task_state(env)
+-    forward_excess = torch.clamp(rel_pos_b[:, 0] - (state.target_anchor_b[:, 0] + 0.25), min=0.0)
+-    active = (near_catch_window(env) | post_catch_phase(env)).to(torch.float32)
+-    return active * forward_excess * forward_excess
+-
+-
+-def front_shelf_penalty(env: "ManagerBasedRLEnv") -> torch.Tensor:
+-    return object_far_forward_penalty(env)
+-
+-
+-__all__ = [name for name in globals() if not name.startswith("_")]
++__all__ = [
++    "alive_bonus",
++    "upright_reward",
++    "root_height_reward",
++    "base_motion_penalty",
++    "joint_velocity_penalty",
++    "action_rate_penalty",
++    "action_acceleration_penalty",
++    "action_magnitude_penalty",
++    "ready_posture_reward",
++    "hold_posture_reward",
++    "idle_until_reaction_reward",
++    "early_arm_motion_penalty",
++    "reaction_timing_reward",
++    "hand_side_proximity_reward",
++    "hug_symmetry_reward",
++    "hug_pocket_reward",
++    "whole_body_absorption_reward",
++    "object_anchor_reward",
++    "object_velocity_damping_reward",
++    "object_height_safety_reward",
++    "successful_hold_reward",
++    "sustained_hold_reward",
++    "object_drop_penalty",
++    "object_escape_penalty",
++    "no_toss_contact_like_penalty",
++    "post_catch_action_rate_penalty",
++    "post_catch_base_ang_vel_penalty",
++]

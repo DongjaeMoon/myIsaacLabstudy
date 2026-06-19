@@ -1,0 +1,275 @@
+version: v23
+source_root: UROP/UROP_v23
+obs:
+  num_obs: 100
+  concatenate_terms: true
+  enable_corruption: false
+  deploy_noise: disabled
+  terms:
+  - name: projected_gravity
+    dim: 3
+    scale: 1.0
+    source: imu_projected_gravity
+    frame: robot_base
+  - name: base_ang_vel
+    dim: 3
+    scale: 1.0
+    source: imu_gyro_body
+    frame: robot_base
+  - name: joint_pos_rel
+    dim: 29
+    scale: 1.0
+    source: lowstate_q_minus_policy_reference_pose
+    frame: joint
+  - name: joint_vel
+    dim: 29
+    scale: 0.05
+    source: lowstate_dq
+    frame: joint
+  - name: prev_actions
+    dim: 29
+    scale: 1.0
+    source: previous_policy_action_raw_clipped
+    frame: joint
+  - name: object_rel_pos
+    dim: 3
+    scale: 1.0
+    source: apriltag_object_position_in_policy_object_frame
+    frame: opencv_optical
+  - name: object_rel_lin_vel
+    dim: 3
+    scale: 1.0
+    source: apriltag_object_velocity_in_policy_object_frame
+    frame: opencv_optical
+  - name: tag_visible
+    dim: 1
+    scale: 1.0
+    source: apriltag_visible_mask
+    frame: binary_visible
+  prev_actions_semantics: raw normalized clipped previous policy action, not scaled
+    joint delta
+  mode_one_hot_in_actor: false
+  privileged_terms_in_actor: false
+  tag_visible_dim: 1
+  object_zero_when_invisible: true
+policy:
+  num_actions: 29
+  action_type: joint_position_residual
+  q_target_formula: q_ref + action_scale * action
+  joint_order:
+  - left_hip_pitch_joint
+  - left_hip_roll_joint
+  - left_hip_yaw_joint
+  - left_knee_joint
+  - left_ankle_pitch_joint
+  - left_ankle_roll_joint
+  - right_hip_pitch_joint
+  - right_hip_roll_joint
+  - right_hip_yaw_joint
+  - right_knee_joint
+  - right_ankle_pitch_joint
+  - right_ankle_roll_joint
+  - waist_yaw_joint
+  - waist_roll_joint
+  - waist_pitch_joint
+  - left_shoulder_pitch_joint
+  - left_shoulder_roll_joint
+  - left_shoulder_yaw_joint
+  - left_elbow_joint
+  - left_wrist_roll_joint
+  - left_wrist_pitch_joint
+  - left_wrist_yaw_joint
+  - right_shoulder_pitch_joint
+  - right_shoulder_roll_joint
+  - right_shoulder_yaw_joint
+  - right_elbow_joint
+  - right_wrist_roll_joint
+  - right_wrist_pitch_joint
+  - right_wrist_yaw_joint
+  action_scale_by_joint:
+    left_hip_pitch_joint: 0.22
+    left_hip_roll_joint: 0.14
+    left_hip_yaw_joint: 0.08
+    left_knee_joint: 0.24
+    left_ankle_pitch_joint: 0.22
+    left_ankle_roll_joint: 0.14
+    right_hip_pitch_joint: 0.22
+    right_hip_roll_joint: 0.14
+    right_hip_yaw_joint: 0.08
+    right_knee_joint: 0.24
+    right_ankle_pitch_joint: 0.22
+    right_ankle_roll_joint: 0.14
+    waist_yaw_joint: 0.12
+    waist_roll_joint: 0.12
+    waist_pitch_joint: 0.16
+    left_shoulder_pitch_joint: 0.46
+    left_shoulder_roll_joint: 0.28
+    left_shoulder_yaw_joint: 0.26
+    left_elbow_joint: 0.46
+    left_wrist_roll_joint: 0.24
+    left_wrist_pitch_joint: 0.24
+    left_wrist_yaw_joint: 0.22
+    right_shoulder_pitch_joint: 0.46
+    right_shoulder_roll_joint: 0.28
+    right_shoulder_yaw_joint: 0.26
+    right_elbow_joint: 0.46
+    right_wrist_roll_joint: 0.24
+    right_wrist_pitch_joint: 0.24
+    right_wrist_yaw_joint: 0.22
+  action_scale:
+  - 0.22
+  - 0.14
+  - 0.08
+  - 0.24
+  - 0.22
+  - 0.14
+  - 0.22
+  - 0.14
+  - 0.08
+  - 0.24
+  - 0.22
+  - 0.14
+  - 0.12
+  - 0.12
+  - 0.16
+  - 0.46
+  - 0.28
+  - 0.26
+  - 0.46
+  - 0.24
+  - 0.24
+  - 0.22
+  - 0.46
+  - 0.28
+  - 0.26
+  - 0.46
+  - 0.24
+  - 0.24
+  - 0.22
+  action_clip: 1.0
+  preserve_order: true
+  use_default_offset: false
+  requires_exported_torchscript: true
+poses:
+  safe_stand:
+    left_hip_pitch_joint: -0.15
+    left_hip_roll_joint: 0.0
+    left_hip_yaw_joint: 0.0
+    left_knee_joint: 0.3
+    left_ankle_pitch_joint: -0.15
+    left_ankle_roll_joint: 0.0
+    right_hip_pitch_joint: -0.15
+    right_hip_roll_joint: 0.0
+    right_hip_yaw_joint: 0.0
+    right_knee_joint: 0.3
+    right_ankle_pitch_joint: -0.15
+    right_ankle_roll_joint: 0.0
+    waist_yaw_joint: 0.0
+    waist_roll_joint: 0.0
+    waist_pitch_joint: 0.0
+    left_shoulder_pitch_joint: 0.2
+    left_shoulder_roll_joint: 0.0
+    left_shoulder_yaw_joint: 0.0
+    left_elbow_joint: 0.55
+    left_wrist_roll_joint: 0.0
+    left_wrist_pitch_joint: 0.0
+    left_wrist_yaw_joint: 0.0
+    right_shoulder_pitch_joint: 0.2
+    right_shoulder_roll_joint: 0.0
+    right_shoulder_yaw_joint: 0.0
+    right_elbow_joint: 0.55
+    right_wrist_roll_joint: 0.0
+    right_wrist_pitch_joint: 0.0
+    right_wrist_yaw_joint: 0.0
+  catch_ready: &id001
+    left_hip_pitch_joint: -0.15
+    left_hip_roll_joint: 0.0
+    left_hip_yaw_joint: 0.0
+    left_knee_joint: 0.3
+    left_ankle_pitch_joint: -0.15
+    left_ankle_roll_joint: 0.0
+    right_hip_pitch_joint: -0.15
+    right_hip_roll_joint: 0.0
+    right_hip_yaw_joint: 0.0
+    right_knee_joint: 0.3
+    right_ankle_pitch_joint: -0.15
+    right_ankle_roll_joint: 0.0
+    waist_yaw_joint: 0.0
+    waist_roll_joint: 0.0
+    waist_pitch_joint: 0.0
+    left_shoulder_pitch_joint: 0.5
+    left_shoulder_roll_joint: 0.5
+    left_shoulder_yaw_joint: 0.0
+    left_elbow_joint: 0.0
+    left_wrist_roll_joint: 0.0
+    left_wrist_pitch_joint: 0.0
+    left_wrist_yaw_joint: 0.0
+    right_shoulder_pitch_joint: 0.5
+    right_shoulder_roll_joint: -0.5
+    right_shoulder_yaw_joint: 0.0
+    right_elbow_joint: 0.0
+    right_wrist_roll_joint: 0.0
+    right_wrist_pitch_joint: 0.0
+    right_wrist_yaw_joint: 0.0
+  hold:
+    left_hip_pitch_joint: -0.15
+    left_hip_roll_joint: 0.0
+    left_hip_yaw_joint: 0.0
+    left_knee_joint: 0.3
+    left_ankle_pitch_joint: -0.15
+    left_ankle_roll_joint: 0.0
+    right_hip_pitch_joint: -0.15
+    right_hip_roll_joint: 0.0
+    right_hip_yaw_joint: 0.0
+    right_knee_joint: 0.3
+    right_ankle_pitch_joint: -0.15
+    right_ankle_roll_joint: 0.0
+    waist_yaw_joint: 0.0
+    waist_roll_joint: 0.0
+    waist_pitch_joint: 0.0
+    left_shoulder_pitch_joint: -0.3
+    left_shoulder_roll_joint: 0.4
+    left_shoulder_yaw_joint: 0.0
+    left_elbow_joint: 0.8
+    left_wrist_roll_joint: 0.0
+    left_wrist_pitch_joint: 0.0
+    left_wrist_yaw_joint: 0.0
+    right_shoulder_pitch_joint: -0.3
+    right_shoulder_roll_joint: -0.4
+    right_shoulder_yaw_joint: 0.0
+    right_elbow_joint: 0.8
+    right_wrist_roll_joint: 0.0
+    right_wrist_pitch_joint: 0.0
+    right_wrist_yaw_joint: 0.0
+  policy_reference_pose: *id001
+timing:
+  sim_dt: 0.01
+  decimation: 2
+  policy_dt: 0.02
+  episode_length_s: 5.8
+camera:
+  actor_object_frame: opencv_optical
+  object_terms_zero_when_invisible: true
+  tag_visible_dim: 1
+  training_camera_parent:
+  - torso_link
+  - torso
+  training_camera_translation:
+  - 0.05762
+  - 0.01753
+  - 0.42987
+  training_camera_quat_wxyz:
+  - 0.91496
+  - 0.0
+  - 0.40355
+  - 0.0
+  training_camera_convention: quat_wxyz_opencv_optical
+  runtime_object_observation_frame: camera_opencv_raw
+runtime_notes:
+  empirical_normalization: true
+  requires_exported_torchscript: true
+  object_source_for_real: apriltag_zmq
+  notes:
+  - No robot command is executed by check-only/tools.
+  - Use exported/policy.pt TorchScript; do not use model_*.pt checkpoints.
+  - Verify projected_gravity/base_ang_vel axes in obs-only before enabling policy.

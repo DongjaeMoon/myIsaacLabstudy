@@ -13,6 +13,7 @@ from .config_schema import (
     CommunicationConfig,
     ControlConfig,
     ImuConfig,
+    MetadataConfig,
     ModesConfig,
     ObservationConfig,
     ObservationTermConfig,
@@ -85,6 +86,15 @@ def _validate_unique_ints(values: list[int], name: str) -> None:
     duplicates = sorted({value for value in values if values.count(value) > 1})
     if duplicates:
         raise ValueError(f"'{name}' contains duplicates: {duplicates}")
+
+
+def _optional_float_array(raw: Any, name: str, expected_len: int) -> np.ndarray | None:
+    if raw in (None, ""):
+        return None
+    values = np.array(raw, dtype=np.float64).reshape(-1)
+    if values.size != expected_len:
+        raise ValueError(f"{name} must contain {expected_len} floats, got {values.size}")
+    return values
 
 
 def _pose_dict_to_array(
@@ -161,6 +171,29 @@ def load_catch_real_config(config_path: str | Path, policy_override: str | None 
     if not isinstance(raw, dict):
         raise ValueError(f"Top-level YAML in '{config_path}' must be a mapping")
 
+    known_top_level = {
+        "name",
+        "version",
+        "runtime_version",
+        "metadata",
+        "runtime",
+        "communication",
+        "robot",
+        "control",
+        "poses",
+        "policy",
+        "policy_runtime",
+        "observation",
+        "modes",
+        "camera",
+        "virtual_object",
+        "safety",
+    }
+    unknown_top_level = sorted(set(raw) - known_top_level)
+    if unknown_top_level:
+        print(f"[G1][config] WARNING unknown top-level config keys ignored: {unknown_top_level}")
+
+    metadata_raw = _ensure_mapping(raw.get("metadata", {}), "metadata")
     runtime_raw = _ensure_mapping(raw.get("runtime", {}), "runtime")
     communication_raw = _ensure_mapping(raw.get("communication", {}), "communication")
     robot_raw = _ensure_mapping(raw.get("robot", {}), "robot")
@@ -304,6 +337,11 @@ def load_catch_real_config(config_path: str | Path, policy_override: str | None 
 
     policy_path_raw = policy_override if policy_override is not None else policy_raw.get("path")
     policy_path = _resolve_existing_path(policy_path_raw, config_path) if policy_path_raw not in (None, "") else None
+    contract_path = _resolve_existing_path(
+        metadata_raw.get("contract_path"),
+        config_path,
+        require_exists=False,
+    )
 
     joint_limit_lower, joint_limit_upper = _build_joint_limits(robot_raw, controlled_joint_names)
 
@@ -447,6 +485,19 @@ def load_catch_real_config(config_path: str | Path, policy_override: str | None 
                 "camera.waist_joint_names",
             )
         ],
+        training_camera_translation=_optional_float_array(
+            camera_raw.get("training_camera_translation"),
+            "camera.training_camera_translation",
+            3,
+        ),
+        training_camera_quat_wxyz=_optional_float_array(
+            camera_raw.get("training_camera_quat_wxyz"),
+            "camera.training_camera_quat_wxyz",
+            4,
+        ),
+        training_camera_convention=str(
+            camera_raw.get("training_camera_convention", "")
+        ).lower(),
         estimator=CameraEstimatorConfig(
             lost_timeout_s=float(camera_estimator_raw.get("lost_timeout_s", 0.2)),
             min_valid_detections=max(int(camera_estimator_raw.get("min_valid_detections", 1)), 1),
@@ -502,7 +553,18 @@ def load_catch_real_config(config_path: str | Path, policy_override: str | None 
         config_path=config_path,
         repo_root=_repo_root(),
         name=str(raw.get("name", "g1_catch_real")),
-        version=str(raw.get("version", "0.0.0")),
+        version=str(raw.get("version", raw.get("runtime_version", "0.0.0"))),
+        metadata=MetadataConfig(
+            urop_version=str(
+                metadata_raw.get(
+                    "urop_version",
+                    policy_raw.get("version", raw.get("runtime_version", raw.get("version", "unknown"))),
+                )
+            ),
+            contract_path=contract_path,
+            run_safety=str(metadata_raw.get("run_safety", "real_policy_allowed")),
+            notes=[str(note) for note in metadata_raw.get("notes", [])],
+        ),
         runtime=runtime,
         communication=communication,
         robot=robot,

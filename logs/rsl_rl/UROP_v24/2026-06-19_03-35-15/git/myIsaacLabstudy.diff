@@ -1,0 +1,42 @@
+--- git status ---
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   UROP/play_rsl_rl.py
+	modified:   UROP/train_rsl_rl.py
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	UROP/UROP_v24/
+
+no changes added to commit (use "git add" and/or "git commit -a") 
+
+
+--- git diff ---
+diff --git a/UROP/play_rsl_rl.py b/UROP/play_rsl_rl.py
+index d44c46cf..3c77a5aa 100644
+--- a/UROP/play_rsl_rl.py
++++ b/UROP/play_rsl_rl.py
+@@ -109,6 +109,7 @@ import UROP_v20
+ import UROP_v21
+ import UROP_v22
+ import UROP_v23
++import UROP_v24
+ import UROP_carry_v0
+ import UROP_carry_v2
+ import UROP_carry_v3
+diff --git a/UROP/train_rsl_rl.py b/UROP/train_rsl_rl.py
+index c7560879..22e5f104 100644
+--- a/UROP/train_rsl_rl.py
++++ b/UROP/train_rsl_rl.py
+@@ -133,6 +133,7 @@ import UROP_v20
+ import UROP_v21
+ import UROP_v22
+ import UROP_v23
++import UROP_v24
+ import UROP_carry_v0
+ import UROP_carry_v2
+ import UROP_carry_v3

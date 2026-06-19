@@ -14,7 +14,11 @@ from .config_schema import CatchRealConfig
 def _normalize_object_frame(frame: str | None) -> str:
     raw = "" if frame is None else str(frame).strip().lower()
     if raw in {"camera", "opencv", "optical", "camera_opencv", "opencv_camera", "camera_optical"}:
-        return "camera_opencv"
+        return "camera_opencv_raw"
+    if raw in {"camera_opencv_raw", "raw_camera_opencv"}:
+        return "camera_opencv_raw"
+    if raw in {"training_camera_opencv", "training_camera", "train_camera_opencv"}:
+        return "training_camera_opencv"
     if raw in {"policy_body", "body", "robot_body", "unitree", "isaaclab"}:
         return "policy_body"
     # v23 configs should set observation.frame=camera_opencv.  Unknown strings are
@@ -29,10 +33,10 @@ class ObjectObservation:
     rel_pos: np.ndarray
     rel_lin_vel: np.ndarray
     tag_visible: np.ndarray
-    frame: str = "camera_opencv"
+    frame: str = "camera_opencv_raw"
 
     @staticmethod
-    def zeros(frame: str = "camera_opencv") -> "ObjectObservation":
+    def zeros(frame: str = "camera_opencv_raw") -> "ObjectObservation":
         return ObjectObservation(
             rel_pos=np.zeros(3, dtype=np.float64),
             rel_lin_vel=np.zeros(3, dtype=np.float64),
@@ -41,9 +45,9 @@ class ObjectObservation:
         )
 
     @staticmethod
-    def fake_debug(frame: str = "camera_opencv") -> "ObjectObservation":
+    def fake_debug(frame: str = "camera_opencv_raw") -> "ObjectObservation":
         frame = _normalize_object_frame(frame)
-        if frame == "camera_opencv":
+        if frame in {"camera_opencv_raw", "training_camera_opencv"}:
             # v23 actor object convention: OpenCV optical frame.
             # A box in front of the camera has positive z.  Approaching motion has
             # negative z velocity.
@@ -220,6 +224,9 @@ class ObjectObservationProvider:
                     body_link_name=self.cfg.camera.body_link_name,
                     torso_link_name=self.cfg.camera.torso_link_name,
                     waist_joint_names=self.cfg.camera.waist_joint_names,
+                    training_camera_translation=self.cfg.camera.training_camera_translation,
+                    training_camera_quat_wxyz=self.cfg.camera.training_camera_quat_wxyz,
+                    training_camera_convention=self.cfg.camera.training_camera_convention,
                     image_show=self.cfg.camera.image_show,
                     emit_status_logs=True,
                     source_name="apriltag_zmq",

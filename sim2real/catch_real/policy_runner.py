@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 
 from .config_schema import CatchRealConfig
@@ -9,6 +11,66 @@ try:
     import torch
 except Exception:
     torch = None
+
+
+def validate_policy_path(policy_path: str | Path) -> Path:
+    path = Path(policy_path).expanduser()
+    if path.name.startswith("model_"):
+        raise ValueError(
+            f"'{path}' looks like an RSL-RL checkpoint. sim2real requires an exported TorchScript "
+            "policy, normally logs/rsl_rl/UROP_vXX/<run>/exported/policy.pt."
+        )
+    if path.name != "policy.pt" or path.parent.name != "exported":
+        print(
+            f"[G1][policy] WARNING '{path}' is not named exported/policy.pt; "
+            "continuing only if torch.jit.load accepts it."
+        )
+    return path
+
+
+def inspect_torchscript_policy(
+    policy_path: str | Path,
+    *,
+    obs_dim: int,
+    action_dim: int,
+    device: str = "cpu",
+) -> dict[str, object]:
+    if torch is None:
+        raise RuntimeError("torch is required to inspect a policy")
+    path = validate_policy_path(policy_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Policy file does not exist: {path}")
+
+    torch_device = torch.device(device)
+    try:
+        model = torch.jit.load(str(path), map_location=torch_device)
+    except Exception as exc:
+        raise RuntimeError(
+            f"Failed to torch.jit.load '{path}'. sim2real does not load raw model_*.pt checkpoints."
+        ) from exc
+
+    model.eval()
+    obs = torch.zeros((1, int(obs_dim)), dtype=torch.float32, device=torch_device)
+    with torch.no_grad():
+        action = model(obs)
+    action_np = action.detach().cpu().numpy().reshape(-1)
+    if action_np.size != int(action_dim):
+        raise RuntimeError(
+            f"Policy output shape mismatch: expected action_dim={action_dim}, "
+            f"got shape={tuple(action.shape)}"
+        )
+
+    module_text = str(model)
+    normalizer_text = "identity" if "Identity" in module_text else "embedded_or_unknown"
+    return {
+        "path": str(path),
+        "obs_shape": tuple(obs.shape),
+        "action_shape": tuple(action.shape),
+        "action_min": float(action_np.min()) if action_np.size else 0.0,
+        "action_max": float(action_np.max()) if action_np.size else 0.0,
+        "normalizer": normalizer_text,
+        "module": module_text,
+    }
 
 
 class PolicyRunner:
@@ -57,6 +119,13 @@ class PolicyRunner:
         else:
             self.policy_device = torch.device(self.device)
 
+        validate_policy_path(self.cfg.policy.path)
+        inspect_torchscript_policy(
+            self.cfg.policy.path,
+            obs_dim=self.cfg.observation.num_obs,
+            action_dim=self.cfg.policy.num_actions,
+            device=str(self.policy_device),
+        )
         self.policy = torch.jit.load(str(self.cfg.policy.path), map_location=self.policy_device)
         self.policy.eval()
 

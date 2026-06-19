@@ -172,16 +172,32 @@ def map_body_vector_to_policy_frame(vec_unitree_b: np.ndarray, policy_body_frame
 
 def object_observation_frame_is_camera(frame: str | None) -> bool:
     value = "" if frame is None else str(frame).strip().lower()
-    return value in {"camera", "opencv", "optical", "camera_opencv", "opencv_camera", "camera_optical"}
+    return value in {
+        "camera",
+        "opencv",
+        "optical",
+        "camera_opencv",
+        "opencv_camera",
+        "camera_optical",
+        "camera_opencv_raw",
+        "raw_camera_opencv",
+    }
 
 
 def normalize_object_observation_frame(frame: str | None) -> str:
     if object_observation_frame_is_camera(frame):
-        return "camera_opencv"
+        return "camera_opencv_raw"
     value = "" if frame is None else str(frame).strip().lower()
+    if value in {"training_camera_opencv", "training_camera", "train_camera_opencv"}:
+        return "training_camera_opencv"
     if value in {"policy_body", "body", "robot_body", "unitree", "isaaclab"}:
         return "policy_body"
     return value or "policy_body"
+
+
+def body_xforward_to_opencv(vec_body: np.ndarray) -> np.ndarray:
+    vec_body = np.asarray(vec_body, dtype=np.float64).reshape(3)
+    return np.array([-vec_body[1], -vec_body[2], vec_body[0]], dtype=np.float64)
 
 
 def format_vec3(values: np.ndarray) -> str:
@@ -280,6 +296,7 @@ class AprilTagDetectionSnapshot:
     last_valid_timestamp_s: float | None
     last_frame_age_s: float | None
     time_since_last_valid_s: float | None
+    observation_frame: str = "unknown"
 
     @staticmethod
     def zeros(
@@ -292,6 +309,7 @@ class AprilTagDetectionSnapshot:
         last_valid_timestamp_s: float | None = None,
         last_frame_age_s: float | None = None,
         time_since_last_valid_s: float | None = None,
+        observation_frame: str = "zeros",
     ) -> "AprilTagDetectionSnapshot":
         return AprilTagDetectionSnapshot(
             initialized=initialized,
@@ -306,6 +324,7 @@ class AprilTagDetectionSnapshot:
             last_valid_timestamp_s=last_valid_timestamp_s,
             last_frame_age_s=last_frame_age_s,
             time_since_last_valid_s=time_since_last_valid_s,
+            observation_frame=str(observation_frame),
         )
 
 
@@ -666,6 +685,9 @@ class AprilTagZmqReceiver:
         body_link_name: str | None = None,
         torso_link_name: str = "torso_link",
         waist_joint_names: Sequence[str] = ("waist_yaw_joint", "waist_roll_joint", "waist_pitch_joint"),
+        training_camera_translation: np.ndarray | Sequence[float] | None = None,
+        training_camera_quat_wxyz: np.ndarray | Sequence[float] | None = None,
+        training_camera_convention: str = "",
         image_show: bool = False,
         emit_status_logs: bool = True,
         source_name: str = "apriltag_zmq",
@@ -692,6 +714,17 @@ class AprilTagZmqReceiver:
         self.body_link_name = None if body_link_name in (None, "") else str(body_link_name)
         self.torso_link_name = str(torso_link_name)
         self.waist_joint_names = tuple(str(name) for name in waist_joint_names)
+        self.training_camera_translation = (
+            np.zeros(3, dtype=np.float64)
+            if training_camera_translation is None
+            else np.asarray(training_camera_translation, dtype=np.float64).reshape(3)
+        )
+        self.training_camera_quat_wxyz = (
+            None
+            if training_camera_quat_wxyz is None
+            else normalize_quat_wxyz(np.asarray(training_camera_quat_wxyz, dtype=np.float64).reshape(4))
+        )
+        self.training_camera_convention = str(training_camera_convention or "").strip().lower()
         self.image_show = bool(image_show)
         self.emit_status_logs = bool(emit_status_logs)
         self.source_name = source_name
@@ -826,6 +859,7 @@ class AprilTagZmqReceiver:
                 last_valid_timestamp_s=base_snapshot.last_valid_timestamp_s,
                 last_frame_age_s=last_frame_age_s,
                 time_since_last_valid_s=last_valid_age_s,
+                observation_frame=base_snapshot.observation_frame,
             )
 
         return AprilTagDetectionSnapshot.zeros(
@@ -904,6 +938,8 @@ class AprilTagZmqReceiver:
                 f"[G1][apriltag_zmq] static parent->camera quat   : "
                 f"{format_vec3(self._calibration.static_quat_wxyz)}",
                 f"[G1][apriltag_zmq] policy object obs frame      : {self.object_observation_frame}",
+                f"[G1][apriltag_zmq] training camera convention   : "
+                f"{self.training_camera_convention or 'n/a'}",
             ]
             self._startup_summary_lines.extend(self._camera_kinematics.startup_summary_lines())
             self._estimator = AprilTagObjectStateEstimator(
@@ -1031,6 +1067,7 @@ class AprilTagZmqReceiver:
                             last_valid_timestamp_s=now,
                             last_frame_age_s=0.0,
                             time_since_last_valid_s=0.0,
+                            observation_frame=self.object_observation_frame,
                         )
                     )
                 else:
@@ -1053,7 +1090,7 @@ class AprilTagZmqReceiver:
 
     def _select_observation_frame(self, estimate) -> tuple[np.ndarray, np.ndarray]:
         frame = self.object_observation_frame
-        if frame in {"camera", "opencv", "camera_opencv", "optical", "camera_optical"}:
+        if frame in {"camera_opencv_raw", "camera", "opencv", "camera_opencv", "optical", "camera_optical"}:
             rel_pos = getattr(estimate, "rel_pos_c", None)
             rel_vel = getattr(estimate, "rel_lin_vel_c", None)
             if rel_pos is not None and rel_vel is not None:
@@ -1068,12 +1105,38 @@ class AprilTagZmqReceiver:
                 np.asarray(estimate.rel_lin_vel_b, dtype=np.float64).reshape(3).copy(),
             )
 
+        if frame == "training_camera_opencv":
+            return self._select_training_camera_frame(estimate)
+
         # Legacy behavior: body-frame observation, optionally mapped to IsaacLab
         # body-axis convention.
         return (
             map_body_vector_to_policy_frame(estimate.rel_pos_b, self.policy_body_frame),
             map_body_vector_to_policy_frame(estimate.rel_lin_vel_b, self.policy_body_frame),
         )
+
+    def _select_training_camera_frame(self, estimate) -> tuple[np.ndarray, np.ndarray]:
+        rel_pos_body = map_body_vector_to_policy_frame(estimate.rel_pos_b, self.policy_body_frame)
+        rel_vel_body = map_body_vector_to_policy_frame(estimate.rel_lin_vel_b, self.policy_body_frame)
+        pos_from_training_camera = rel_pos_body - self.training_camera_translation
+
+        if self.training_camera_convention in {"body_xforward_to_opencv", "xforward_to_opencv"}:
+            return (
+                body_xforward_to_opencv(pos_from_training_camera),
+                body_xforward_to_opencv(rel_vel_body),
+            )
+
+        if self.training_camera_quat_wxyz is not None:
+            R_body_camera = quat_to_rotmat_wxyz(self.training_camera_quat_wxyz)
+            return (
+                R_body_camera.T @ pos_from_training_camera,
+                R_body_camera.T @ rel_vel_body,
+            )
+
+        # Last-resort fallback for explicit training_camera_opencv configs without
+        # an extrinsic.  This keeps obs-only diagnostics available but contract
+        # checkers should warn loudly before real policy use.
+        return pos_from_training_camera, rel_vel_body
 
     def _build_robot_base_state(self) -> RobotBaseState:
         with self._lock:
@@ -1132,6 +1195,7 @@ class AprilTagZmqReceiver:
             last_valid_timestamp_s=self._last_valid_timestamp_s,
             last_frame_age_s=self._age(timestamp_s, last_frame_timestamp_s),
             time_since_last_valid_s=self._age(timestamp_s, self._last_valid_timestamp_s),
+            observation_frame=self.object_observation_frame,
         )
         self._publish_snapshot(snapshot)
 
@@ -1163,6 +1227,7 @@ class AprilTagZmqReceiver:
                 last_valid_timestamp_s=self._last_valid_timestamp_s,
                 last_frame_age_s=last_frame_age_s,
                 time_since_last_valid_s=self._age(now, self._last_valid_timestamp_s),
+                observation_frame=self.object_observation_frame,
             )
             self._publish_snapshot(snapshot)
 
@@ -1244,8 +1309,9 @@ class AprilTagZmqReceiver:
             f"fps={snapshot.frame_rate_hz:.1f} "
             f"waist_deg={format_vec3(waist_deg)} "
             f"camera_pos_b={camera_pos_text} "
-            f"rel_pos_b={rel_pos} "
-            f"rel_lin_vel_b={rel_vel} "
+            f"obs_frame={snapshot.observation_frame} "
+            f"rel_pos_obs={rel_pos} "
+            f"rel_lin_vel_obs={rel_vel} "
             f"last_valid_age={age_text} "
             f"msg={snapshot.message if snapshot.message else camera_debug.message}"
         )
@@ -1267,6 +1333,7 @@ class AprilTagZmqReceiver:
             last_valid_timestamp_s=snapshot.last_valid_timestamp_s,
             last_frame_age_s=snapshot.last_frame_age_s,
             time_since_last_valid_s=snapshot.time_since_last_valid_s,
+            observation_frame=snapshot.observation_frame,
         )
 
     @staticmethod
