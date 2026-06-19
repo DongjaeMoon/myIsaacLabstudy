@@ -81,7 +81,6 @@ class PolicyRuntimeConfig:
     default_policy_reference_pose: str
     auto_start_after_ready: bool
     object_source: str
-    object_observation_frame: str
     fake_object_debug: bool
     gate_policy_until_object_visible: bool
     object_visible_blend_duration_s: float

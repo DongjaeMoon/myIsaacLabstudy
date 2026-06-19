@@ -88,12 +88,7 @@ class PolicyRunner:
         obs_tensor = torch.from_numpy(obs).unsqueeze(0).to(self.policy_device)
         with torch.no_grad():
             action_tensor = self.policy(obs_tensor)
-        clipped_action = action_tensor.squeeze(0).detach().cpu().numpy().astype(np.float64).reshape(-1)
-        if clipped_action.size != self.cfg.policy.num_actions:
-            raise RuntimeError(
-                f"Policy action dimension mismatch: expected {self.cfg.policy.num_actions}, "
-                f"got {clipped_action.size}. Check exported policy vs v23 YAML."
-            )
+        clipped_action = action_tensor.squeeze(0).detach().cpu().numpy().astype(np.float64)
 
         if self.cfg.safety.clamp_action:
             clipped_action = clamp(clipped_action, -self.cfg.policy.action_clip, self.cfg.policy.action_clip)

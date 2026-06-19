@@ -366,8 +366,6 @@ class G1CatchRealController:
         print(f"[G1] policy enabled     : {not self.no_policy}")
         print(f"[G1] policy path        : {policy_path_str}")
         print(f"[G1] object source      : {self.cfg.policy_runtime.object_source}")
-        print(f"[G1] object obs frame   : {self.cfg.policy_runtime.object_observation_frame}")
-        print(f"[G1] obs contract       : {self.cfg.observation.contract_name}")
         print(f"[G1] camera enabled     : {self.cfg.camera.enabled}")
         print(f"[G1] camera endpoint    : tcp://{self.cfg.camera.server_address}:{self.cfg.camera.port}")
         print(
@@ -724,31 +722,28 @@ class G1CatchRealController:
         if policy_running:
             print("    " + self._format_topk("top|policy_action|", action))
 
-        if self.last_obs is not None:
-            parts = []
-            for term in self.cfg.observation.terms:
-                sl = self.obs_builder.last_slices.get(term.name)
-                if sl is None:
-                    continue
-                value = self.last_obs[sl]
-                if term.name == "tag_visible" and value.size >= 1:
-                    parts.append(f"tag={float(value[0]):.1f}")
-                elif term.name == "mode_one_hot":
-                    parts.append(f"mode={np.round(value, 2)}")
-                else:
-                    label = {
-                        "projected_gravity": "g",
-                        "base_ang_vel": "base_w",
-                        "joint_pos_rel": "jp",
-                        "joint_vel": "jv",
-                        "previous_action": "prev_a",
-                        "prev_actions": "prev_a",
-                        "object_rel_pos": "obj_p",
-                        "object_rel_lin_vel": "obj_v",
-                    }.get(term.name, term.name)
-                    parts.append(f"|{label}|={np.linalg.norm(value):.3f}")
-            if parts:
-                print("    obs_norms: " + ", ".join(parts))
+        if self.last_obs is not None and self.last_obs.shape[0] >= 104:
+            obs = self.last_obs
+            g = obs[0:3]
+            w = obs[3:6]
+            jp = obs[6:35]
+            jv = obs[35:64]
+            pa = obs[64:93]
+            obj_p = obs[93:96]
+            obj_v = obs[96:99]
+            tag = obs[99:100]
+            mode = obs[100:104]
+            print(
+                "    obs_norms: "
+                f"|g|={np.linalg.norm(g):.3f}, "
+                f"|base_w|={np.linalg.norm(w):.3f}, "
+                f"|jp|={np.linalg.norm(jp):.3f}, "
+                f"|jv|={np.linalg.norm(jv):.3f}, "
+                f"|prev_a|={np.linalg.norm(pa):.3f}, "
+                f"|obj_p|={np.linalg.norm(obj_p):.3f}, "
+                f"|obj_v|={np.linalg.norm(obj_v):.3f}, "
+                f"tag={tag[0]:.1f}, mode={np.round(mode, 2)}"
+            )
 
     def _policy_is_available(self) -> bool:
         return (not self.no_policy) and self.policy_runner.is_loaded

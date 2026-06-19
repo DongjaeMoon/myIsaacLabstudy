@@ -11,63 +11,35 @@ from .apriltag_zmq_receiver import AprilTagDetectionSnapshot, AprilTagZmqReceive
 from .config_schema import CatchRealConfig
 
 
-def _normalize_object_frame(frame: str | None) -> str:
-    raw = "" if frame is None else str(frame).strip().lower()
-    if raw in {"camera", "opencv", "optical", "camera_opencv", "opencv_camera", "camera_optical"}:
-        return "camera_opencv"
-    if raw in {"policy_body", "body", "robot_body", "unitree", "isaaclab"}:
-        return "policy_body"
-    # v23 configs should set observation.frame=camera_opencv.  Unknown strings are
-    # kept as-is in status logs but treated as camera_opencv only if they say so.
-    return raw or "policy_body"
-
-
 @dataclass(frozen=True)
 class ObjectObservation:
-    # rel_pos / rel_lin_vel are expressed in the deployed policy's object frame.
-    # For UROP-v23 this is OpenCV camera optical frame: x right, y down, z forward.
     rel_pos: np.ndarray
     rel_lin_vel: np.ndarray
     tag_visible: np.ndarray
-    frame: str = "camera_opencv"
 
     @staticmethod
-    def zeros(frame: str = "camera_opencv") -> "ObjectObservation":
+    def zeros() -> "ObjectObservation":
         return ObjectObservation(
             rel_pos=np.zeros(3, dtype=np.float64),
             rel_lin_vel=np.zeros(3, dtype=np.float64),
             tag_visible=np.zeros(1, dtype=np.float64),
-            frame=frame,
         )
 
     @staticmethod
-    def fake_debug(frame: str = "camera_opencv") -> "ObjectObservation":
-        frame = _normalize_object_frame(frame)
-        if frame == "camera_opencv":
-            # v23 actor object convention: OpenCV optical frame.
-            # A box in front of the camera has positive z.  Approaching motion has
-            # negative z velocity.
-            rel_pos = np.array([0.0, 0.12, 0.85], dtype=np.float64)
-            rel_lin_vel = np.array([0.0, 0.0, -0.70], dtype=np.float64)
-        else:
-            # Older body-frame debug convention: x forward, y left, z up.
-            rel_pos = np.array([0.8, 0.0, 0.4], dtype=np.float64)
-            rel_lin_vel = np.array([-0.5, 0.0, 0.0], dtype=np.float64)
+    def fake_debug() -> "ObjectObservation":
         return ObjectObservation(
-            rel_pos=rel_pos,
-            rel_lin_vel=rel_lin_vel,
+            rel_pos=np.array([0.8, 0.0, 0.4], dtype=np.float64),
+            rel_lin_vel=np.array([-0.5, 0.0, 0.0], dtype=np.float64),
             tag_visible=np.ones(1, dtype=np.float64),
-            frame=frame,
         )
 
 
 class MujocoUdpReceiver:
-    def __init__(self, port: int = 5560, stale_timeout_s: float = 0.2, observation_frame: str = "camera_opencv"):
+    def __init__(self, port: int = 5560, stale_timeout_s: float = 0.2):
         self.port = int(port)
         self.stale_timeout_s = float(stale_timeout_s)
-        self.observation_frame = _normalize_object_frame(observation_frame)
         self.sock: socket.socket | None = None
-        self.last_observation = ObjectObservation.zeros(frame=self.observation_frame)
+        self.last_observation = ObjectObservation.zeros()
         self.last_packet_time: float | None = None
         self.was_fresh = False
         self._bind_socket()
@@ -84,7 +56,7 @@ class MujocoUdpReceiver:
             return
 
         self.sock = sock
-        print(f"[G1] mujoco_udp listening on UDP {self.port} ({self.observation_frame} object frame)")
+        print(f"[G1] mujoco_udp listening on UDP {self.port}")
 
     def _parse_packet(self, payload: bytes) -> ObjectObservation | None:
         text = payload.decode("utf-8", errors="ignore").strip()
@@ -92,7 +64,6 @@ class MujocoUdpReceiver:
             return None
 
         values: list[float]
-        frame = self.observation_frame
         if text[0] in "{[":
             try:
                 raw = json.loads(text)
@@ -103,7 +74,6 @@ class MujocoUdpReceiver:
                 rel_pos = raw.get("rel_pos") or raw.get("object_rel_pos")
                 rel_vel = raw.get("rel_lin_vel") or raw.get("object_rel_lin_vel")
                 tag_visible = raw.get("tag_visible", 0.0)
-                frame = _normalize_object_frame(raw.get("frame", frame))
                 if rel_pos is None or rel_vel is None:
                     return None
                 values = [
@@ -132,7 +102,6 @@ class MujocoUdpReceiver:
             rel_pos=np.array(values[0:3], dtype=np.float64),
             rel_lin_vel=np.array(values[3:6], dtype=np.float64),
             tag_visible=np.array([values[6]], dtype=np.float64),
-            frame=frame,
         )
 
     def close(self) -> None:
@@ -169,7 +138,7 @@ class MujocoUdpReceiver:
 
         if is_fresh:
             return self.last_observation
-        return ObjectObservation.zeros(frame=self.observation_frame)
+        return ObjectObservation.zeros()
 
 
 class ObjectObservationProvider:
@@ -177,7 +146,6 @@ class ObjectObservationProvider:
         self.cfg = cfg
         self.fake_enabled = bool(cfg.policy_runtime.fake_object_debug)
         self.object_source = str(cfg.policy_runtime.object_source).lower()
-        self.observation_frame = _normalize_object_frame(cfg.policy_runtime.object_observation_frame)
         self.mujoco_udp: MujocoUdpReceiver | None = None
         self.apriltag_zmq: AprilTagZmqReceiver | None = None
         self.last_apriltag_snapshot = AprilTagDetectionSnapshot.zeros(
@@ -186,11 +154,7 @@ class ObjectObservationProvider:
             message="AprilTag source not selected",
         )
         if self.object_source == "mujoco_udp":
-            self.mujoco_udp = MujocoUdpReceiver(
-                port=5560,
-                stale_timeout_s=0.2,
-                observation_frame=self.observation_frame,
-            )
+            self.mujoco_udp = MujocoUdpReceiver(port=5560, stale_timeout_s=0.2)
         elif self.object_source == "apriltag_zmq":
             if not self.cfg.camera.enabled:
                 self.last_apriltag_snapshot = AprilTagDetectionSnapshot.zeros(
@@ -206,7 +170,6 @@ class ObjectObservationProvider:
                     extrinsics_yaml=self.cfg.camera.extrinsics_yaml,
                     tag_yaml=self.cfg.camera.tag_yaml,
                     policy_body_frame=self.cfg.robot.imu.policy_body_frame,
-                    object_observation_frame=self.observation_frame,
                     stale_timeout_s=self.cfg.camera.estimator.lost_timeout_s,
                     min_valid_detections=self.cfg.camera.estimator.min_valid_detections,
                     position_filter_alpha=self.cfg.camera.estimator.position_filter_alpha,
@@ -228,7 +191,7 @@ class ObjectObservationProvider:
 
     def get(self) -> ObjectObservation:
         if self.fake_enabled:
-            return ObjectObservation.fake_debug(frame=self.observation_frame)
+            return ObjectObservation.fake_debug()
         if self.object_source == "mujoco_udp" and self.mujoco_udp is not None:
             return self.mujoco_udp.get()
         if self.object_source == "apriltag_zmq" and self.apriltag_zmq is not None:
@@ -238,10 +201,9 @@ class ObjectObservationProvider:
                     rel_pos=self.last_apriltag_snapshot.rel_pos_b.copy(),
                     rel_lin_vel=self.last_apriltag_snapshot.rel_lin_vel_b.copy(),
                     tag_visible=np.ones(1, dtype=np.float64),
-                    frame=self.observation_frame,
                 )
-            return ObjectObservation.zeros(frame=self.observation_frame)
-        return ObjectObservation.zeros(frame=self.observation_frame)
+            return ObjectObservation.zeros()
+        return ObjectObservation.zeros()
 
     def update_robot_state(
         self,
@@ -269,15 +231,15 @@ class ObjectObservationProvider:
 
     def status_label(self) -> str:
         if self.fake_enabled:
-            return f"fake:{self.observation_frame}"
+            return "fake"
         if self.object_source == "zeros":
-            return f"zeros:{self.observation_frame}"
+            return "zeros"
         if self.object_source == "mujoco_udp":
-            return f"mujoco_udp:{self.observation_frame}"
+            return "mujoco_udp"
         if self.object_source == "apriltag_zmq":
             snapshot = self.last_apriltag_snapshot
-            return f"apriltag_zmq:{snapshot.status.lower()}:{self.observation_frame}"
-        return f"{self.object_source} later (stub->zeros):{self.observation_frame}"
+            return f"apriltag_zmq:{snapshot.status.lower()}"
+        return f"{self.object_source} later (stub->zeros)"
 
     def source_name(self) -> str:
         if self.fake_enabled:
@@ -286,7 +248,7 @@ class ObjectObservationProvider:
 
     def source_status(self) -> str:
         if self.fake_enabled:
-            return f"fake frame={self.observation_frame}"
+            return "fake"
         if self.object_source == "apriltag_zmq":
             snapshot = self.last_apriltag_snapshot
             debug_state = self.apriltag_zmq.get_camera_pose_debug() if self.apriltag_zmq is not None else None
@@ -303,7 +265,6 @@ class ObjectObservationProvider:
             fk_status = debug_state.message if debug_state is not None else "camera debug unavailable"
             return (
                 f"{snapshot.status} "
-                f"frame={self.observation_frame} "
                 f"tag_visible={int(snapshot.tag_visible)} "
                 f"fps={snapshot.frame_rate_hz:.1f} "
                 f"waist_deg={np.round(waist_deg, 1).tolist()} "
@@ -332,6 +293,5 @@ class ObjectObservationProvider:
 
     def startup_summary_lines(self) -> list[str]:
         if self.object_source == "apriltag_zmq" and self.apriltag_zmq is not None:
-            lines = self.apriltag_zmq.startup_summary_lines()
-            return [f"[G1][object_obs] frame                 : {self.observation_frame}"] + lines
+            return self.apriltag_zmq.startup_summary_lines()
         return []

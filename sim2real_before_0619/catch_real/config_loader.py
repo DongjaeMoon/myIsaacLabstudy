@@ -261,15 +261,8 @@ def load_catch_real_config(config_path: str | Path, policy_override: str | None 
         raise ValueError(f"joint_pos_rel dim must equal {num_motors}")
     if term_dims.get("joint_vel") != num_motors:
         raise ValueError(f"joint_vel dim must equal {num_motors}")
-
-    # UROP-v23 calls this actor channel "prev_actions".  Older deploy YAMLs
-    # used "previous_action".  Accept either spelling, but require the action
-    # dimension when either term is present.
-    prev_action_dim = term_dims.get("prev_actions", term_dims.get("previous_action"))
-    if prev_action_dim is not None and prev_action_dim != int(policy_raw["num_actions"]):
-        raise ValueError(
-            f"prev_actions/previous_action dim must equal {policy_raw['num_actions']}, got {prev_action_dim}"
-        )
+    if term_dims.get("previous_action") != int(policy_raw["num_actions"]):
+        raise ValueError(f"previous_action dim must equal {policy_raw['num_actions']}")
 
     mode_names = [str(name) for name in _ensure_list(modes_raw.get("names"), "modes.names")]
     if "mode_one_hot" in term_dims and term_dims["mode_one_hot"] != len(mode_names):
@@ -364,12 +357,6 @@ def load_catch_real_config(config_path: str | Path, policy_override: str | None 
         default_policy_reference_pose=default_policy_reference_pose,
         auto_start_after_ready=bool(policy_runtime_raw.get("auto_start_after_ready", False)),
         object_source=str(policy_runtime_raw.get("object_source", "zeros")).lower(),
-        object_observation_frame=str(
-            policy_runtime_raw.get(
-                "object_observation_frame",
-                observation_raw.get("object_frame", observation_raw.get("frame", "policy_body")),
-            )
-        ).lower(),
         fake_object_debug=bool(policy_runtime_raw.get("fake_object_debug", False)),
         gate_policy_until_object_visible=bool(
             policy_runtime_raw.get("gate_policy_until_object_visible", False)

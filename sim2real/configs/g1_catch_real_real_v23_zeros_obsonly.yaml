@@ -1,8 +1,8 @@
 camera:
-  enabled: true
+  enabled: false
   estimator:
     lost_timeout_s: 0.2
-    min_valid_detections: 2
+    min_valid_detections: 1
     velocity_filter_alpha: 0.35
     position_filter_alpha: 0.35
     angular_velocity_filter_alpha: 0.35
@@ -284,9 +284,9 @@ policy_runtime:
   autonomous_key: a
   default_policy_reference_pose: catch_ready
   fake_object_debug: false
-  gate_policy_until_object_visible: true
+  gate_policy_until_object_visible: false
   manual_debug_key: k
-  object_source: apriltag_zmq
+  object_source: zeros
   object_visible_blend_duration_s: 0.4
   policy_mode_name: catch
   gantry_upper_body_only: false

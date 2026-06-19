@@ -41,13 +41,6 @@ def build_argparser() -> argparse.ArgumentParser:
     parser.add_argument("--tag-yaml", type=str, default=str(DEFAULT_TAG))
     parser.add_argument("--show", action="store_true")
     parser.add_argument("--print-rate", type=float, default=5.0)
-    parser.add_argument(
-        "--object-observation-frame",
-        type=str,
-        default="camera_opencv",
-        choices=("camera_opencv", "opencv", "camera", "body"),
-        help="Frame for rel_pos/rel_vel printed by the receiver. v23 policy uses camera_opencv.",
-    )
     parser.add_argument("--waist-yaw", type=float, default=0.0, help="Standalone waist yaw angle in radians.")
     parser.add_argument("--waist-roll", type=float, default=0.0, help="Standalone waist roll angle in radians.")
     parser.add_argument("--waist-pitch", type=float, default=0.0, help="Standalone waist pitch angle in radians.")
@@ -86,7 +79,6 @@ def main() -> int:
         extrinsics_yaml=_resolve_path(args.extrinsics_yaml),
         tag_yaml=_resolve_path(args.tag_yaml),
         policy_body_frame="unitree",
-        object_observation_frame=args.object_observation_frame,
         stale_timeout_s=0.2,
         min_valid_detections=1,
         position_filter_alpha=0.35,
@@ -113,7 +105,6 @@ def main() -> int:
     print(f"[AprilTagTest] intrinsics yaml    : {_resolve_path(args.intrinsics_yaml)}")
     print(f"[AprilTagTest] extrinsics yaml    : {_resolve_path(args.extrinsics_yaml)}")
     print(f"[AprilTagTest] tag yaml           : {_resolve_path(args.tag_yaml)}")
-    print(f"[AprilTagTest] obs frame          : {args.object_observation_frame}")
     print(f"[AprilTagTest] body->torso urdf   : {_resolve_path(args.body_to_torso_urdf)}")
     print(f"[AprilTagTest] receiver init      : {receiver.init_message}")
     print(
@@ -156,8 +147,8 @@ def main() -> int:
                     f"camera_fk={camera_debug.message} "
                     f"camera_pos_b={camera_pos_b} "
                     f"waist_deg={waist_deg} "
-                    f"rel_pos_obs={rel_pos} "
-                    f"rel_lin_vel_obs={rel_vel} "
+                    f"rel_pos_b={rel_pos} "
+                    f"rel_lin_vel_b={rel_vel} "
                     f"fps={snapshot.frame_rate_hz:.1f} "
                     f"last_valid_age={format_age(snapshot.time_since_last_valid_s)} "
                     f"msg={snapshot.message}"

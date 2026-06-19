@@ -170,20 +170,6 @@ def map_body_vector_to_policy_frame(vec_unitree_b: np.ndarray, policy_body_frame
     return vec_unitree_b.copy()
 
 
-def object_observation_frame_is_camera(frame: str | None) -> bool:
-    value = "" if frame is None else str(frame).strip().lower()
-    return value in {"camera", "opencv", "optical", "camera_opencv", "opencv_camera", "camera_optical"}
-
-
-def normalize_object_observation_frame(frame: str | None) -> str:
-    if object_observation_frame_is_camera(frame):
-        return "camera_opencv"
-    value = "" if frame is None else str(frame).strip().lower()
-    if value in {"policy_body", "body", "robot_body", "unitree", "isaaclab"}:
-        return "policy_body"
-    return value or "policy_body"
-
-
 def format_vec3(values: np.ndarray) -> str:
     return np.array2string(np.round(np.asarray(values, dtype=np.float64), 3), precision=3, separator=",")
 
@@ -424,15 +410,6 @@ class BodyToCameraKinematics:
         self.chain_description = ""
         self.initialization_message = "fixed body-to-camera transform"
         self.available = True
-        self.fallback_fixed_torso = False
-        # Same fallback torso offset used in UROP_v23.mdp.observations when the
-        # torso body cannot be queried from the articulation.  This prevents the
-        # real AprilTag pipeline from failing outright on machines that do not
-        # have the old helper URDF copied locally.
-        self.T_body_torso_fallback = make_T(
-            np.eye(3, dtype=np.float64),
-            np.array([-0.003963499795645475, 0.0, 0.04399999976158142], dtype=np.float64),
-        )
 
         if self.parent_frame in self.BODY_PARENT_ALIASES:
             self.parent_frame = "body"
@@ -456,13 +433,9 @@ class BodyToCameraKinematics:
             return
 
         if body_to_torso_urdf is None or not body_to_torso_urdf.exists():
-            self.fallback_fixed_torso = True
-            self.dynamic_enabled = False
-            self.available = True
-            self.chain_description = "body --fixed_fallback--> torso_link"
+            self.available = False
             self.initialization_message = (
-                "body_to_torso_urdf missing; using fixed UROP-v23 torso-offset fallback "
-                f"instead of dynamic waist FK: {body_to_torso_urdf}"
+                f"body_to_torso_urdf is missing or does not exist: {body_to_torso_urdf}"
             )
             return
 
@@ -547,22 +520,6 @@ class BodyToCameraKinematics:
                 chain_description=self.chain_description,
             )
             return self.T_parent_camera.copy(), debug_state
-
-        if self.fallback_fixed_torso:
-            waist_angles, _missing_joint_message = self._waist_angles(joint_positions_by_name)
-            T_body_camera = self.T_body_torso_fallback @ self.T_parent_camera
-            debug_state = CameraPoseDebugState(
-                available=True,
-                dynamic_enabled=False,
-                parent_frame="torso",
-                message=self.initialization_message,
-                camera_translation_body_m=T_body_camera[:3, 3].copy(),
-                camera_rpy_body_deg=rotmat_to_rpy_xyz(T_body_camera[:3, :3]),
-                waist_joint_names=self.waist_joint_names,
-                waist_angles_rad=waist_angles,
-                chain_description=self.chain_description,
-            )
-            return T_body_camera, debug_state
 
         if not self.available:
             return None, CameraPoseDebugState.zeros(
@@ -652,7 +609,6 @@ class AprilTagZmqReceiver:
         extrinsics_yaml: Path | None,
         tag_yaml: Path | None,
         policy_body_frame: str,
-        object_observation_frame: str,
         stale_timeout_s: float,
         min_valid_detections: int,
         position_filter_alpha: float,
@@ -677,7 +633,6 @@ class AprilTagZmqReceiver:
         self.extrinsics_yaml = extrinsics_yaml
         self.tag_yaml = tag_yaml
         self.policy_body_frame = str(policy_body_frame)
-        self.object_observation_frame = normalize_object_observation_frame(object_observation_frame)
         self.stale_timeout_s = float(stale_timeout_s)
         self.min_valid_detections = max(int(min_valid_detections), 1)
         self.position_filter_alpha = float(position_filter_alpha)
@@ -721,9 +676,6 @@ class AprilTagZmqReceiver:
         self._consecutive_valid_detections = 0
         self._last_status_log_time = 0.0
         self._last_logged_status: str | None = None
-        self._last_obs_rel_pos: np.ndarray | None = None
-        self._last_obs_rel_vel = np.zeros(3, dtype=np.float64)
-        self._last_obs_timestamp_s: float | None = None
         self._last_snapshot = AprilTagDetectionSnapshot.zeros(
             initialized=False,
             status="INIT_PENDING",
@@ -902,8 +854,7 @@ class AprilTagZmqReceiver:
             )[1]
             self._startup_summary_lines = [
                 f"[G1][apriltag_zmq] static parent->camera quat   : "
-                f"{format_vec3(self._calibration.static_quat_wxyz)}",
-                f"[G1][apriltag_zmq] policy object obs frame      : {self.object_observation_frame}",
+                f"{format_vec3(self._calibration.static_quat_wxyz)}"
             ]
             self._startup_summary_lines.extend(self._camera_kinematics.startup_summary_lines())
             self._estimator = AprilTagObjectStateEstimator(
@@ -1016,7 +967,8 @@ class AprilTagZmqReceiver:
             if estimate.valid:
                 self._consecutive_valid_detections += 1
                 if self._consecutive_valid_detections >= self.min_valid_detections:
-                    rel_pos_b, rel_lin_vel_b = self._select_observation_frame(estimate)
+                    rel_pos_b = map_body_vector_to_policy_frame(estimate.rel_pos_b, self.policy_body_frame)
+                    rel_lin_vel_b = map_body_vector_to_policy_frame(estimate.rel_lin_vel_b, self.policy_body_frame)
                     self._publish_snapshot(
                         AprilTagDetectionSnapshot(
                             initialized=True,
@@ -1050,30 +1002,6 @@ class AprilTagZmqReceiver:
                 self._maybe_show_frame(frame, estimate.valid)
 
         self._close_socket()
-
-    def _select_observation_frame(self, estimate) -> tuple[np.ndarray, np.ndarray]:
-        frame = self.object_observation_frame
-        if frame in {"camera", "opencv", "camera_opencv", "optical", "camera_optical"}:
-            rel_pos = getattr(estimate, "rel_pos_c", None)
-            rel_vel = getattr(estimate, "rel_lin_vel_c", None)
-            if rel_pos is not None and rel_vel is not None:
-                return (
-                    np.asarray(rel_pos, dtype=np.float64).reshape(3).copy(),
-                    np.asarray(rel_vel, dtype=np.float64).reshape(3).copy(),
-                )
-            # Fallback for old estimator versions; should not be used with the
-            # patched v23 estimator, but keeps failure mode explicit.
-            return (
-                np.asarray(estimate.rel_pos_b, dtype=np.float64).reshape(3).copy(),
-                np.asarray(estimate.rel_lin_vel_b, dtype=np.float64).reshape(3).copy(),
-            )
-
-        # Legacy behavior: body-frame observation, optionally mapped to IsaacLab
-        # body-axis convention.
-        return (
-            map_body_vector_to_policy_frame(estimate.rel_pos_b, self.policy_body_frame),
-            map_body_vector_to_policy_frame(estimate.rel_lin_vel_b, self.policy_body_frame),
-        )
 
     def _build_robot_base_state(self) -> RobotBaseState:
         with self._lock:

@@ -135,10 +135,6 @@ class ObjectStateEstimate:
     rel_rot6d_b: np.ndarray
     rel_lin_vel_b: np.ndarray
     rel_ang_vel_b: np.ndarray
-    # Camera/OpenCV-frame vector used by UROP-v23 actor observations.
-    # OpenCV optical convention: x right, y down, z forward.
-    rel_pos_c: np.ndarray
-    rel_lin_vel_c: np.ndarray
 
 
 class AprilTagObjectStateEstimator:
@@ -187,9 +183,6 @@ class AprilTagObjectStateEstimator:
         self._last_quat_wxyz: Optional[np.ndarray] = None
         self._last_lin_vel_w = np.zeros(3, dtype=np.float64)
         self._last_ang_vel_w = np.zeros(3, dtype=np.float64)
-        self._last_cam_pos_w: Optional[np.ndarray] = None
-        self._last_cam_lin_vel_w = np.zeros(3, dtype=np.float64)
-        self._last_rel_lin_vel_c = np.zeros(3, dtype=np.float64)
 
     def _detect_target(self, frame_gray: np.ndarray) -> Optional[np.ndarray]:
         corners, ids, _ = self.detector.detectMarkers(frame_gray)
@@ -253,8 +246,6 @@ class AprilTagObjectStateEstimator:
                 rel_rot6d_b=np.array([1.0, 0.0, 0.0, 0.0, 1.0, 0.0], dtype=np.float64),
                 rel_lin_vel_b=np.zeros(3, dtype=np.float64),
                 rel_ang_vel_b=np.zeros(3, dtype=np.float64),
-                rel_pos_c=np.zeros(3, dtype=np.float64),
-                rel_lin_vel_c=np.zeros(3, dtype=np.float64),
             )
 
         T_c_tag = self._estimate_T_c_tag(corners)
@@ -270,8 +261,6 @@ class AprilTagObjectStateEstimator:
                 rel_rot6d_b=np.array([1.0, 0.0, 0.0, 0.0, 1.0, 0.0], dtype=np.float64),
                 rel_lin_vel_b=np.zeros(3, dtype=np.float64),
                 rel_ang_vel_b=np.zeros(3, dtype=np.float64),
-                rel_pos_c=np.zeros(3, dtype=np.float64),
-                rel_lin_vel_c=np.zeros(3, dtype=np.float64),
             )
 
         T_b_c = self.T_b_c if T_b_c_override is None else np.asarray(T_b_c_override, dtype=np.float64)
@@ -279,47 +268,27 @@ class AprilTagObjectStateEstimator:
         R_w_b = quat_to_rotmat(robot.quat_wxyz)
         T_w_b = make_T(R_w_b, robot.pos_w)
         T_w_c = T_w_b @ T_b_c
-        T_c_o = T_c_tag @ self.T_tag_to_object
-        T_w_o = T_w_c @ T_c_o
+        T_w_o = T_w_c @ T_c_tag @ self.T_tag_to_object
 
         pos_w_raw = T_w_o[:3, 3].copy()
         quat_wxyz_raw = rotmat_to_quat_wxyz(T_w_o[:3, :3])
-        rel_pos_c = T_c_o[:3, 3].copy()
-        cam_pos_w = T_w_c[:3, 3].copy()
-        R_w_c = T_w_c[:3, :3]
 
         if self._last_t is None:
             pos_w = pos_w_raw
             quat_wxyz = quat_wxyz_raw
             lin_vel_w = np.zeros(3, dtype=np.float64)
             ang_vel_w = np.zeros(3, dtype=np.float64)
-            cam_lin_vel_w = np.zeros(3, dtype=np.float64)
-            rel_lin_vel_c = np.zeros(3, dtype=np.float64)
         else:
             dt = max(t_now - self._last_t, 1e-6)
 
             pos_w = self.pos_alpha * pos_w_raw + (1.0 - self.pos_alpha) * self._last_pos_w
-            quat_wxyz = quat_wxyz_raw  # orientation smoothing is intentionally omitted.
+            quat_wxyz = quat_wxyz_raw  # orientation smoothing은 처음엔 생략
 
             lin_vel_raw = (pos_w - self._last_pos_w) / dt
             ang_vel_raw = angvel_from_quats(self._last_quat_wxyz, quat_wxyz, dt)
 
             lin_vel_w = self.vel_alpha * lin_vel_raw + (1.0 - self.vel_alpha) * self._last_lin_vel_w
             ang_vel_w = self.ang_alpha * ang_vel_raw + (1.0 - self.ang_alpha) * self._last_ang_vel_w
-
-            if self._last_cam_pos_w is None:
-                cam_lin_vel_raw_w = np.zeros(3, dtype=np.float64)
-            else:
-                cam_lin_vel_raw_w = (cam_pos_w - self._last_cam_pos_w) / dt
-            cam_lin_vel_w = self.vel_alpha * cam_lin_vel_raw_w + (1.0 - self.vel_alpha) * self._last_cam_lin_vel_w
-
-            # Match the v23 training observation: object velocity minus camera-origin
-            # velocity, expressed in camera/OpenCV optical frame.
-            rel_lin_vel_c_raw = R_w_c.T @ (lin_vel_w - cam_lin_vel_w)
-            rel_lin_vel_c = (
-                self.vel_alpha * rel_lin_vel_c_raw
-                + (1.0 - self.vel_alpha) * self._last_rel_lin_vel_c
-            )
 
         rel_pos_b = quat_rotate_inverse(robot.quat_wxyz, pos_w - robot.pos_w)
         rel_lin_vel_b = quat_rotate_inverse(robot.quat_wxyz, lin_vel_w - robot.lin_vel_w)
@@ -332,9 +301,6 @@ class AprilTagObjectStateEstimator:
         self._last_quat_wxyz = quat_wxyz.copy()
         self._last_lin_vel_w = lin_vel_w.copy()
         self._last_ang_vel_w = ang_vel_w.copy()
-        self._last_cam_pos_w = cam_pos_w.copy()
-        self._last_cam_lin_vel_w = cam_lin_vel_w.copy()
-        self._last_rel_lin_vel_c = rel_lin_vel_c.copy()
 
         return ObjectStateEstimate(
             valid=True,
@@ -347,6 +313,4 @@ class AprilTagObjectStateEstimator:
             rel_rot6d_b=rel_rot6d_b,
             rel_lin_vel_b=rel_lin_vel_b,
             rel_ang_vel_b=rel_ang_vel_b,
-            rel_pos_c=rel_pos_c,
-            rel_lin_vel_c=rel_lin_vel_c,
         )
