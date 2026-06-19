@@ -165,7 +165,7 @@ class G1CatchV23Deploy(BaseSample):
 
         self.robot_policy: G1CatchPolicyV23 | None = None
         self.box = None
-        self._demo_world = None
+        self._world = None
 
         # Manual hand/object state.  held_rel_b is expressed in the sender frame
         # captured at reset (initial robot/root frame), not in the live falling base.
@@ -207,7 +207,7 @@ class G1CatchV23Deploy(BaseSample):
     # ------------------------------------------------------------------
     def setup_scene(self):
         world = self.get_world()
-        self._demo_world = world
+        self._world = world
         world.scene.add_default_ground_plane()
 
         self.robot_policy = G1CatchPolicyV23(
@@ -236,19 +236,19 @@ class G1CatchV23Deploy(BaseSample):
         )
 
     async def setup_post_load(self):
-        self._demo_world = self.get_world()
+        self._world = self.get_world()
         if self.robot_policy is None:
             raise RuntimeError("robot_policy was not created in setup_scene().")
         self.robot_policy.initialize()
         self._install_keyboard()
         await self.reset_demo_async()
-        self._demo_world.add_physics_callback("g1_catch_v23_policy_step", self.physics_step)
+        self._world.add_physics_callback("g1_catch_v23_policy_step", self.physics_step)
         self._print_help()
 
     async def setup_pre_reset(self):
-        if self._demo_world is not None:
+        if self._world is not None:
             try:
-                self._demo_world.remove_physics_callback("g1_catch_v23_policy_step")
+                self._world.remove_physics_callback("g1_catch_v23_policy_step")
             except Exception:
                 pass
 
@@ -256,28 +256,21 @@ class G1CatchV23Deploy(BaseSample):
         if self.robot_policy is not None:
             self.robot_policy.reset_robot_to_ready()
         await self.reset_demo_async()
-        if self._demo_world is not None:
-            self._demo_world.add_physics_callback("g1_catch_v23_policy_step", self.physics_step)
+        if self._world is not None:
+            self._world.add_physics_callback("g1_catch_v23_policy_step", self.physics_step)
 
     def world_cleanup(self):
-        if self._demo_world is not None:
-            try:
-                self._demo_world.remove_physics_callback("g1_catch_v23_policy_step")
-            except Exception:
-                pass
-
         if self._input is not None and self._keyboard_sub is not None:
             try:
                 self._input.unsubscribe_from_keyboard_events(self._keyboard, self._keyboard_sub)
             except Exception:
                 pass
-
         self._keyboard_sub = None
         self._keyboard = None
         self._input = None
         self.robot_policy = None
         self.box = None
-        self._demo_world = None
+        self._world = None
 
     # ------------------------------------------------------------------
     # Demo state and physics.
@@ -433,9 +426,9 @@ class G1CatchV23Deploy(BaseSample):
             self.box.set_world_pose(position=pos, orientation=quat)
         except Exception:
             self.box.set_world_pose(pos, quat)
-        # Keep velocity only as the policy-observation estimate while the box is held.
-        # Do NOT call set_linear_velocity/set_angular_velocity on a kinematic
-        # PxRigidDynamic; PhysX logs "Body must be non-kinematic!".
+        # Even when the object is kinematic, write the same velocity so PhysX and
+        # the policy-observation estimate agree as much as the API allows.
+        self._set_box_velocity(vel if not zero_velocity else np.zeros(3, dtype=np.float32), np.zeros(3, dtype=np.float32))
         return pos, self._box_obs_vel_w.copy()
 
     def _estimate_box_velocity_from_pose(self, pos_w: np.ndarray, step_size: float) -> np.ndarray:
@@ -478,15 +471,8 @@ class G1CatchV23Deploy(BaseSample):
     def _set_box_held_physics(self, held: bool):
         """Best-effort switch between human-held kinematic box and released dynamic box."""
         held = bool(held)
-        previous_kinematic_state = self._box_kinematic_state
-        if previous_kinematic_state is held:
+        if self._box_kinematic_state is held:
             return
-
-        # Only zero PhysX velocity when we know the body is currently dynamic.
-        # Calling setLinearVelocity on a kinematic body produces red PhysX errors.
-        if held and previous_kinematic_state is False:
-            self._set_box_velocity(np.zeros(3, dtype=np.float32), np.zeros(3, dtype=np.float32))
-
         self._box_kinematic_state = held
 
         # Object wrappers differ across Isaac Sim versions, so use several
