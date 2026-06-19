@@ -1,5 +1,5 @@
 # deploy/catch_extension.py
-# Patched to add G1 Catch V21 while keeping older examples if their files exist.
+# Patched to add G1 Catch V21/V23 while keeping older examples if their files exist.
 
 import os
 import sys
@@ -23,6 +23,7 @@ ExampleV5 = _try_import("G1 UROP V5", lambda: __import__("catch.example_v5", fro
 G1DeployV8 = _try_import("G1 UROP V8/V9", lambda: __import__("catch.UROP_v8_deploy", fromlist=["G1DeployV8"]).G1DeployV8)
 G1CatchV12Deploy = _try_import("G1 Catch V12", lambda: __import__("catch.g1_catch_v12", fromlist=["G1CatchV12Deploy"]).G1CatchV12Deploy)
 G1CatchV21Deploy = _try_import("G1 Catch V21", lambda: __import__("catch.g1_catch_v21", fromlist=["G1CatchV21Deploy"]).G1CatchV21Deploy)
+G1CatchV23Deploy = _try_import("G1 Catch V23", lambda: __import__("catch.g1_catch_v23", fromlist=["G1CatchV23Deploy"]).G1CatchV23Deploy)
 
 
 class CatchExtension(omni.ext.IExt):
@@ -30,6 +31,7 @@ class CatchExtension(omni.ext.IExt):
         self.category = "1.UROP_catching"
         self._registered = []
 
+        self._register(ext_id, "G1 Catch V23", "Interactive UROP_v23 bulky-object catching deploy", G1CatchV23Deploy)
         self._register(ext_id, "G1 Catch V21", "Interactive UROP_v21 bulky-object catching deploy", G1CatchV21Deploy)
         self._register(ext_id, "G1 UROP V5", "Testing UROP V5 Policy", ExampleV5)
         self._register(ext_id, "G1 UROP V8", "G1 UROP box catching deployment V8", G1DeployV8)
