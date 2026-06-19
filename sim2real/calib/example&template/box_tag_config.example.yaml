@@ -1,0 +1,6 @@
+tag_family: 36h11
+target_tag_id: 0
+tag_size_m: 0.06
+box_size_m: [0.32, 0.24, 0.24]
+tag_center_in_box_m: [0.16, 0.0, 0.0]
+tag_rpy_in_box_deg: [0.0, 0.0, 0.0]

@@ -1081,10 +1081,7 @@ class AprilTagZmqReceiver:
                     )
             else:
                 self._consecutive_valid_detections = 0
-                # Sticky tag behavior:
-                # If the tag is briefly lost, keep the last valid object observation
-                # until stale_timeout_s expires instead of publishing object=0 immediately.
-                self._maybe_mark_stale_or_waiting()
+                self._publish_zero_status("NO_TAG", "no target tag detected in current frame", now=now)
 
             if self.image_show:
                 self._maybe_show_frame(frame, estimate.valid)
