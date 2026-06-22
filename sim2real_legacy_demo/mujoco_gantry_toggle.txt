@@ -1,0 +1,85 @@
+cd ~/isaaclab/myIsaacLabstudy
+
+python - <<'PY'
+from pathlib import Path
+import re
+
+p = Path("unitree_mujoco/unitree_robots/g1/g1_29dof.xml")
+txt = p.read_text()
+
+backup = p.with_suffix(".xml.bak")
+if not backup.exists():
+    backup.write_text(txt)
+    print(f"Backup saved: {backup}")
+
+free = '<joint name="floating_base_joint" type="free" limited="false" actuatorfrclimited="false" />'
+commented = '<!-- GANTRY_ON: <joint name="floating_base_joint" type="free" limited="false" actuatorfrclimited="false" /> -->'
+
+if free in txt:
+    txt = txt.replace(free, commented)
+    print("floating_base_joint disabled.")
+elif commented in txt:
+    print("floating_base_joint already disabled.")
+else:
+    raise RuntimeError("floating_base_joint line not found.")
+
+m = re.search(r'(<key name="home" qpos=")([^"]+)(")', txt)
+if not m:
+    raise RuntimeError("home keyframe qpos not found.")
+
+vals = m.group(2).split()
+if len(vals) == 36:
+    vals = vals[7:]
+    print("home qpos changed: 36 -> 29")
+elif len(vals) == 29:
+    print("home qpos already 29.")
+else:
+    raise RuntimeError(f"Unexpected home qpos length: {len(vals)}")
+
+txt = txt[:m.start(2)] + " ".join(vals) + txt[m.end(2):]
+p.write_text(txt)
+print("Gantry/fixed-base ON complete.")
+PY
+
+==============================================================================================================
+
+
+cd ~/isaaclab/myIsaacLabstudy
+
+python - <<'PY'
+from pathlib import Path
+import re
+
+p = Path("unitree_mujoco/unitree_robots/g1/g1_29dof.xml")
+txt = p.read_text()
+
+free = '<joint name="floating_base_joint" type="free" limited="false" actuatorfrclimited="false" />'
+commented = '<!-- GANTRY_ON: <joint name="floating_base_joint" type="free" limited="false" actuatorfrclimited="false" /> -->'
+
+if commented in txt:
+    txt = txt.replace(commented, free)
+    print("floating_base_joint restored.")
+elif free in txt:
+    print("floating_base_joint already restored.")
+else:
+    raise RuntimeError("floating_base_joint line not found.")
+
+m = re.search(r'(<key name="home" qpos=")([^"]+)(")', txt)
+if not m:
+    raise RuntimeError("home keyframe qpos not found.")
+
+vals = m.group(2).split()
+base = ["0", "0", "0.79", "1", "0", "0", "0"]
+
+if len(vals) == 29:
+    vals = base + vals
+    print("home qpos changed: 29 -> 36")
+elif len(vals) == 36:
+    print("home qpos already 36.")
+else:
+    raise RuntimeError(f"Unexpected home qpos length: {len(vals)}")
+
+txt = txt[:m.start(2)] + " ".join(vals) + txt[m.end(2):]
+p.write_text(txt)
+print("Gantry/fixed-base OFF complete.")
+PY

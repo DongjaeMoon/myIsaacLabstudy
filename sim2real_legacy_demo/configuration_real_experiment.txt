@@ -1,0 +1,681 @@
+CONFIGURATION_REAL_EXPERIMENT.txt
+G1 standing-catch real/MuJoCo deployment contract
+Generated: 2026-05-19
+
+================================================================================
+0. PURPOSE
+================================================================================
+This document freezes the current real-experiment I/O and system configuration for
+G1 standing catch. This is the contract that must be matched by:
+
+  1. sim2real/g1_catch_real.py
+  2. MuJoCo DDS loopback test using --net-iface lo
+  3. real Unitree G1 deployment using the physical network interface
+  4. future IsaacLab training observation/action configuration
+
+The design principle is:
+
+  Real robot first -> MuJoCo same DDS code -> IsaacLab training config matched to it.
+
+There must be no separate MuJoCo controller. The same DDS-based deploy code must run
+both in MuJoCo and on the real G1.
+
+================================================================================
+1. SOURCE OF TRUTH
+================================================================================
+Main config file:
+
+  sim2real/configs/g1_catch_real.yaml
+
+Current config identity:
+
+  version: 0.2.0
+  name: g1_standing_catch_real_deployable_v1
+
+Current Python entrypoint:
+
+  sim2real/g1_catch_real.py
+
+Current config import wrapper:
+
+  sim2real/config.py
+
+Modular controller package:
+
+  sim2real/catch_real/
+
+================================================================================
+2. SYSTEM EXECUTION MODEL
+================================================================================
+Communication backend:
+
+  backend: unitree_dds
+  msg_type: hg
+  lowcmd_topic: rt/lowcmd
+  lowstate_topic: rt/lowstate
+
+The code receives:
+
+  LowState_ from rt/lowstate
+
+The code sends:
+
+  LowCmd_ to rt/lowcmd
+
+Network interface:
+
+  MuJoCo DDS loopback: --net-iface lo
+  Real robot: --net-iface <physical_interface>, e.g. eth0 or wlp0s20f3
+
+High-level mode release:
+
+  release_high_level_mode: true
+
+Important note:
+
+  For MuJoCo-only tests, if MotionSwitcherClient produces request errors, this is
+  probably because MuJoCo does not provide the high-level mode service. This does
+  not necessarily mean LowState/LowCmd DDS is broken. For MuJoCo-only diagnostic
+  configs, release_high_level_mode can be temporarily set to false, but the real
+  robot config should be reviewed carefully before doing so.
+
+================================================================================
+3. RUNTIME RATES
+================================================================================
+Low-level command/control loop:
+
+  control_dt: 0.002 s
+  control_frequency: 500 Hz
+
+Policy loop:
+
+  policy_dt: 0.020 s
+  policy_frequency: 50 Hz
+
+Logging:
+
+  print_every: 1.0 s
+
+Startup:
+
+  require_enter_before_start: true
+
+Default pose transition duration:
+
+  default_move_duration: 3.0 s
+
+Target low-pass:
+
+  target_lowpass_alpha: 1.0
+
+================================================================================
+4. CONTROLLED DOF AND MOTOR MAPPING
+================================================================================
+Total controlled motors/actions:
+
+  num_motors: 29
+  num_actions: 29
+
+Controlled joint order / deploy motor slot order:
+
+  slot  0 -> motor  0 -> left_hip_pitch_joint
+  slot  1 -> motor  1 -> left_hip_roll_joint
+  slot  2 -> motor  2 -> left_hip_yaw_joint
+  slot  3 -> motor  3 -> left_knee_joint
+  slot  4 -> motor  4 -> left_ankle_pitch_joint
+  slot  5 -> motor  5 -> left_ankle_roll_joint
+  slot  6 -> motor  6 -> right_hip_pitch_joint
+  slot  7 -> motor  7 -> right_hip_roll_joint
+  slot  8 -> motor  8 -> right_hip_yaw_joint
+  slot  9 -> motor  9 -> right_knee_joint
+  slot 10 -> motor 10 -> right_ankle_pitch_joint
+  slot 11 -> motor 11 -> right_ankle_roll_joint
+  slot 12 -> motor 12 -> waist_yaw_joint
+  slot 13 -> motor 13 -> waist_roll_joint
+  slot 14 -> motor 14 -> waist_pitch_joint
+  slot 15 -> motor 15 -> left_shoulder_pitch_joint
+  slot 16 -> motor 16 -> left_shoulder_roll_joint
+  slot 17 -> motor 17 -> left_shoulder_yaw_joint
+  slot 18 -> motor 18 -> left_elbow_joint
+  slot 19 -> motor 19 -> left_wrist_roll_joint
+  slot 20 -> motor 20 -> left_wrist_pitch_joint
+  slot 21 -> motor 21 -> left_wrist_yaw_joint
+  slot 22 -> motor 22 -> right_shoulder_pitch_joint
+  slot 23 -> motor 23 -> right_shoulder_roll_joint
+  slot 24 -> motor 24 -> right_shoulder_yaw_joint
+  slot 25 -> motor 25 -> right_elbow_joint
+  slot 26 -> motor 26 -> right_wrist_roll_joint
+  slot 27 -> motor 27 -> right_wrist_pitch_joint
+  slot 28 -> motor 28 -> right_wrist_yaw_joint
+
+Critical requirement:
+
+  The IsaacLab policy action order, sim2real YAML action order, LowState read order,
+  and LowCmd write order must be explicitly reconciled. Do not assume this mapping
+  is correct until motor-index sanity tests pass in MuJoCo.
+
+================================================================================
+5. CONTROL COMMAND CONTRACT
+================================================================================
+Control type:
+
+  command_type: joint_position_pd
+
+Command source:
+
+  q_des_source: q_ref_plus_residual_action
+
+For each controlled motor:
+
+  q_des  = q_ref + action_scale * clip(action, -1, 1)
+  dq_des = 0.0
+  tau_ff = 0.0
+  kp     = YAML PD gain for the joint
+  kd     = YAML PD gain for the joint
+
+In no-policy Phase 1 testing:
+
+  action = 0
+  q_des = q_ref
+
+The policy must NOT output torque. The policy output is residual joint-position
+target action.
+
+================================================================================
+6. PD GAINS
+================================================================================
+Default PD:
+
+  default kp: 120.0
+  default kd: 10.0
+
+Overrides:
+
+  left_shoulder_pitch_joint:   kp 85.0, kd 12.0
+  left_shoulder_roll_joint:    kp 55.0, kd 10.0
+  left_shoulder_yaw_joint:     kp 55.0, kd 10.0
+  left_elbow_joint:            kp 85.0, kd 12.0
+  left_wrist_roll_joint:       kp 55.0, kd 10.0
+  left_wrist_pitch_joint:      kp 55.0, kd 10.0
+  left_wrist_yaw_joint:        kp 55.0, kd 10.0
+  right_shoulder_pitch_joint:  kp 85.0, kd 12.0
+  right_shoulder_roll_joint:   kp 55.0, kd 10.0
+  right_shoulder_yaw_joint:    kp 55.0, kd 10.0
+  right_elbow_joint:           kp 85.0, kd 12.0
+  right_wrist_roll_joint:      kp 55.0, kd 10.0
+  right_wrist_pitch_joint:     kp 55.0, kd 10.0
+  right_wrist_yaw_joint:       kp 55.0, kd 10.0
+
+Important note:
+
+  These gains are not yet fully validated for the real robot. They must be tested
+  in MuJoCo DDS loopback first, then very conservatively on real G1 with no policy,
+  no box, and emergency stop ready.
+
+================================================================================
+7. REFERENCE POSES
+================================================================================
+Currently, safe_stand, catch_ready, and hold are identical placeholders.
+This is intentional only for Phase 1 skeleton testing. They must eventually be
+made different before actual catch training/experiment.
+
+Current safe_stand / catch_ready / hold pose:
+
+  left_hip_pitch_joint:      -0.15
+  left_hip_roll_joint:        0.0
+  left_hip_yaw_joint:         0.0
+  left_knee_joint:            0.30
+  left_ankle_pitch_joint:    -0.15
+  left_ankle_roll_joint:      0.0
+  right_hip_pitch_joint:     -0.15
+  right_hip_roll_joint:       0.0
+  right_hip_yaw_joint:        0.0
+  right_knee_joint:           0.30
+  right_ankle_pitch_joint:   -0.15
+  right_ankle_roll_joint:     0.0
+  waist_yaw_joint:            0.0
+  waist_roll_joint:           0.0
+  waist_pitch_joint:          0.0
+  left_shoulder_pitch_joint:  0.20
+  left_shoulder_roll_joint:   0.0
+  left_shoulder_yaw_joint:    0.0
+  left_elbow_joint:           0.55
+  left_wrist_roll_joint:      0.0
+  left_wrist_pitch_joint:     0.0
+  left_wrist_yaw_joint:       0.0
+  right_shoulder_pitch_joint: 0.20
+  right_shoulder_roll_joint:  0.0
+  right_shoulder_yaw_joint:   0.0
+  right_elbow_joint:          0.55
+  right_wrist_roll_joint:     0.0
+  right_wrist_pitch_joint:    0.0
+  right_wrist_yaw_joint:      0.0
+
+Pose semantics to be finalized:
+
+  safe_stand:   stable low-risk standing posture
+  catch_ready:  arms/torso ready to receive box, lower body still stable
+  hold:         box held close to torso after catch
+
+================================================================================
+8. POLICY ACTION CONFIGURATION
+================================================================================
+Policy action dimension:
+
+  num_actions: 29
+  action_clip: 1.0
+
+Policy action meaning:
+
+  action[i] is residual joint-position command for the corresponding action joint.
+
+Policy action order and scale:
+
+   0 left_hip_pitch_joint       scale 0.30 group leg
+   1 right_hip_pitch_joint      scale 0.30 group leg
+   2 left_knee_joint            scale 0.30 group leg
+   3 right_knee_joint           scale 0.30 group leg
+   4 left_ankle_pitch_joint     scale 0.30 group leg
+   5 right_ankle_pitch_joint    scale 0.30 group leg
+   6 left_hip_roll_joint        scale 0.20 group leg
+   7 right_hip_roll_joint       scale 0.20 group leg
+   8 left_ankle_roll_joint      scale 0.20 group leg
+   9 right_ankle_roll_joint     scale 0.20 group leg
+  10 left_hip_yaw_joint         scale 0.10 group leg
+  11 right_hip_yaw_joint        scale 0.10 group leg
+  12 waist_yaw_joint            scale 0.20 group waist
+  13 waist_roll_joint           scale 0.20 group waist
+  14 waist_pitch_joint          scale 0.20 group waist
+  15 left_shoulder_pitch_joint  scale 0.50 group arm
+  16 left_elbow_joint           scale 0.50 group arm
+  17 right_shoulder_pitch_joint scale 0.50 group arm
+  18 right_elbow_joint          scale 0.50 group arm
+  19 left_shoulder_roll_joint   scale 0.30 group arm
+  20 left_shoulder_yaw_joint    scale 0.30 group arm
+  21 left_wrist_roll_joint      scale 0.30 group arm
+  22 left_wrist_pitch_joint     scale 0.30 group arm
+  23 left_wrist_yaw_joint       scale 0.30 group arm
+  24 right_shoulder_roll_joint  scale 0.30 group arm
+  25 right_shoulder_yaw_joint   scale 0.30 group arm
+  26 right_wrist_roll_joint     scale 0.30 group arm
+  27 right_wrist_pitch_joint    scale 0.30 group arm
+  28 right_wrist_yaw_joint      scale 0.30 group arm
+
+Important mismatch warning:
+
+  The policy action order is NOT the same as the controlled joint order. The loader
+  maps action joint names to controlled-joint slots by name. IsaacLab training must
+  use this exact policy action order, or the exported policy will command the wrong
+  joints.
+
+================================================================================
+9. OBSERVATION CONFIGURATION
+================================================================================
+Observation contract:
+
+  contract_name: real_catch_v1
+  num_obs: 104
+  frame: policy_body
+  q_reference: current_mode_reference_pose
+  use_torque_obs: false
+  use_base_linear_velocity_obs: false
+
+Actor observation terms in exact order:
+
+  0. projected_gravity
+     dim: 3
+     source: imu
+     scale: 1.0
+
+  1. base_ang_vel
+     dim: 3
+     source: imu_gyro
+     scale: 1.0
+
+  2. joint_pos_rel
+     dim: 29
+     source: lowstate_q_minus_q_ref
+     scale: 1.0
+
+  3. joint_vel
+     dim: 29
+     source: lowstate_dq
+     scale: 0.05
+
+  4. previous_action
+     dim: 29
+     source: previous_policy_action
+     scale: 1.0
+
+  5. object_rel_pos
+     dim: 3
+     source: apriltag_estimator
+     scale: 1.0
+
+  6. object_rel_lin_vel
+     dim: 3
+     source: apriltag_estimator
+     scale: 1.0
+
+  7. tag_visible
+     dim: 1
+     source: apriltag_estimator
+     scale: 1.0
+
+  8. mode_one_hot
+     dim: 4
+     source: mode_machine
+     scale: 1.0
+
+Dimension check:
+
+  3 + 3 + 29 + 29 + 29 + 3 + 3 + 1 + 4 = 104
+
+Do NOT include in actor observation:
+
+  base linear velocity
+  true world object state
+  contact force
+  torque observation
+  object mass/friction/restitution
+  simulator-only privileged variables
+
+================================================================================
+10. IMU / BODY FRAME CONFIGURATION
+================================================================================
+IMU:
+
+  quaternion_order: auto
+  policy_body_frame: isaaclab
+  use_base_linear_velocity: false
+
+Expected deploy behavior:
+
+  The code should read IMU quaternion and gyro from LowState, auto-lock quaternion
+  order, compute projected gravity, and map the body vector to the policy body
+  frame.
+
+Important check:
+
+  In an upright initial state, projected_gravity must be numerically consistent
+  with the IsaacLab observation convention used in training. If MuJoCo shows a
+  gravity vector like [1, 0, 0] for an upright robot while training expects [0, 0,
+  -1] or [0, 0, 1], the frame mapping must be fixed before training a policy.
+
+================================================================================
+11. MODE MACHINE
+================================================================================
+Modes:
+
+  safe_stand
+  catch_ready
+  catch
+  hold
+
+Initial mode:
+
+  safe_stand
+
+Keyboard mapping:
+
+  S: safe_stand
+  P: catch_ready
+  C: catch_ready
+  K: catch / policy mode
+  H: hold
+  D: damping
+  Q: exit
+  ESC: exit
+
+Transitions:
+
+  default_pose_transition_duration_s: 3.0
+  catch_ready_to_catch_duration: 0.2
+  catch_to_hold_after_tag_lost_s: 0.5
+  hold_duration_for_success_s: 2.0
+
+================================================================================
+12. CAMERA / APRILTAG CONFIGURATION
+================================================================================
+Current camera state:
+
+  camera.enabled: false
+
+Configured future camera connection:
+
+  server_address: 192.168.123.164
+  port: 5555
+  image_show: false
+
+Calibration files:
+
+  intrinsics_yaml: sim2real/calib/head_camera_intrinsics.example.yaml
+  extrinsics_yaml: sim2real/calib/head_camera_extrinsics.example.yaml
+  tag_yaml: sim2real/calib/box_tag_config.example.yaml
+
+Estimator:
+
+  lost_timeout_s: 0.20
+  min_valid_detections: 3
+  velocity_filter_alpha: 0.35
+
+Current Phase 1 behavior:
+
+  object_rel_pos = [0, 0, 0]
+  object_rel_lin_vel = [0, 0, 0]
+  tag_visible = 0
+
+Future behavior:
+
+  AprilTag estimator must provide object_rel_pos and object_rel_lin_vel in the same
+  policy_body frame used in training.
+
+================================================================================
+13. VIRTUAL OBJECT CONFIGURATION
+================================================================================
+Virtual object fallback:
+
+  enabled_when_no_camera: true
+  initial_pos_base: [1.5, 0.0, 0.4]
+  initial_vel_base: [-2.5, 0.0, 0.0]
+
+Current note:
+
+  This should not be used to claim real deploy readiness. It is only a debug
+  fallback. Real policy training/deployment should use the AprilTag observation
+  contract or explicitly train with tag visibility/dropout behavior.
+
+================================================================================
+14. SAFETY CONFIGURATION
+================================================================================
+Safety settings:
+
+  damping_on_exit: true
+  damping_kd: 8.0
+  clamp_action: true
+  clamp_joint_targets_to_limits: false
+  max_target_delta_per_control_step: 0.03 rad/control step
+  max_target_delta_per_policy_step: 0.15 rad/policy step
+  lowstate_timeout_s: 0.10
+  max_abs_joint_velocity_warn: 20.0 rad/s
+  max_abs_action_warn: 0.95
+  emergency_gravity_z_min: -0.3
+
+Important warnings:
+
+  clamp_joint_targets_to_limits is currently false. For real robot experiments,
+  joint limit checks should be implemented and enabled before policy execution.
+
+  emergency_gravity_z_min is configured but may not yet be fully enforced in all
+  code paths. Confirm implementation before relying on it.
+
+================================================================================
+15. CURRENT PHASE STATUS
+================================================================================
+Phase 1 target:
+
+  DDS no-policy standing/pose tracking controller.
+
+Current status:
+
+  Config-driven controller skeleton exists.
+  Observation contract exists.
+  Policy execution is disabled by default.
+  Camera is disabled.
+  safe_stand/catch_ready/hold are still identical placeholders.
+
+Not yet validated:
+
+  LowCmd actually moves MuJoCo joints through g1_catch_real.py.
+  motor_indices 0..28 are correct for MuJoCo and real G1.
+  IMU frame mapping matches IsaacLab.
+  PD gains are safe/stable on real G1.
+  Reference poses are physically stable.
+  AprilTag object estimator is integrated into deploy observation.
+  Policy exported from IsaacLab matches obs/action order exactly.
+
+================================================================================
+16. COMMANDS
+================================================================================
+Compile check:
+
+  cd ~/isaaclab/myIsaacLabstudy
+  python -m py_compile sim2real/g1_catch_real.py sim2real/config.py sim2real/catch_real/*.py
+
+Config load check:
+
+  cd ~/isaaclab/myIsaacLabstudy
+  python - <<'PY'
+  from sim2real.config import load_catch_real_config
+  cfg = load_catch_real_config('sim2real/configs/g1_catch_real.yaml')
+  print(cfg.name, cfg.policy.num_actions, cfg.observation.num_obs)
+  print(cfg.robot.controlled_joint_names)
+  print(cfg.robot.motor_indices)
+  PY
+
+MuJoCo no-policy DDS loopback:
+
+  cd ~/isaaclab/myIsaacLabstudy
+  python sim2real/g1_catch_real.py \
+    --config sim2real/configs/g1_catch_real.yaml \
+    --net-iface lo \
+    --no-policy \
+    --start-pose safe_stand
+
+Known-good simple SDK test in MuJoCo loopback:
+
+  cd ~/isaaclab/myIsaacLabstudy
+  python sim2real/unitree_sdk_test.py lo
+
+Real robot no-policy test template:
+
+  cd ~/isaaclab/myIsaacLabstudy
+  python sim2real/g1_catch_real.py \
+    --config sim2real/configs/g1_catch_real.yaml \
+    --net-iface <REAL_INTERFACE_NAME> \
+    --no-policy \
+    --start-pose safe_stand
+
+Do not run with --use-policy on the real robot until the checklist below is passed.
+
+================================================================================
+17. REAL-WORLD READINESS CHECKLIST
+================================================================================
+A. Code/config integrity
+
+  [ ] git status is clean or current changes are intentionally committed.
+  [ ] py_compile passes.
+  [ ] config load prints: num_actions=29, num_obs=104, num_motors=29.
+  [ ] The YAML used for training is the same contract as the YAML used for deploy.
+  [ ] The exported policy path is correct and not a Git LFS pointer text file.
+
+B. DDS path
+
+  [ ] LowState arrives at expected rate.
+  [ ] LowState is fresh: no stale warnings.
+  [ ] LowCmd write loop runs at 500 Hz or close.
+  [ ] Ctrl+C or Q sends damping twice and exits safely.
+  [ ] MotionSwitcher behavior is understood: no blocking or uncontrolled mode conflict.
+
+C. Motor command path
+
+  [ ] Known-good unitree_sdk_test.py moves joints in MuJoCo using 'lo'.
+  [ ] g1_catch_real.py no-policy also moves joints in MuJoCo using 'lo'.
+  [ ] Single-joint motor test confirms motor 0..28 mapping.
+  [ ] No joint moves opposite to expectation.
+  [ ] No unexpected motor moves when commanding one joint.
+
+D. Pose tracking
+
+  [ ] From current q, transition to safe_stand is smooth.
+  [ ] q_des and measured q are close in MuJoCo.
+  [ ] max|q - q_ref| decreases during transition.
+  [ ] max|dq| stays bounded.
+  [ ] Damping mode actually removes active position targets.
+
+E. IMU/frame check
+
+  [ ] Upright robot projected_gravity has expected sign/order.
+  [ ] Gyro direction is reasonable under known manual/simulated rotation.
+  [ ] IsaacLab observation convention matches deploy convention exactly.
+
+F. Safety check before real robot
+
+  [ ] Robot is physically supported or held during first low-level test.
+  [ ] Emergency stop is ready.
+  [ ] No box is used.
+  [ ] Policy is disabled.
+  [ ] Action is zero.
+  [ ] Start pose is safe_stand.
+  [ ] Move duration is slow enough, at least 3 s.
+  [ ] PD gains are conservative.
+  [ ] Joint targets are within mechanical limits.
+  [ ] Fingers are not accidentally commanded.
+
+G. Real robot no-policy test
+
+  [ ] LowState values are plausible before sending commands.
+  [ ] Initial q roughly matches expected robot posture.
+  [ ] safe_stand transition is smooth.
+  [ ] Robot does not fight violently.
+  [ ] Q/ESC/Ctrl+C safely damps.
+  [ ] Repeating the test gives consistent behavior.
+
+H. Policy readiness
+
+  [ ] IsaacLab actor obs is exactly 104-dim in the same order.
+  [ ] IsaacLab action is exactly 29-dim in the same action order.
+  [ ] action_scale in training equals deploy YAML.
+  [ ] q_ref semantics match: joint_pos_rel = q - current_mode_reference_pose.
+  [ ] Actor does not use privileged observations.
+  [ ] Policy is first tested in MuJoCo with the exact DDS deploy code.
+  [ ] Policy action norms and q_des deltas are logged.
+  [ ] The first real policy test uses very small action scale or disabled lower-body action.
+
+I. Camera/AprilTag readiness
+
+  [ ] Camera stream works independently.
+  [ ] AprilTag pose estimate is stable at relevant distance.
+  [ ] Extrinsics are calibrated.
+  [ ] object_rel_pos frame matches policy_body frame.
+  [ ] object_rel_lin_vel is filtered and not noisy.
+  [ ] tag_visible behavior during dropout is defined.
+  [ ] Policy is trained with detection noise/dropout matching reality.
+
+================================================================================
+18. DECISION GATE
+================================================================================
+The real-world experiment code can be trusted only after this progression works:
+
+  1. unitree_sdk_test.py works in MuJoCo via DDS lo.
+  2. g1_catch_real.py no-policy safe_stand works in MuJoCo via DDS lo.
+  3. Single-joint motor mapping test passes for all 29 DOF in MuJoCo.
+  4. safe_stand / catch_ready / hold scripted poses work in MuJoCo.
+  5. Same no-policy scripted poses work on real G1 with safety support.
+  6. AprilTag observation pipeline works independently.
+  7. Policy works in MuJoCo using the exact same g1_catch_real.py code path.
+  8. Real G1 policy test starts with conservative action scaling and no thrown box.
+  9. Only after that, try light toss catch with AprilTag box.
+
+Until steps 1-7 pass, failures on the real robot should be interpreted as system
+integration/configuration failures, not as RL-policy failures.

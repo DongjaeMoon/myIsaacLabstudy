@@ -1,0 +1,11 @@
+# Parent frame for camera extrinsics.
+# For the real G1 AprilTag pipeline this camera is torso-mounted, not body-mounted.
+parent_frame: torso
+
+# Static torso->camera transform from Isaac USD inspection.
+translation_m: [0.05762, 0.01753, 0.42987]
+quat_wxyz: [0.91496, 0.0, 0.40355, 0.0]
+
+# Keep rpy_deg for backward compatibility only.
+# Prefer quat_wxyz when both are present.
+rpy_deg: null

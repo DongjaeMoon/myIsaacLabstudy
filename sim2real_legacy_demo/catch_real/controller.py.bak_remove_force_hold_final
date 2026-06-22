@@ -1,0 +1,732 @@
+from __future__ import annotations
+
+import argparse
+import time
+
+import numpy as np
+
+from unitree_sdk2py.utils.thread import RecurrentThread
+
+from .config_schema import CatchRealConfig
+from .dds_io import DDSInterface
+from .math_utils import interpolate
+from .modes import ControllerMode
+from .motor_command import MotorCommandWriter
+from .obs_builder import ObservationBuilder
+from .object_observation import ObjectObservation, ObjectObservationProvider
+from .policy_runner import PolicyRunner
+from .safety import apply_joint_target_safety, is_lowstate_fresh
+from .state_reader import StateReader
+
+
+class G1CatchRealController:
+    FAKE_OBJECT_TOGGLE_KEY = "o"
+    GANTRY_LOWER_BODY_JOINTS = {
+        "left_hip_pitch_joint",
+        "left_hip_roll_joint",
+        "left_hip_yaw_joint",
+        "left_knee_joint",
+        "left_ankle_pitch_joint",
+        "left_ankle_roll_joint",
+        "right_hip_pitch_joint",
+        "right_hip_roll_joint",
+        "right_hip_yaw_joint",
+        "right_knee_joint",
+        "right_ankle_pitch_joint",
+        "right_ankle_roll_joint",
+        "waist_yaw_joint",
+        "waist_roll_joint",
+        "waist_pitch_joint",
+    }
+
+    def __init__(self, cfg: CatchRealConfig, args: argparse.Namespace):
+        self.cfg = cfg
+        self.args = args
+
+        self.control_dt = cfg.runtime.control_dt
+        self.policy_dt = cfg.runtime.policy_dt
+        self.device = args.device or cfg.runtime.device
+        self.print_interval = (
+            1.0 / float(args.print_rate)
+            if args.print_rate is not None and args.print_rate > 0.0
+            else float(cfg.runtime.print_every)
+        )
+        self.no_policy = bool(args.no_policy)
+        self.move_duration = (
+            float(args.move_duration)
+            if args.move_duration is not None
+            else float(cfg.modes.default_pose_transition_duration_s)
+        )
+
+        self.dds = DDSInterface(cfg.communication)
+        max_motor_index = max(self.cfg.robot.motor_indices)
+        if max_motor_index >= self.dds.command_slots:
+            raise RuntimeError(
+                f"Configured motor index {max_motor_index} exceeds LowCmd size {self.dds.command_slots}. "
+                "Check robot.motor_indices in the YAML."
+            )
+
+        self.policy_runner = PolicyRunner(self.cfg, no_policy=self.no_policy, device=self.device)
+        self.state_reader = StateReader(self.cfg)
+        self.obs_builder = ObservationBuilder(self.cfg)
+        self.object_provider = ObjectObservationProvider(self.cfg)
+        self.command_writer: MotorCommandWriter | None = None
+        self.policy_mode = ControllerMode(self.cfg.policy_runtime.policy_mode_name)
+        self.gantry_lower_body_indices = np.array(
+            [
+                index
+                for index, joint_name in enumerate(self.cfg.robot.controlled_joint_names)
+                if joint_name in self.GANTRY_LOWER_BODY_JOINTS
+            ],
+            dtype=np.int64,
+        )
+
+        self.current_mode = ControllerMode.DAMPING
+        self.reference_pose_name = args.start_pose
+        self.reference_pose_q = self.cfg.poses[self.reference_pose_name].copy()
+        self.current_target_q: np.ndarray | None = None
+        self.last_sent_q_des: np.ndarray | None = None
+        self.transition_active = False
+        self.transition_start_time = 0.0
+        self.transition_duration = self.move_duration
+        self.transition_start_q: np.ndarray | None = None
+        self.transition_goal_q: np.ndarray | None = None
+
+        self.started = False
+        self.exit_requested = False
+        self.control_thread: RecurrentThread | None = None
+        self.last_policy_time = -1e9
+        self.last_status_time = 0.0
+        self.lowstate_warned_stale = False
+        self.pending_auto_start_policy = False
+        self.last_object_observation = self.object_provider.get()
+        self.policy_gate_blend = 0.0
+        self.policy_gate_last_visible_time: float | None = None
+        self.last_obs: np.ndarray | None = None
+        self.last_base_ang_vel: np.ndarray | None = None
+
+        # [DEBUG_STABLE_AUTOSTART] State-based policy auto-start diagnostics.
+        self.last_q: np.ndarray | None = None
+        self.last_dq: np.ndarray | None = None
+        self.last_projected_gravity: np.ndarray | None = None
+        self.policy_ready_since: float | None = None
+        self.last_policy_ready_status_time: float = 0.0
+
+        # [AUTO_RESET_SYNC] Detect MuJoCo Backspace/reset and re-sync controller.
+        self.last_reset_watch_q: np.ndarray | None = None
+        self.last_reset_watch_gravity: np.ndarray | None = None
+        self.last_auto_reset_sync_time: float = 0.0
+
+    def init(self) -> None:
+        self._print_startup_summary()
+        self.policy_runner.load_if_enabled()
+        self.dds.init_motion_switcher()
+        self.dds.init_channels()
+        self.command_writer = MotorCommandWriter(
+            self.cfg,
+            low_cmd=self.dds.low_cmd,
+            publisher=self.dds.lowcmd_publisher,
+            crc=self.dds.crc,
+            command_slots=self.dds.command_slots,
+        )
+
+    def start(self) -> None:
+        self.control_thread = RecurrentThread(interval=self.control_dt, target=self.control_step, name="g1_catch_real")
+        while not self.dds.mode_machine_ready:
+            time.sleep(0.1)
+        self.control_thread.Start()
+        print("[G1] DDS control loop started.")
+        print(
+            "[G1] Keys: "
+            f"S=safe_stand, P/C=catch_ready, {self.cfg.policy_runtime.autonomous_key.upper()}=policy(auto), "
+            f"{self.cfg.policy_runtime.manual_debug_key.upper()}=policy(debug), "
+            f"{self.FAKE_OBJECT_TOGGLE_KEY.upper()}=fake_object, R=reset-sync, H=hold, D=damping, Q/ESC=exit"
+        )
+
+    def stop(self) -> None:
+        if self.control_thread is not None:
+            try:
+                self.control_thread.Wait(timeout=1.0)
+            except Exception:
+                pass
+
+    def request_mode(self, mode: ControllerMode, duration: float | None = None, announce: bool = True) -> None:
+        if mode == ControllerMode.DAMPING:
+            self.current_mode = ControllerMode.DAMPING
+            self.transition_active = False
+            self.pending_auto_start_policy = False
+            self.policy_runner.zero_action()
+            if announce:
+                print("[G1] Mode -> DAMPING")
+            return
+
+        pose_name = self._pose_name_for_mode(mode)
+        target_q = self.cfg.poses[pose_name].copy()
+        now = time.monotonic()
+
+        if self.current_target_q is None:
+            start_q = target_q.copy()
+        elif self.current_mode == ControllerMode.DAMPING and self.dds.low_state is not None:
+            start_q, _ = self.state_reader.read_motor_state(self.dds.low_state)
+        else:
+            start_q = self.current_target_q.copy()
+
+        self.current_mode = mode
+        self.reference_pose_name = pose_name
+        self.reference_pose_q = target_q.copy()
+        self.transition_active = True
+        self.transition_start_time = now
+        self.transition_duration = float(duration if duration is not None else self.move_duration)
+        self.transition_start_q = start_q
+        self.transition_goal_q = target_q
+        self.policy_runner.zero_action()
+        self.policy_runner.reset_target(target_q)
+        self.policy_gate_blend = 0.0
+        self.policy_gate_last_visible_time = None
+        self.last_policy_time = -1e9
+        self.pending_auto_start_policy = (
+            mode == ControllerMode.CATCH_READY
+            and self.cfg.policy_runtime.auto_start_after_ready
+            and self._policy_is_available()
+        )
+
+        if announce:
+            print(f"[G1] Mode -> {mode.value} (transition {self.transition_duration:.2f}s)")
+
+    def handle_key(self, key: str) -> None:
+        if key is None:
+            return
+
+        if key == self.cfg.modes.keyboard.get("safe_stand", "s"):
+            self.request_mode(ControllerMode.SAFE_STAND)
+        elif key in {
+            self.cfg.modes.keyboard.get("catch_ready_primary", "p"),
+            self.cfg.modes.keyboard.get("catch_ready_secondary", "c"),
+        }:
+            self.request_mode(ControllerMode.CATCH_READY)
+        elif key == self.cfg.modes.keyboard.get("hold", "h"):
+            self.request_mode(ControllerMode.HOLD)
+        elif key == self.cfg.modes.keyboard.get("damping", "d"):
+            self.request_mode(ControllerMode.DAMPING)
+        elif key == self.cfg.policy_runtime.autonomous_key:
+            self._request_policy_mode(manual_debug=False)
+        elif key == self.cfg.policy_runtime.manual_debug_key:
+            self._request_policy_mode(manual_debug=True)
+        elif key == "r":
+            # [DEBUG_RESET_SYNC_KEY] Use after MuJoCo Backspace/reset.
+            # Re-capture current LowState and restart catch_ready transition safely.
+            self._sync_after_mujoco_reset()
+        elif key == self.FAKE_OBJECT_TOGGLE_KEY:
+            fake_enabled = self.object_provider.toggle_fake()
+            print(f"[G1] Fake object observation -> {'ON' if fake_enabled else 'OFF'}")
+        elif key in {
+            self.cfg.modes.keyboard.get("exit_primary", "q"),
+            self.cfg.modes.keyboard.get("exit_secondary", "esc"),
+            "esc",
+        }:
+            print("[G1] Exit requested; switching to damping.")
+            self.request_mode(ControllerMode.DAMPING, announce=False)
+            self.exit_requested = True
+
+    def control_step(self) -> None:
+        now = time.monotonic()
+        if self.dds.low_state is None:
+            return
+
+        self._initialize_targets_from_current_state()
+
+        lowstate_fresh = is_lowstate_fresh(
+            self.dds.low_state,
+            self.dds.low_state_time,
+            now,
+            self.cfg.safety.lowstate_timeout_s,
+        )
+        if not lowstate_fresh:
+            if not self.lowstate_warned_stale:
+                print("[G1] LowState is stale; switching to damping until DDS state recovers.")
+                self.lowstate_warned_stale = True
+                self.current_mode = ControllerMode.DAMPING
+                self.transition_active = False
+                self.pending_auto_start_policy = False
+                self.policy_runner.zero_action()
+            self.command_writer.send_damping_command(self.dds.mode_machine)
+            self._maybe_print_status(
+                now,
+                q=None,
+                dq=None,
+                gravity=None,
+                object_observation=None,
+                lowstate_fresh=False,
+            )
+            return
+
+        self.lowstate_warned_stale = False
+        q, dq = self.state_reader.read_motor_state(self.dds.low_state)
+        _, _, projected_gravity, base_ang_vel = self.state_reader.read_base_state(self.dds.low_state)
+
+        # [AUTO_RESET_SYNC] Keep latest state and detect MuJoCo Backspace/reset.
+        self.last_q = q.copy()
+        self.last_dq = dq.copy()
+        self.last_projected_gravity = projected_gravity.copy()
+        self._maybe_auto_sync_after_mujoco_reset(now, q, dq, projected_gravity)
+
+        object_observation = self.object_provider.get()
+        self.last_object_observation = object_observation
+        obs = self.obs_builder.build(
+            q=q,
+            dq=dq,
+            projected_gravity=projected_gravity,
+            base_ang_vel=base_ang_vel,
+            reference_pose_q=self.reference_pose_q,
+            prev_action=self.policy_runner.prev_action,
+            object_rel_pos=object_observation.rel_pos,
+            object_rel_lin_vel=object_observation.rel_lin_vel,
+            tag_visible=object_observation.tag_visible,
+            current_mode_value=self.current_mode.value,
+        )
+        self.last_obs = obs.copy()
+        self.last_base_ang_vel = base_ang_vel.copy()
+
+        # [DEBUG_STABLE_AUTOSTART] Keep latest state for state-based auto-start.
+        self.last_q = q.copy()
+        self.last_dq = dq.copy()
+        self.last_projected_gravity = projected_gravity.copy()
+
+        if self.current_mode == ControllerMode.DAMPING:
+            self.policy_runner.zero_action()
+            self.command_writer.send_damping_command(self.dds.mode_machine)
+            self._maybe_print_status(
+                now,
+                q=q,
+                dq=dq,
+                gravity=projected_gravity,
+                object_observation=object_observation,
+                lowstate_fresh=True,
+            )
+            return
+
+        nominal_target_q = self._compute_nominal_target(now, obs, object_observation)
+        q_des = apply_joint_target_safety(self.cfg, nominal_target_q, self.last_sent_q_des)
+        q_des = self._apply_gantry_lower_body_target_freeze(q_des, q)
+
+        # [FORCE_CURRENT_Q_HOLD_ALWAYS]
+        # HARD diagnostic: ignore all pose/policy targets and command current measured q.
+        # If this still oscillates, the problem is below reference/policy generation.
+        q_des = q.copy()
+
+
+        # [DEBUG_CURRENT_Q_HOLD] Hard diagnostic:
+        # If enabled by config policy_runtime.debug_current_q_hold=True,
+        # command q_des = current measured q and dq_des = 0.
+        # This should make actuator controls nearly zero.
+        if bool(getattr(self.cfg.policy_runtime, "debug_current_q_hold", False)):
+            q_des = q.copy()
+
+        self.command_writer.set_position_command(self.dds.mode_machine, q_des)
+        self.current_target_q = q_des.copy()
+        self.last_sent_q_des = q_des.copy()
+        self._maybe_print_status(
+            now,
+            q=q,
+            dq=dq,
+            gravity=projected_gravity,
+            object_observation=object_observation,
+            lowstate_fresh=True,
+        )
+
+    def safe_shutdown(self) -> None:
+        if self.cfg.safety.damping_on_exit and self.command_writer is not None:
+            try:
+                self.command_writer.send_damping_command(self.dds.mode_machine)
+                time.sleep(0.05)
+                self.command_writer.send_damping_command(self.dds.mode_machine)
+            except Exception:
+                pass
+
+    def _print_startup_summary(self) -> None:
+        kp_min = float(np.min(self.cfg.control.kp))
+        kp_max = float(np.max(self.cfg.control.kp))
+        kd_min = float(np.min(self.cfg.control.kd))
+        kd_max = float(np.max(self.cfg.control.kd))
+        policy_path_str = str(self.cfg.policy.path) if self.cfg.policy.path is not None else "None"
+        print(f"[G1] loaded config path : {self.cfg.config_path}")
+        print(f"[G1] net iface          : {self.args.net_iface or self.cfg.communication.net_iface or 'default DDS'}")
+        print(f"[G1] controlled joints  : {self.cfg.robot.controlled_joint_names}")
+        print(f"[G1] motor indices      : {self.cfg.robot.motor_indices}")
+        print(
+            f"[G1] control_dt/policy_dt: {self.control_dt:.4f}s / {self.policy_dt:.4f}s "
+            f"({1.0 / self.control_dt:.1f} Hz / {1.0 / self.policy_dt:.1f} Hz)"
+        )
+        print(f"[G1] pose names         : {sorted([name for name in self.cfg.poses.keys() if name != 'catch'])}")
+        print(f"[G1] start pose         : {self.reference_pose_name}")
+        print(f"[G1] move duration      : {self.move_duration:.2f}s")
+        print(f"[G1] policy disabled    : {self.no_policy}")
+        print(f"[G1] policy enabled     : {not self.no_policy}")
+        print(f"[G1] policy path        : {policy_path_str}")
+        print(f"[G1] target lowpass     : alpha={self.cfg.runtime.target_lowpass_alpha:.3f}")
+        print(f"[G1] kp summary         : min={kp_min:.2f}, max={kp_max:.2f}")
+        print(f"[G1] kd summary         : min={kd_min:.2f}, max={kd_max:.2f}")
+        print(f"[G1] obs dim/action dim : {self.cfg.observation.num_obs} / {self.cfg.policy.num_actions}")
+        print(
+            f"[G1] policy mode keys   : "
+            f"auto={self.cfg.policy_runtime.autonomous_key.upper()}, "
+            f"debug={self.cfg.policy_runtime.manual_debug_key.upper()}"
+        )
+        print(f"[G1] object source      : {self.object_provider.status_label()}")
+        if self.cfg.policy_runtime.gantry_upper_body_only:
+            print("[G1] gantry upper-body-only: lower-body q_des frozen to current q")
+            print(
+                "[G1] gantry action mask : "
+                f"lower={self.cfg.policy_runtime.gantry_lower_body_action_scale:.2f}, "
+                f"upper={self.cfg.policy_runtime.gantry_upper_body_action_scale:.2f}"
+            )
+
+    def _sync_after_mujoco_reset(self) -> None:
+        # [DEBUG_RESET_SYNC_KEY] Re-sync Python controller after MuJoCo Backspace/reset.
+        if self.dds.low_state is None:
+            print("[G1] Reset-sync requested, but no LowState is available yet.")
+            return
+
+        q_now, _ = self.state_reader.read_motor_state(self.dds.low_state)
+
+        self.current_target_q = q_now.copy()
+        self.last_sent_q_des = q_now.copy()
+        self.policy_runner.zero_action()
+        self.policy_runner.reset_target(self.cfg.poses[self.cfg.policy_runtime.default_policy_reference_pose].copy())
+
+        self.transition_active = False
+        self.pending_auto_start_policy = False
+        self.policy_gate_blend = 0.0
+        self.policy_gate_last_visible_time = None
+        self.policy_ready_since = None
+        self.last_policy_time = -1e9
+
+        self.current_mode = ControllerMode.DAMPING
+        self.request_mode(ControllerMode.CATCH_READY, duration=self.move_duration, announce=True)
+
+        print("[G1] Reset-sync complete: captured current q, restarted catch_ready transition.")
+
+    def _pose_name_for_mode(self, mode: ControllerMode) -> str:
+        if mode == ControllerMode.SAFE_STAND:
+            return "safe_stand"
+        if mode == ControllerMode.CATCH_READY:
+            return "catch_ready"
+        if mode == self.policy_mode:
+            return self.cfg.policy_runtime.default_policy_reference_pose
+        if mode == ControllerMode.HOLD:
+            return "hold"
+        return self.reference_pose_name
+
+    def _mode_from_pose_name(self, pose_name: str) -> ControllerMode:
+        if pose_name == "safe_stand":
+            return ControllerMode.SAFE_STAND
+        if pose_name == "catch_ready":
+            return ControllerMode.CATCH_READY
+        if pose_name == "hold":
+            return ControllerMode.HOLD
+        raise ValueError(f"Unsupported start pose '{pose_name}'")
+
+    def _initialize_targets_from_current_state(self) -> None:
+        if self.started:
+            return
+        q_now, _ = self.state_reader.read_motor_state(self.dds.low_state)
+        self.current_target_q = q_now.copy()
+        self.last_sent_q_des = q_now.copy()
+        self.policy_runner.reset_target(self.cfg.poses[self.cfg.policy_runtime.default_policy_reference_pose].copy())
+        self.started = True
+        initial_mode = self._mode_from_pose_name(self.reference_pose_name)
+        self.request_mode(initial_mode, duration=self.move_duration, announce=False)
+        print(f"[G1] Initial transition -> {initial_mode.value} over {self.move_duration:.2f}s")
+
+    def _compute_nominal_target(
+        self,
+        now: float,
+        obs: np.ndarray,
+        object_observation: ObjectObservation | None = None,
+    ) -> np.ndarray:
+        if self.current_mode == self.policy_mode and self._policy_is_available():
+            tag_visible = False
+            if object_observation is not None:
+                tag_visible = bool(float(object_observation.tag_visible[0]) > 0.5)
+
+            gate_enabled = bool(self.cfg.policy_runtime.gate_policy_until_object_visible)
+
+            if gate_enabled and not tag_visible:
+                self.policy_gate_blend = 0.0
+                self.policy_gate_last_visible_time = None
+                self.policy_runner.zero_action()
+                self.policy_runner.reset_target(self.reference_pose_q)
+                return self.reference_pose_q.copy()
+
+            if gate_enabled and tag_visible:
+                if self.policy_gate_last_visible_time is None:
+                    self.policy_gate_last_visible_time = now
+                blend_duration = max(float(self.cfg.policy_runtime.object_visible_blend_duration_s), 1.0e-6)
+                self.policy_gate_blend = float(np.clip((now - self.policy_gate_last_visible_time) / blend_duration, 0.0, 1.0))
+            else:
+                self.policy_gate_blend = 1.0
+
+            if (now - self.last_policy_time) >= self.policy_dt:
+                policy_target = self.policy_runner.compute_target(obs, self.reference_pose_q)
+                self.policy_runner.last_target_q = interpolate(
+                    self.reference_pose_q,
+                    policy_target,
+                    self.policy_gate_blend,
+                )
+                self.last_policy_time = now
+
+            return self.policy_runner.last_target_q.copy()
+
+        if self.transition_active:
+            assert self.transition_start_q is not None
+            assert self.transition_goal_q is not None
+            if self.transition_duration <= 1e-6:
+                alpha = 1.0
+            else:
+                alpha = float(np.clip((now - self.transition_start_time) / self.transition_duration, 0.0, 1.0))
+            target = interpolate(self.transition_start_q, self.transition_goal_q, alpha)
+            if alpha >= 1.0:
+                self.transition_active = False
+                if self.pending_auto_start_policy:
+                    if self._ready_for_policy_autostart(now):
+                        self.pending_auto_start_policy = False
+                        self._request_policy_mode(manual_debug=False)
+                    else:
+                        # Hold catch_ready until q/dq/gravity are stable enough.
+                        return self.reference_pose_q.copy()
+            return target
+
+        if self.pending_auto_start_policy and self.current_mode == ControllerMode.CATCH_READY:
+            if self._ready_for_policy_autostart(now):
+                self.pending_auto_start_policy = False
+                self._request_policy_mode(manual_debug=False)
+            return self.reference_pose_q.copy()
+
+        return self.reference_pose_q.copy()
+
+    def _apply_gantry_lower_body_target_freeze(
+        self,
+        q_des: np.ndarray,
+        q_current: np.ndarray,
+    ) -> np.ndarray:
+        if not self.cfg.policy_runtime.gantry_upper_body_only:
+            return q_des
+        if self.gantry_lower_body_indices.size == 0:
+            return q_des
+
+        q_des_frozen = q_des.copy()
+        q_des_frozen[self.gantry_lower_body_indices] = q_current[self.gantry_lower_body_indices]
+        return q_des_frozen
+
+
+    def _maybe_auto_sync_after_mujoco_reset(
+        self,
+        now: float,
+        q: np.ndarray,
+        dq: np.ndarray,
+        projected_gravity: np.ndarray,
+    ) -> bool:
+        """Detect MuJoCo Backspace/reset and re-sync Python controller state."""
+        if self.last_reset_watch_q is None:
+            self.last_reset_watch_q = q.copy()
+            self.last_reset_watch_gravity = projected_gravity.copy()
+            return False
+
+        q_jump = float(np.max(np.abs(q - self.last_reset_watch_q)))
+        if self.last_reset_watch_gravity is None:
+            g_jump = 0.0
+        else:
+            g_jump = float(np.linalg.norm(projected_gravity - self.last_reset_watch_gravity))
+
+        self.last_reset_watch_q = q.copy()
+        self.last_reset_watch_gravity = projected_gravity.copy()
+
+        # Avoid repeated sync spam.
+        if (now - self.last_auto_reset_sync_time) < 0.50:
+            return False
+
+        gravity_xy = float(np.linalg.norm(projected_gravity[:2]))
+        uprightish = bool(projected_gravity[2] < -0.70 and gravity_xy < 0.45)
+
+        # Backspace/reset may appear as q jump, gravity jump, or both.
+        reset_like = bool(q_jump > 0.25 or g_jump > 0.50)
+        if not reset_like or not uprightish:
+            return False
+
+        self.last_auto_reset_sync_time = now
+
+        # Re-sync internal controller state to current MuJoCo LowState.
+        self.current_target_q = q.copy()
+        self.last_sent_q_des = q.copy()
+        self.policy_runner.zero_action()
+        self.policy_runner.reset_target(
+            self.cfg.poses[self.cfg.policy_runtime.default_policy_reference_pose].copy()
+        )
+
+        self.transition_active = False
+        self.pending_auto_start_policy = False
+        self.policy_gate_blend = 0.0
+        self.policy_gate_last_visible_time = None
+        self.policy_ready_since = None
+        self.last_policy_time = -1e9
+
+        # Restart catch_ready transition. If auto_start_after_ready=True,
+        # request_mode will set pending_auto_start_policy again.
+        self.current_mode = ControllerMode.DAMPING
+        self.request_mode(ControllerMode.CATCH_READY, duration=self.move_duration, announce=True)
+
+        print(
+            "[G1] Auto reset-sync detected: "
+            f"q_jump={q_jump:.3f}, g_jump={g_jump:.3f}, gravity_xy={gravity_xy:.3f}. "
+            "Captured current q and restarted catch_ready transition."
+        )
+        return True
+
+
+    def _ready_for_policy_autostart(self, now: float) -> bool:
+        """Return True only after the robot is stably near catch_ready for a short hold time."""
+        if self.last_q is None or self.last_dq is None or self.last_projected_gravity is None:
+            return False
+
+        q_err = float(np.max(np.abs(self.last_q - self.reference_pose_q)))
+        dq_max = float(np.max(np.abs(self.last_dq)))
+        gravity_xy = float(np.linalg.norm(self.last_projected_gravity[:2]))
+
+        # Conservative thresholds for MuJoCo free-base debugging.
+        q_err_ok = q_err < 0.12
+        dq_ok = dq_max < 0.30
+        gravity_ok = gravity_xy < 0.08
+
+        stable_now = q_err_ok and dq_ok and gravity_ok
+
+        if stable_now:
+            if self.policy_ready_since is None:
+                self.policy_ready_since = now
+        else:
+            self.policy_ready_since = None
+
+        stable_duration = 0.0 if self.policy_ready_since is None else now - self.policy_ready_since
+        ready = stable_now and stable_duration >= 0.30
+
+        if (now - self.last_policy_ready_status_time) > 0.50:
+            self.last_policy_ready_status_time = now
+            print(
+                "[G1] auto-start check: "
+                f"q_err={q_err:.3f}/0.120, "
+                f"dq={dq_max:.3f}/0.300, "
+                f"gravity_xy={gravity_xy:.3f}/0.080, "
+                f"stable_for={stable_duration:.2f}s/0.30s, "
+                f"ready={ready}"
+            )
+
+        return ready
+
+    def _maybe_print_status(
+        self,
+        now: float,
+        q: np.ndarray | None,
+        dq: np.ndarray | None,
+        gravity: np.ndarray | None,
+        object_observation: ObjectObservation | None,
+        lowstate_fresh: bool,
+    ) -> None:
+        if self.print_interval <= 0.0:
+            return
+        if (now - self.last_status_time) < self.print_interval:
+            return
+        self.last_status_time = now
+        policy_running = self.current_mode == self.policy_mode and self._policy_is_available()
+
+        if q is None or dq is None or gravity is None or object_observation is None:
+            print(
+                f"[G1] mode={self.current_mode.value:<12s} "
+                f"max|q-q_ref|=n/a max|dq|=n/a gravity=n/a "
+                f"tag_visible=n/a object_rel_pos=n/a policy_running={policy_running} "
+                f"lowstate_fresh={lowstate_fresh}"
+            )
+            return
+
+        q_ref_err = float(np.max(np.abs(q - self.reference_pose_q)))
+        max_dq = float(np.max(np.abs(dq)))
+        gravity_str = np.array2string(np.round(gravity, 3), precision=3, separator=",")
+        object_pos_str = np.array2string(np.round(object_observation.rel_pos, 3), precision=3, separator=",")
+        tag_visible = int(float(object_observation.tag_visible[0]) > 0.5)
+        print(
+            f"[G1] mode={self.current_mode.value:<12s} "
+            f"max|q-q_ref|={q_ref_err:.3f} max|dq|={max_dq:.3f} "
+            f"gravity={gravity_str} tag_visible={tag_visible} "
+            f"object_rel_pos={object_pos_str} policy_running={policy_running} "
+            f"policy_gate={self.policy_gate_blend:.2f} "
+            f"lowstate_fresh={lowstate_fresh}"
+        )
+        self._print_deep_debug(q, dq, policy_running)
+
+    def _format_topk(self, label: str, values: np.ndarray, k: int = 5) -> str:
+        names = self.cfg.robot.controlled_joint_names
+        idx = np.argsort(np.abs(values))[-k:][::-1]
+        parts = [f"{names[i]}={values[i]:+.3f}" for i in idx]
+        return f"{label}: " + ", ".join(parts)
+
+    def _print_deep_debug(self, q: np.ndarray, dq: np.ndarray, policy_running: bool) -> None:
+        if self.current_target_q is None:
+            return
+
+        q_des = self.current_target_q
+        q_ref = self.reference_pose_q
+        action = self.policy_runner.prev_action
+
+        q_track_err = q_des - q
+        target_residual = q_des - q_ref
+        tau_est = (
+            self.cfg.control.kp * q_track_err
+            + self.cfg.control.kd * (float(self.cfg.control.dq_des) - dq)
+            + float(self.cfg.control.tau_ff)
+        )
+
+        print("    " + self._format_topk("top|dq|", dq))
+        print("    " + self._format_topk("top|q_des-q|", q_track_err))
+        print("    " + self._format_topk("top|q_des-q_ref|", target_residual))
+        print("    " + self._format_topk("top|tau_est|", tau_est))
+
+        if policy_running:
+            print("    " + self._format_topk("top|policy_action|", action))
+
+        if self.last_obs is not None and self.last_obs.shape[0] >= 104:
+            obs = self.last_obs
+            g = obs[0:3]
+            w = obs[3:6]
+            jp = obs[6:35]
+            jv = obs[35:64]
+            pa = obs[64:93]
+            obj_p = obs[93:96]
+            obj_v = obs[96:99]
+            tag = obs[99:100]
+            mode = obs[100:104]
+            print(
+                "    obs_norms: "
+                f"|g|={np.linalg.norm(g):.3f}, "
+                f"|base_w|={np.linalg.norm(w):.3f}, "
+                f"|jp|={np.linalg.norm(jp):.3f}, "
+                f"|jv|={np.linalg.norm(jv):.3f}, "
+                f"|prev_a|={np.linalg.norm(pa):.3f}, "
+                f"|obj_p|={np.linalg.norm(obj_p):.3f}, "
+                f"|obj_v|={np.linalg.norm(obj_v):.3f}, "
+                f"tag={tag[0]:.1f}, mode={np.round(mode, 2)}"
+            )
+
+    def _policy_is_available(self) -> bool:
+        return (not self.no_policy) and self.policy_runner.is_loaded
+
+    def _request_policy_mode(self, manual_debug: bool) -> None:
+        if not self._policy_is_available():
+            print(
+                "[G1] Autonomous policy mode requested, but policy is not loaded or policy execution is disabled. "
+                "Staying in the current scripted mode."
+            )
+            return
+
+        self.request_mode(self.policy_mode, announce=False)
+        if manual_debug:
+            print("[G1] Mode -> manual/debug policy mode (using internal catch mode)")
+        else:
+            print("[G1] Mode -> autonomous policy running (using internal catch mode)")
